@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     ollama_model: str    = "llama3"          # or "mistral"
     ollama_timeout: int  = 60                # seconds
 
+    # ---------- Groq (free cloud LLM fallback) ----------
+    groq_api_key: str    = ""                # set in .env → GROQ_API_KEY
+    groq_model: str      = "llama-3.3-70b-versatile"  # free tier model
+
     # ---------- Whisper ----------
     whisper_model: str   = "base"            # tiny | base | small | medium | large
     whisper_device: str  = "cpu"             # cpu | cuda
@@ -60,6 +64,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"  # ignore unknown .env vars (auth, mail, stripe…)
 
 
 # Single shared instance

@@ -41,6 +41,7 @@ jobs: Dict[str, Dict[str, Any]] = {}
 # ── Request / Response models ────────────────────────────────────────────────
 class GenerateRequest(BaseModel):
     youtube_url: str
+    max_clips: int = 3  # FREE default; PRO can send 1–10
 
 
 class GenerateResponse(BaseModel):
@@ -57,7 +58,7 @@ class StatusResponse(BaseModel):
 
 
 # ── Background pipeline ──────────────────────────────────────────────────────
-async def run_pipeline(job_id: str, youtube_url: str, user_id: str):
+async def run_pipeline(job_id: str, youtube_url: str, user_id: str, max_clips: int = 3):
     """Full async pipeline: download → transcribe → score → render."""
 
     def update(progress: int, step: str):
@@ -76,7 +77,7 @@ async def run_pipeline(job_id: str, youtube_url: str, user_id: str):
         segments = await asyncio.to_thread(transcribe_video, str(video_path))
 
         update(40, "Analysing and scoring segments…")
-        top_segments = await asyncio.to_thread(select_top_segments, segments)
+        top_segments = await asyncio.to_thread(select_top_segments, segments, max_clips)
 
         update(55, "Generating viral hooks with local LLM…")
         for seg in top_segments:
@@ -147,6 +148,12 @@ async def generate(
     """Start a generation job. Requires auth + quota check."""
     job_id = str(uuid.uuid4())[:8]
 
+    # Enforce max_clips per plan
+    if user.plan.value == "free":
+        allowed_clips = max(1, min(request.max_clips, 5))   # FREE: 1–5
+    else:
+        allowed_clips = max(1, min(request.max_clips, 20))  # PRO: 1–20
+
     # Create DB record
     job_record = Job(
         id=job_id,
@@ -170,7 +177,7 @@ async def generate(
         "user_id":  user.id,
     }
 
-    background_tasks.add_task(run_pipeline, job_id, request.youtube_url, user.id)
+    background_tasks.add_task(run_pipeline, job_id, request.youtube_url, user.id, allowed_clips)
     return GenerateResponse(job_id=job_id, message="Job started.")
 
 

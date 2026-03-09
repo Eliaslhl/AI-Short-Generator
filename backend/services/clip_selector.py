@@ -66,13 +66,15 @@ def _merge_segments(
 
 def select_top_segments(
     segments: List[Dict[str, Any]],
+    max_clips: int | None = None,
 ) -> List[Dict[str, Any]]:
     """
     Score and rank all segments, return the top N.
 
     Parameters
     ----------
-    segments : list of dicts from transcription_service
+    segments  : list of dicts from transcription_service
+    max_clips : override the default from settings (used for per-user choice)
 
     Returns
     -------
@@ -80,7 +82,7 @@ def select_top_segments(
     """
     min_dur = settings.min_clip_duration
     max_dur = settings.max_clip_duration
-    max_clips = settings.max_clips
+    n_clips = max(1, min(max_clips if max_clips is not None else settings.max_clips, 10))
 
     # ── 1. Merge raw segments into clip-sized chunks ─────────────────────
     chunks = _merge_segments(segments, min_dur, max_dur)
@@ -101,9 +103,9 @@ def select_top_segments(
     # ── 3. Sort by viral score descending ────────────────────────────────
     chunks.sort(key=lambda c: c["viral_score"], reverse=True)
 
-    top = chunks[:max_clips]
+    top = chunks[:n_clips]
     logger.info(
-        f"Selected {len(top)} segments. "
+        f"Selected {len(top)} segments (requested {n_clips}). "
         f"Top score: {top[0]['viral_score']:.2f}" if top else "No segments selected."
     )
     return top

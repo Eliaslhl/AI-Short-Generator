@@ -35,3 +35,7 @@ Pillow==10.3.0
 imageio==2.34.1
 imageio-ffmpeg==0.5.1
 decorator==4.4.2
+
+# Auth & email
+fastapi-mail==1.4.1
+groq>=1.1.0

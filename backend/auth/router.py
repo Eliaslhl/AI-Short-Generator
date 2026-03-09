@@ -1,24 +1,26 @@
 """
 auth/router.py – Authentication routes:
-  POST /auth/register     – email + password signup
-  POST /auth/login        – email + password login  
-  GET  /auth/me           – current user info
-  GET  /auth/google       – redirect to Google OAuth
-  GET  /auth/google/callback – Google OAuth callback
-  POST /auth/logout       – (stateless JWT: just drop token on client)
-  POST /auth/stripe/webhook – Stripe webhook for subscription updates
+  POST /auth/register           – email + password signup
+  POST /auth/login              – email + password login
+  GET  /auth/me                 – current user info
+  GET  /auth/google             – redirect to Google OAuth
+  GET  /auth/google/callback    – Google OAuth callback
+  POST /auth/forgot-password    – send password reset email
+  POST /auth/reset-password     – set new password via token
+  POST /auth/stripe/webhook     – Stripe webhook for subscription updates
 """
 
 import json
 import logging
 import os
-from datetime import datetime, timezone
+import secrets
+from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import stripe
 from authlib.integrations.httpx_client import AsyncOAuth2Client
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +28,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.auth.dependencies import get_current_user
 from backend.auth.jwt import create_access_token
 from backend.database import get_db
-from backend.models.user import Plan, User
+from backend.models.user import Plan, User, PasswordResetToken
+from backend.services.email_service import send_reset_email
 
 logger = logging.getLogger(__name__)
 
@@ -270,6 +273,90 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             logger.info(f"User {user.email} downgraded to Free")
 
     return {"status": "ok"}
+
+
+# ── Forgot password ───────────────────────────────────────────────────────────
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+@router.post("/forgot-password")
+async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Always returns 200 — never reveal whether an email exists (security best practice).
+    Sends a reset link if the account exists and uses email/password auth.
+    """
+    result = await db.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+
+    if user and user.hashed_password:
+        # Delete any previous unused tokens for this user
+        existing = await db.execute(
+            select(PasswordResetToken).where(
+                PasswordResetToken.user_id == user.id,
+                PasswordResetToken.used == False,  # noqa: E712
+            )
+        )
+        for old_token in existing.scalars().all():
+            await db.delete(old_token)
+
+        # Create new token (64 hex chars = 256 bits of entropy)
+        raw_token = secrets.token_hex(32)
+        expires = datetime.now(timezone.utc) + timedelta(hours=1)
+        reset_token = PasswordResetToken(
+            user_id=user.id,
+            token=raw_token,
+            expires_at=expires,
+        )
+        db.add(reset_token)
+        await db.commit()
+
+        try:
+            await send_reset_email(user.email, raw_token)
+        except Exception:
+            pass  # logged inside send_reset_email
+
+    return {"message": "If this email is registered, a reset link has been sent."}
+
+
+# ── Reset password ────────────────────────────────────────────────────────────
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+@router.post("/reset-password")
+async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+
+    # Find the token
+    result = await db.execute(
+        select(PasswordResetToken).where(PasswordResetToken.token == body.token)
+    )
+    reset_token = result.scalar_one_or_none()
+
+    if not reset_token:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link.")
+
+    if reset_token.used:
+        raise HTTPException(status_code=400, detail="This reset link has already been used.")
+
+    if datetime.now(timezone.utc) > reset_token.expires_at:
+        raise HTTPException(status_code=400, detail="This reset link has expired. Please request a new one.")
+
+    # Update password
+    user_result = await db.execute(select(User).where(User.id == reset_token.user_id))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid reset link.")
+
+    user.hashed_password = bcrypt.hashpw(body.new_password.encode(), bcrypt.gensalt()).decode()
+    reset_token.used = True
+    await db.commit()
+
+    logger.info(f"Password reset successful for {user.email}")
+    return {"message": "Password updated successfully. You can now log in."}
 
 
 # ── Helper ────────────────────────────────────────────────────────────────────

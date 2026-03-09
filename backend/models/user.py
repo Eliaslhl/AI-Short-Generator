@@ -90,3 +90,17 @@ class Job(Base):
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="jobs")
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    user: Mapped["User"] = relationship("User")

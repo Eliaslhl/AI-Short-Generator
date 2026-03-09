@@ -1,9 +1,9 @@
-import { useState, useRef, type FormEvent } from 'react'
+import { useState, useRef, useEffect, type FormEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { generatorApi, authApi } from '../api'
 import { type AxiosError } from 'axios'
 import type { StatusResponse, Clip } from '../types'
-import { Link2, Sparkles, Download, Crown, CheckCircle, Clock, AlertCircle } from 'lucide-react'
+import { Link2, Sparkles, Download, Crown, CheckCircle, Clock, AlertCircle, SlidersHorizontal } from 'lucide-react'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -56,6 +56,13 @@ export default function GeneratorPage() {
   const { user, refreshUser } = useAuth()
 
   const [url, setUrl] = useState('')
+  const [maxClips, setMaxClips] = useState(3)
+
+  // Keep maxClips within plan limits if plan changes
+  const maxAllowed = user?.plan === 'pro' ? 20 : 5
+  useEffect(() => {
+    if (maxClips > maxAllowed) setMaxClips(maxAllowed)
+  }, [maxAllowed, maxClips])
   const [status, setStatus] = useState<StatusResponse | null>(null)
   const [error, setError] = useState('')
   const [upgradeError, setUpgradeError] = useState(false)
@@ -87,7 +94,7 @@ export default function GeneratorPage() {
     setUpgradeError(false)
     setStatus(null)
     try {
-      const res = await generatorApi.generate(url)
+      const res = await generatorApi.generate(url, maxClips)
       setStatus({ status: 'pending', progress: 0, step: 'Queued...', clips: [] })
       startPolling(res.data.job_id)
     } catch (err) {
@@ -150,28 +157,79 @@ export default function GeneratorPage() {
       )}
 
       <form onSubmit={(e) => void handleGenerate(e)} className="mb-8">
-        <div className="flex gap-3">
-          <div className="relative flex-1">
-            <Link2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://www.youtube.com/watch?v=..."
-              required
-              disabled={isProcessing}
-              className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={!url || isProcessing || quotaEmpty}
-            className="px-6 py-3.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold rounded-xl transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Sparkles className="w-4 h-4" /> Generate
-          </button>
+        {/* URL input */}
+        <div className="relative mb-4">
+          <Link2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+          <input
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://www.youtube.com/watch?v=..."
+            required
+            disabled={isProcessing}
+            className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition"
+          />
         </div>
-        {error && <p className="mt-2 text-red-400 text-sm">{error}</p>}
+
+        {/* Clip count slider — FREE (1–5) and PRO (1–20) */}
+        <div className={`p-4 rounded-xl mb-4 ${
+          user?.plan === 'pro'
+            ? 'bg-yellow-500/5 border border-yellow-500/20'
+            : 'bg-white/5 border border-white/10'
+        }`}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className={`w-4 h-4 ${user?.plan === 'pro' ? 'text-yellow-400' : 'text-purple-400'}`} />
+              <span className="text-sm font-medium text-white">Number of clips</span>
+              {user?.plan === 'pro' ? (
+                <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO</span>
+              ) : (
+                <span className="px-1.5 py-0.5 bg-white/10 text-gray-400 text-xs rounded-full">max 5 — upgrade for 20</span>
+              )}
+            </div>
+            <span className={`text-3xl font-bold w-10 text-center ${user?.plan === 'pro' ? 'text-yellow-400' : 'text-purple-400'}`}>
+              {maxClips}
+            </span>
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={user?.plan === 'pro' ? 20 : 5}
+            step={1}
+            value={maxClips}
+            onChange={(e) => setMaxClips(Number(e.target.value))}
+            disabled={isProcessing}
+            className={`w-full cursor-pointer disabled:opacity-50 ${user?.plan === 'pro' ? 'accent-yellow-400' : 'accent-purple-500'}`}
+          />
+          <div className="flex justify-between text-xs text-gray-500 mt-1">
+            <span>1</span>
+            {user?.plan === 'pro' ? (
+              <>
+                <span>5</span>
+                <span>10</span>
+                <span>15</span>
+                <span>20</span>
+              </>
+            ) : (
+              <>
+                <span>3</span>
+                <span>5</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Generate button */}
+        <button
+          type="submit"
+          disabled={!url || isProcessing || quotaEmpty}
+          className="w-full py-3.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Sparkles className="w-4 h-4" />
+          {isProcessing ? 'Generating...' : `Generate ${maxClips} short${maxClips > 1 ? 's' : ''}`}
+        </button>
+
+        {error && <p className="mt-3 text-red-400 text-sm">{error}</p>}
       </form>
 
       {status && status.status !== 'done' && status.status !== 'error' && (

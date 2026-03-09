@@ -27,6 +27,9 @@ for _d in (VIDEO_DIR, CLIPS_DIR, BROLL_DIR):
 #  Settings (can be overridden via .env file)
 # ──────────────────────────────────────────────
 class Settings(BaseSettings):
+    # ---------- Database ----------
+    database_url: str = "sqlite+aiosqlite:///./data/app.db"   # override with postgresql+asyncpg:// in prod
+
     # ---------- Ollama ----------
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str    = "llama3"          # or "mistral"

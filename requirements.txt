@@ -8,6 +8,9 @@ fastapi==0.111.0
 uvicorn[standard]==0.29.0
 python-multipart==0.0.9
 
+# Rate limiting
+slowapi==0.1.9
+
 # YouTube download
 yt-dlp==2024.4.9
 
@@ -35,6 +38,12 @@ Pillow==10.3.0
 imageio==2.34.1
 imageio-ffmpeg==0.5.1
 decorator==4.4.2
+
+# Database
+sqlalchemy==2.0.30
+aiosqlite==0.20.0         # SQLite async driver (dev)
+asyncpg==0.29.0           # PostgreSQL async driver (prod)
+alembic==1.13.1           # DB migrations
 
 # Auth & email
 fastapi-mail==1.4.1

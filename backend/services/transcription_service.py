@@ -42,7 +42,7 @@ def _get_model() -> WhisperModel:
     return _model
 
 
-def transcribe_video(video_path: str) -> List[Dict[str, Any]]:
+def transcribe_video(video_path: str, language: str | None = None) -> List[Dict[str, Any]]:
     """
     Transcribe the audio track of a video file.
 
@@ -50,6 +50,9 @@ def transcribe_video(video_path: str) -> List[Dict[str, Any]]:
     ----------
     video_path : str
         Absolute path to the MP4 (or any ffmpeg-readable file).
+    language : str | None
+        ISO-639-1 language code (e.g. "fr", "en", "es").
+        None or "" → Whisper auto-detects the language.
 
     Returns
     -------
@@ -61,12 +64,13 @@ def transcribe_video(video_path: str) -> List[Dict[str, Any]]:
 
     model = _get_model()
 
-    language = settings.whisper_language if settings.whisper_language else None
+    # Explicit language overrides the .env default; None = auto-detect
+    lang = language if language else (settings.whisper_language or None)
 
-    logger.info(f"Transcribing {path.name}…")
+    logger.info(f"Transcribing {path.name} (language={lang or 'auto'})…")
     segments_iter, info = model.transcribe(
         str(path),
-        language=language,
+        language=lang,
         word_timestamps=True,
         vad_filter=True,         # skip silent sections
         vad_parameters=dict(

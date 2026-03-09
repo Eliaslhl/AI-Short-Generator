@@ -32,6 +32,17 @@ STROKE_COLOR      = "black"
 STROKE_WIDTH      = 3
 FONT              = "Arial-Bold"   # must be available on the system
 
+# ──────────────────────────────────────────────
+#  Subtitle style presets  (Pro feature)
+# ──────────────────────────────────────────────
+SUBTITLE_STYLES: dict[str, dict] = {
+    "default":  {"color": "#FFFF00", "font": "Arial-Bold",  "stroke_color": "black",   "stroke_width": 3},
+    "bold":     {"color": "white",   "font": "Arial-Bold",  "stroke_color": "black",   "stroke_width": 4},
+    "outlined": {"color": "white",   "font": "Arial-Bold",  "stroke_color": "#3B82F6", "stroke_width": 4},
+    "neon":     {"color": "#00FF88", "font": "Arial-Bold",  "stroke_color": "black",   "stroke_width": 5},
+    "minimal":  {"color": "white",   "font": "Arial",       "stroke_color": None,      "stroke_width": 0},
+}
+
 
 def _make_output_path(job_id: str, clip_index: int) -> Path:
     out_dir = Path(settings.clips_dir) / job_id
@@ -104,10 +115,16 @@ def _add_hook_overlay(clip, hook_text: str):
         return clip
 
 
-def _add_caption_overlays(clip, captions: List[Dict[str, Any]], seg_start: float):
+def _add_caption_overlays(clip, captions: List[Dict[str, Any]], seg_start: float, subtitle_style: str = "default"):
     """Overlay timed caption lines at the bottom of the clip."""
     try:
         from moviepy import TextClip, CompositeVideoClip
+
+        style = SUBTITLE_STYLES.get(subtitle_style, SUBTITLE_STYLES["default"])
+        cap_color    = style["color"]
+        cap_font     = style["font"]
+        cap_stroke_c = style["stroke_color"] or "black"
+        cap_stroke_w = style["stroke_width"]
 
         overlay_clips = [clip]
         bottom_y = settings.output_height - 220   # 220 px from bottom
@@ -129,10 +146,10 @@ def _add_caption_overlays(clip, captions: List[Dict[str, Any]], seg_start: float
                 TextClip(
                     text=cap["text"],
                     font_size=CAPTION_FONT_SIZE,
-                    font=FONT,
-                    color=CAPTION_COLOR,
-                    stroke_color=STROKE_COLOR,
-                    stroke_width=STROKE_WIDTH,
+                    font=cap_font,
+                    color=cap_color,
+                    stroke_color=cap_stroke_c,
+                    stroke_width=cap_stroke_w,
                     method="caption",
                     size=(settings.output_width - 100, None),
                     text_align="center",
@@ -185,6 +202,7 @@ def render_clip(
     segment: Dict[str, Any],
     job_id: str,
     clip_index: int,
+    subtitle_style: str = "default",
 ) -> Dict[str, Any]:
     """
     Render a single short clip from a source video segment.
@@ -230,7 +248,7 @@ def render_clip(
             clip = _add_hook_overlay(clip, hook)
 
         if captions:
-            clip = _add_caption_overlays(clip, captions, start)
+            clip = _add_caption_overlays(clip, captions, start, subtitle_style)
 
         if broll:
             clip = _add_broll_overlay(clip, broll)

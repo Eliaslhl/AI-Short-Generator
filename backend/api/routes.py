@@ -41,7 +41,9 @@ jobs: Dict[str, Dict[str, Any]] = {}
 # ── Request / Response models ────────────────────────────────────────────────
 class GenerateRequest(BaseModel):
     youtube_url: str
-    max_clips: int = 3  # FREE default; PRO can send 1–10
+    max_clips: int = 3           # FREE default; enforced server-side per plan
+    language: str = ""           # "" = auto-detect; ISO-639-1 code for PRO (e.g. "fr")
+    subtitle_style: str = "default"  # PRO: default | bold | outlined | neon | minimal
 
 
 class GenerateResponse(BaseModel):
@@ -58,7 +60,7 @@ class StatusResponse(BaseModel):
 
 
 # ── Background pipeline ──────────────────────────────────────────────────────
-async def run_pipeline(job_id: str, youtube_url: str, user_id: str, max_clips: int = 3):
+async def run_pipeline(job_id: str, youtube_url: str, user_id: str, max_clips: int = 3, language: str = "", subtitle_style: str = "default"):
     """Full async pipeline: download → transcribe → score → render."""
 
     def update(progress: int, step: str):
@@ -74,7 +76,7 @@ async def run_pipeline(job_id: str, youtube_url: str, user_id: str, max_clips: i
         jobs[job_id]["video_title"] = video_title
 
         update(20, "Transcribing audio with Faster-Whisper…")
-        segments = await asyncio.to_thread(transcribe_video, str(video_path))
+        segments = await asyncio.to_thread(transcribe_video, str(video_path), language or None)
 
         update(40, "Analysing and scoring segments…")
         top_segments = await asyncio.to_thread(select_top_segments, segments, max_clips)
@@ -102,6 +104,7 @@ async def run_pipeline(job_id: str, youtube_url: str, user_id: str, max_clips: i
                 segment=seg,
                 job_id=job_id,
                 clip_index=idx,
+                subtitle_style=subtitle_style,
             )
             clips.append(clip_info)
 
@@ -177,7 +180,13 @@ async def generate(
         "user_id":  user.id,
     }
 
-    background_tasks.add_task(run_pipeline, job_id, request.youtube_url, user.id, allowed_clips)
+    # Language: PRO can specify, FREE always uses auto-detect
+    language = request.language if user.plan.value == "pro" else ""
+
+    # Subtitle style: PRO can pick, FREE always uses default
+    subtitle_style = request.subtitle_style if user.plan.value == "pro" else "default"
+
+    background_tasks.add_task(run_pipeline, job_id, request.youtube_url, user.id, allowed_clips, language, subtitle_style)
     return GenerateResponse(job_id=job_id, message="Job started.")
 
 

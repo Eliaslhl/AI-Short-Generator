@@ -27,8 +27,8 @@ export const authApi = {
 }
 
 export const generatorApi = {
-  generate: (youtubeUrl: string, maxClips: number = 3): Promise<AxiosResponse<GenerateResponse>> =>
-    client.post('/api/generate', { youtube_url: youtubeUrl, max_clips: maxClips }),
+  generate: (youtubeUrl: string, maxClips: number = 3, language: string = '', subtitleStyle: string = 'default'): Promise<AxiosResponse<GenerateResponse>> =>
+    client.post('/api/generate', { youtube_url: youtubeUrl, max_clips: maxClips, language, subtitle_style: subtitleStyle }),
 
   status: (jobId: string): Promise<AxiosResponse<StatusResponse>> =>
     client.get(`/api/status/${jobId}`),

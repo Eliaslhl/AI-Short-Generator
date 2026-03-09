@@ -3,9 +3,37 @@ import { useAuth } from '../context/AuthContext'
 import { generatorApi, authApi } from '../api'
 import { type AxiosError } from 'axios'
 import type { StatusResponse, Clip } from '../types'
-import { Link2, Sparkles, Download, Crown, CheckCircle, Clock, AlertCircle, SlidersHorizontal } from 'lucide-react'
+import { Link2, Sparkles, Download, Crown, CheckCircle, Clock, AlertCircle, SlidersHorizontal, Expand, X, Lightbulb, Globe, Type } from 'lucide-react'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+
+// Example URL shown as a hint to new users
+const EXAMPLE_URL = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+
+const LANGUAGES = [
+  { code: '',   label: '🌐 Auto-detect' },
+  { code: 'en', label: '🇬🇧 English' },
+  { code: 'fr', label: '🇫🇷 French' },
+  { code: 'es', label: '🇪🇸 Spanish' },
+  { code: 'de', label: '🇩🇪 German' },
+  { code: 'pt', label: '🇧🇷 Portuguese' },
+  { code: 'it', label: '🇮🇹 Italian' },
+  { code: 'nl', label: '🇳🇱 Dutch' },
+  { code: 'ar', label: '🇸🇦 Arabic' },
+  { code: 'zh', label: '🇨🇳 Chinese' },
+  { code: 'ja', label: '🇯🇵 Japanese' },
+  { code: 'ko', label: '🇰🇷 Korean' },
+  { code: 'ru', label: '🇷🇺 Russian' },
+  { code: 'hi', label: '🇮🇳 Hindi' },
+]
+
+const SUBTITLE_STYLES = [
+  { code: 'default',  label: '🟡 Classic',       desc: 'Yellow bold — TikTok style' },
+  { code: 'bold',     label: '⚪ Bold White',     desc: 'White bold with strong outline' },
+  { code: 'outlined', label: '🔵 Outlined',       desc: 'White with blue stroke' },
+  { code: 'neon',     label: '💚 Neon',           desc: 'Neon green glow effect' },
+  { code: 'minimal',  label: '◻️ Minimal',         desc: 'Clean white, no stroke' },
+]
 
 const STEPS = [
   { key: 'download',   label: 'Download',      pct: 20 },
@@ -18,21 +46,31 @@ function stepIndex(progress: number): number {
   return STEPS.filter((s) => progress >= s.pct).length - 1
 }
 
-interface ClipCardProps { clip: Clip; index: number }
+interface ClipCardProps { clip: Clip; index: number; onExpand: (clip: Clip, index: number) => void }
 
-function ClipCard({ clip, index }: ClipCardProps) {
+function ClipCard({ clip, index, onExpand }: ClipCardProps) {
   return (
-    <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden hover:border-purple-500/50 transition">
+    <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden hover:border-purple-500/50 transition group">
       <div className="relative" style={{ paddingBottom: '177.78%' }}>
         <video
           src={`${API_BASE}${clip.file}`}
           className="absolute inset-0 w-full h-full object-cover"
-          controls
           preload="metadata"
         />
+        {/* Viral score badge */}
         <div className="absolute top-2 left-2 bg-black/70 text-xs text-purple-300 px-2 py-0.5 rounded-full">
           {clip.viral_score}
         </div>
+        {/* Expand overlay on hover */}
+        <button
+          onClick={() => onExpand(clip, index)}
+          className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-all duration-200"
+          aria-label="Watch fullscreen"
+        >
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full p-3">
+            <Expand className="w-6 h-6 text-white" />
+          </div>
+        </button>
       </div>
       <div className="p-3">
         <p className="text-white text-xs font-medium truncate mb-1">Short {index + 1}</p>
@@ -52,11 +90,108 @@ function ClipCard({ clip, index }: ClipCardProps) {
   )
 }
 
+interface VideoModalProps {
+  clip: Clip
+  index: number
+  total: number
+  onClose: () => void
+  onPrev: () => void
+  onNext: () => void
+}
+
+function VideoModal({ clip, index, total, onClose, onPrev, onNext }: VideoModalProps) {
+  // Close on Escape, navigate with arrow keys
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowLeft') onPrev()
+      if (e.key === 'ArrowRight') onNext()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose, onPrev, onNext])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      {/* Modal content — stop propagation so clicks inside don't close */}
+      <div
+        className="relative flex flex-col items-center max-h-full"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Top bar */}
+        <div className="flex items-center justify-between w-full mb-3 px-1">
+          <span className="text-gray-400 text-sm">
+            Short <span className="text-white font-semibold">{index + 1}</span> / {total}
+          </span>
+          <div className="flex items-center gap-3">
+            <a
+              href={`${API_BASE}${clip.file}`}
+              download={`short_${index + 1}.mp4`}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 text-xs rounded-lg transition"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Download className="w-3.5 h-3.5" /> Download
+            </a>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Video — portrait 9:16, max height 85vh */}
+        <video
+          src={`${API_BASE}${clip.file}`}
+          className="rounded-xl max-h-[80vh] w-auto"
+          style={{ aspectRatio: '9/16' }}
+          controls
+          autoPlay
+        />
+
+        {/* Hook text */}
+        {clip.hook && (
+          <p className="mt-3 text-gray-300 text-sm italic text-center max-w-sm">
+            &ldquo;{clip.hook}&rdquo;
+          </p>
+        )}
+
+        {/* Prev / Next */}
+        <div className="flex items-center gap-4 mt-4">
+          <button
+            onClick={onPrev}
+            disabled={total <= 1}
+            className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-lg transition disabled:opacity-30"
+          >
+            ← Prev
+          </button>
+          <button
+            onClick={onNext}
+            disabled={total <= 1}
+            className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-lg transition disabled:opacity-30"
+          >
+            Next →
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function GeneratorPage() {
   const { user, refreshUser } = useAuth()
 
   const [url, setUrl] = useState('')
   const [maxClips, setMaxClips] = useState(3)
+  const [language, setLanguage] = useState('')
+  const [subtitleStyle, setSubtitleStyle] = useState('default')
+  // Onboarding banner — hidden once user has generated at least once
+  const [showTip, setShowTip] = useState(() => !localStorage.getItem('has_generated'))
 
   // Keep maxClips within plan limits if plan changes
   const maxAllowed = user?.plan === 'pro' ? 20 : 5
@@ -67,6 +202,7 @@ export default function GeneratorPage() {
   const [error, setError] = useState('')
   const [upgradeError, setUpgradeError] = useState(false)
   const [loadingCheckout, setLoadingCheckout] = useState(false)
+  const [modalIndex, setModalIndex] = useState<number | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const stopPolling = () => clearInterval(pollRef.current ?? undefined)
@@ -94,8 +230,10 @@ export default function GeneratorPage() {
     setUpgradeError(false)
     setStatus(null)
     try {
-      const res = await generatorApi.generate(url, maxClips)
+      const res = await generatorApi.generate(url, maxClips, language, subtitleStyle)
       setStatus({ status: 'pending', progress: 0, step: 'Queued...', clips: [] })
+      localStorage.setItem('has_generated', '1')
+      setShowTip(false)
       startPolling(res.data.job_id)
     } catch (err) {
       const axiosErr = err as AxiosError<{ detail: string }>
@@ -157,6 +295,32 @@ export default function GeneratorPage() {
       )}
 
       <form onSubmit={(e) => void handleGenerate(e)} className="mb-8">
+        {/* Onboarding tip — shown only on first visit */}
+        {showTip && (
+          <div className="flex items-start gap-3 mb-4 p-4 bg-purple-500/10 border border-purple-500/20 rounded-xl">
+            <Lightbulb className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
+            <div className="flex-1 text-sm text-gray-300">
+              <span className="font-medium text-white">How it works: </span>
+              paste any YouTube URL below, choose how many clips you want, and our AI will find the best moments and cut them into 9:16 shorts ready to post.
+              <button
+                type="button"
+                onClick={() => setUrl(EXAMPLE_URL)}
+                className="ml-2 text-purple-400 hover:text-purple-300 underline underline-offset-2 transition"
+              >
+                Try with an example →
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowTip(false)}
+              className="text-gray-600 hover:text-gray-400 transition shrink-0"
+              aria-label="Dismiss"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* URL input */}
         <div className="relative mb-4">
           <Link2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
@@ -169,6 +333,16 @@ export default function GeneratorPage() {
             disabled={isProcessing}
             className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition"
           />
+          {/* Quick example link below the field */}
+          {!url && !isProcessing && (
+            <button
+              type="button"
+              onClick={() => setUrl(EXAMPLE_URL)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 hover:text-purple-400 transition"
+            >
+              Use example
+            </button>
+          )}
         </div>
 
         {/* Clip count slider — FREE (1–5) and PRO (1–20) */}
@@ -218,6 +392,62 @@ export default function GeneratorPage() {
             )}
           </div>
         </div>
+
+        {/* Language selector — PRO only */}
+        {user?.plan === 'pro' && (
+          <div className="p-4 bg-yellow-500/5 border border-yellow-500/20 rounded-xl mb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Globe className="w-4 h-4 text-yellow-400" />
+              <span className="text-sm font-medium text-white">Transcription language</span>
+              <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO</span>
+            </div>
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              disabled={isProcessing}
+              className="w-full px-3 py-2.5 bg-black/30 border border-yellow-500/20 rounded-lg text-white text-sm focus:outline-none focus:border-yellow-400 transition disabled:opacity-50 cursor-pointer"
+            >
+              {LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>{l.label}</option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs text-gray-500">
+              Picking the right language improves transcription accuracy significantly.
+            </p>
+          </div>
+        )}
+
+        {/* Subtitle style selector — PRO only */}
+        {user?.plan === 'pro' && (
+          <div className="p-4 bg-yellow-500/5 border border-yellow-500/20 rounded-xl mb-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Type className="w-4 h-4 text-yellow-400" />
+              <span className="text-sm font-medium text-white">Subtitle style</span>
+              <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO</span>
+            </div>
+            <div className="grid grid-cols-5 gap-2">
+              {SUBTITLE_STYLES.map((s) => (
+                <button
+                  key={s.code}
+                  type="button"
+                  disabled={isProcessing}
+                  onClick={() => setSubtitleStyle(s.code)}
+                  title={s.desc}
+                  className={`px-2 py-2 rounded-lg text-xs font-medium border transition text-center disabled:opacity-50 disabled:cursor-not-allowed ${
+                    subtitleStyle === s.code
+                      ? 'bg-yellow-500/20 border-yellow-400 text-yellow-300'
+                      : 'bg-black/20 border-white/10 text-gray-400 hover:border-yellow-500/40 hover:text-white'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              {SUBTITLE_STYLES.find((s) => s.code === subtitleStyle)?.desc}
+            </p>
+          </div>
+        )}
 
         {/* Generate button */}
         <button
@@ -301,10 +531,27 @@ export default function GeneratorPage() {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {status.clips.map((clip, i) => (
-              <ClipCard key={clip.file} clip={clip} index={i} />
+              <ClipCard
+                key={clip.file}
+                clip={clip}
+                index={i}
+                onExpand={(_, idx) => setModalIndex(idx)}
+              />
             ))}
           </div>
         </div>
+      )}
+
+      {/* Fullscreen video modal */}
+      {modalIndex !== null && status?.clips[modalIndex] && (
+        <VideoModal
+          clip={status.clips[modalIndex]}
+          index={modalIndex}
+          total={status.clips.length}
+          onClose={() => setModalIndex(null)}
+          onPrev={() => setModalIndex((i) => ((i ?? 0) - 1 + status.clips.length) % status.clips.length)}
+          onNext={() => setModalIndex((i) => ((i ?? 0) + 1) % status.clips.length)}
+        />
       )}
     </div>
   )

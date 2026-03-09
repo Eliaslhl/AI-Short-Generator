@@ -189,7 +189,7 @@ def _add_broll_overlay(main_clip, broll_path: str):
 
         # Position: top-right corner with padding
         padding = 20
-        broll = broll.with_position((settings.output_width - pip_w - padding, padding))
+        broll = broll.with_position((settings.output_width - pip_w - padding, padding))  # type: ignore[union-attr]
 
         return CompositeVideoClip([main_clip, broll])
     except Exception as exc:
@@ -254,7 +254,7 @@ def render_clip(
             clip = _add_broll_overlay(clip, broll)
 
         # ── Export ────────────────────────────────────────────────────────
-        clip.write_videofile(
+        clip.write_videofile(  # type: ignore[union-attr]
             str(output_path),
             fps=settings.output_fps,
             codec="libx264",

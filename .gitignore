@@ -1,0 +1,52 @@
+# ── Python ──────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# ── Database ─────────────────────────────────────────────
+data/app.db
+data/clips/
+data/downloads/
+data/audio/
+
+# ── Node / React ─────────────────────────────────────────
+frontend-react/node_modules/
+frontend-react/dist/
+frontend-react/.env
+frontend-react/.env.*
+!frontend-react/.env.example
+
+# ── Logs ─────────────────────────────────────────────────
+*.log
+logs/
+nohup.out
+
+# ── OS ───────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDE ──────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ── Misc ─────────────────────────────────────────────────
+*.mp4
+*.mp3
+*.wav
+*.webm
+*.mkv

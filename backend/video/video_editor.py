@@ -1,0 +1,286 @@
+"""
+video_editor.py – Render a vertical 9:16 short clip using MoviePy + ffmpeg.
+
+Pipeline for each clip:
+  1. Cut the segment from the source video
+  2. Crop / pad to 1080×1920 (9:16 portrait)
+  3. Overlay the hook text at the top
+  4. Overlay styled emoji captions at the bottom
+  5. Optionally overlay a B-roll clip (picture-in-picture)
+  6. Export as MP4
+
+Returns a dict with clip metadata (used by the API response).
+"""
+
+import logging
+from pathlib import Path
+from typing import Any, Dict, List
+
+from backend.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────
+#  Colour / font constants
+# ──────────────────────────────────────────────
+HOOK_FONT_SIZE    = 52
+CAPTION_FONT_SIZE = 44
+HOOK_COLOR        = "white"
+CAPTION_COLOR     = "#FFFF00"      # yellow for captions
+STROKE_COLOR      = "black"
+STROKE_WIDTH      = 3
+FONT              = "Arial-Bold"   # must be available on the system
+
+
+def _make_output_path(job_id: str, clip_index: int) -> Path:
+    out_dir = Path(settings.clips_dir) / job_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return out_dir / f"clip_{clip_index + 1:02d}.mp4"
+
+
+def _crop_to_portrait(clip):
+    """
+    Crop a landscape clip to 9:16 portrait format.
+
+    Strategy: centre-crop horizontally, keep full height, then resize.
+    Falls back to adding black bars if the clip is already taller.
+    """
+    from moviepy.video.fx import Crop, Resize
+
+    target_w = settings.output_width    # 1080
+    target_h = settings.output_height   # 1920
+    target_ratio = target_w / target_h  # 0.5625
+
+    w, h = clip.size
+    current_ratio = w / h
+
+    if current_ratio > target_ratio:
+        # Landscape → crop the sides
+        new_w = int(h * target_ratio)
+        x_center = w / 2
+        clip = Crop(x_center=x_center, width=new_w).apply(clip)
+    elif current_ratio < target_ratio:
+        # Portrait but different ratio → add side bars (pillarbox)
+        new_h = int(w / target_ratio)
+        y_center = h / 2
+        clip = Crop(y_center=y_center, height=new_h).apply(clip)
+
+    # Resize to exact output dimensions
+    clip = Resize((target_w, target_h)).apply(clip)
+    return clip
+
+
+def _add_hook_overlay(clip, hook_text: str):
+    """Add the hook text at the top of the clip."""
+    try:
+        from moviepy import TextClip, CompositeVideoClip
+
+        # Wrap long hooks
+        words = hook_text.split()
+        lines = []
+        for i in range(0, len(words), 4):
+            lines.append(" ".join(words[i:i + 4]))
+        wrapped = "\n".join(lines)
+
+        txt = (
+            TextClip(
+                text=wrapped,
+                font_size=HOOK_FONT_SIZE,
+                font=FONT,
+                color=HOOK_COLOR,
+                stroke_color=STROKE_COLOR,
+                stroke_width=STROKE_WIDTH,
+                method="caption",
+                size=(settings.output_width - 80, None),
+                text_align="center",
+            )
+            .with_duration(min(clip.duration, 4.0))
+            .with_position(("center", 80))
+        )
+        return CompositeVideoClip([clip, txt])
+    except Exception as exc:
+        logger.warning(f"Could not add hook overlay: {exc}")
+        return clip
+
+
+def _add_caption_overlays(clip, captions: List[Dict[str, Any]], seg_start: float):
+    """Overlay timed caption lines at the bottom of the clip."""
+    try:
+        from moviepy import TextClip, CompositeVideoClip
+
+        overlay_clips = [clip]
+        bottom_y = settings.output_height - 220   # 220 px from bottom
+
+        for cap in captions:
+            # Caption times are relative to segment start
+            cap_start = cap["start"] - seg_start
+            cap_end   = cap["end"]   - seg_start
+
+            # Clamp to clip duration
+            cap_start = max(0.0, min(cap_start, clip.duration - 0.1))
+            cap_end   = max(cap_start + 0.1, min(cap_end, clip.duration))
+            duration  = cap_end - cap_start
+
+            if duration <= 0:
+                continue
+
+            txt = (
+                TextClip(
+                    text=cap["text"],
+                    font_size=CAPTION_FONT_SIZE,
+                    font=FONT,
+                    color=CAPTION_COLOR,
+                    stroke_color=STROKE_COLOR,
+                    stroke_width=STROKE_WIDTH,
+                    method="caption",
+                    size=(settings.output_width - 100, None),
+                    text_align="center",
+                )
+                .with_start(cap_start)
+                .with_duration(duration)
+                .with_position(("center", bottom_y))
+            )
+            overlay_clips.append(txt)
+
+        return CompositeVideoClip(overlay_clips)
+    except Exception as exc:
+        logger.warning(f"Could not add caption overlays: {exc}")
+        return clip
+
+
+def _add_broll_overlay(main_clip, broll_path: str):
+    """
+    Add a B-roll clip as a picture-in-picture in the top-right corner.
+    The B-roll is looped / trimmed to match the main clip duration.
+    """
+    try:
+        from moviepy import VideoFileClip, CompositeVideoClip, concatenate_videoclips
+        from moviepy.video.fx import Resize
+
+        broll = VideoFileClip(broll_path).without_audio()
+
+        # Loop if shorter, trim if longer
+        if broll.duration < main_clip.duration:
+            repeats = int(main_clip.duration / broll.duration) + 1
+            broll = concatenate_videoclips([broll] * repeats)
+        broll = broll.subclipped(0, main_clip.duration)
+
+        # Resize B-roll to ¼ of screen width
+        pip_w = settings.output_width // 4
+        broll = Resize(width=pip_w).apply(broll)
+
+        # Position: top-right corner with padding
+        padding = 20
+        broll = broll.with_position((settings.output_width - pip_w - padding, padding))
+
+        return CompositeVideoClip([main_clip, broll])
+    except Exception as exc:
+        logger.warning(f"Could not add B-roll overlay: {exc}")
+        return main_clip
+
+
+def render_clip(
+    video_path: str,
+    segment: Dict[str, Any],
+    job_id: str,
+    clip_index: int,
+) -> Dict[str, Any]:
+    """
+    Render a single short clip from a source video segment.
+
+    Parameters
+    ----------
+    video_path : str
+        Path to the full downloaded video.
+    segment : dict
+        Segment dict from clip_selector (includes start/end/text/hook/captions/broll).
+    job_id : str
+        Unique job ID for namespacing output files.
+    clip_index : int
+        Zero-based index of this clip (used for output filename).
+
+    Returns
+    -------
+    dict with file URL, title, duration, viral_score, hook.
+    """
+    from moviepy import VideoFileClip
+
+    start    = segment["start"]
+    end      = segment["end"]
+    duration = end - start
+    hook     = segment.get("hook", "")
+    captions = segment.get("captions", [])
+    broll    = segment.get("broll")
+
+    output_path = _make_output_path(job_id, clip_index)
+
+    logger.info(f"Rendering clip {clip_index + 1}: {start:.1f}s – {end:.1f}s  →  {output_path.name}")
+
+    try:
+        # ── Load and cut source video ─────────────────────────────────────
+        source = VideoFileClip(video_path)
+        clip   = source.subclipped(start, min(end, source.duration))
+
+        # ── Convert to portrait 9:16 ──────────────────────────────────────
+        clip = _crop_to_portrait(clip)
+
+        # ── Overlays ──────────────────────────────────────────────────────
+        if hook:
+            clip = _add_hook_overlay(clip, hook)
+
+        if captions:
+            clip = _add_caption_overlays(clip, captions, start)
+
+        if broll:
+            clip = _add_broll_overlay(clip, broll)
+
+        # ── Export ────────────────────────────────────────────────────────
+        clip.write_videofile(
+            str(output_path),
+            fps=settings.output_fps,
+            codec="libx264",
+            audio_codec="aac",
+            bitrate=settings.output_bitrate,
+            threads=4,
+            logger=None,     # suppress MoviePy's verbose progress bar
+        )
+
+        source.close()
+        clip.close()
+
+        logger.info(f"Clip {clip_index + 1} saved: {output_path}")
+
+    except Exception as exc:
+        logger.error(f"Error rendering clip {clip_index + 1}: {exc}")
+        # Create a minimal placeholder so the pipeline doesn't crash entirely
+        _create_placeholder_clip(output_path, segment)
+
+    # ── Return metadata ───────────────────────────────────────────────────
+    relative_url = f"/clips/{job_id}/{output_path.name}"
+    return {
+        "file":        relative_url,
+        "title":       segment.get("title", f"Clip {clip_index + 1}"),
+        "duration":    round(duration, 1),
+        "viral_score": round(segment.get("viral_score", 0.0), 2),
+        "hook":        hook,
+        "start":       round(start, 2),
+        "end":         round(end, 2),
+    }
+
+
+def _create_placeholder_clip(output_path: Path, segment: Dict[str, Any]):
+    """
+    Create a minimal black MP4 as a fallback when rendering fails.
+    Uses ffmpeg directly to avoid MoviePy overhead.
+    """
+    import subprocess
+    duration = segment["end"] - segment["start"]
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", f"color=black:s=1080x1920:d={duration:.2f}",
+        "-c:v", "libx264", "-t", str(duration),
+        str(output_path),
+    ]
+    subprocess.run(cmd, capture_output=True)
+    logger.warning(f"Placeholder clip created: {output_path}")

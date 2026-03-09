@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Shorts Generator</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- ────────────────── HEADER ────────────────── -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">✂️</span>
+        <span class="logo-text">AI <span class="gradient-text">Shorts</span> Generator</span>
+      </div>
+      <div class="header-badges">
+        <span class="badge badge-local">🔒 100% Local AI</span>
+        <span class="badge badge-free">⚡ No API Key</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ────────────────── HERO ──────────────────── -->
+  <main class="main">
+    <section class="hero">
+      <h1 class="hero-title">
+        Turn <span class="gradient-text">Long Videos</span><br />
+        Into Viral <span class="gradient-text">Shorts</span>
+      </h1>
+      <p class="hero-sub">
+        Paste any YouTube URL · Local AI transcribes, scores & renders<br />
+        10 optimised clips for TikTok, Reels &amp; YouTube Shorts
+      </p>
+    </section>
+
+    <!-- ────────────────── INPUT CARD ──────────────────── -->
+    <section class="card input-card">
+      <div class="input-row">
+        <div class="input-wrapper">
+          <span class="input-icon">🎬</span>
+          <input
+            id="youtube-url"
+            type="text"
+            class="url-input"
+            placeholder="https://www.youtube.com/watch?v=…"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button class="clear-btn" id="clear-btn" title="Clear" aria-label="Clear input">✕</button>
+        </div>
+        <button id="generate-btn" class="generate-btn" onclick="startGeneration()">
+          <span class="btn-icon">🚀</span>
+          <span class="btn-text">Generate Shorts</span>
+        </button>
+      </div>
+
+      <!-- Platform badges -->
+      <div class="platform-row">
+        <span class="platform-tag">📱 TikTok</span>
+        <span class="platform-tag">📸 Instagram Reels</span>
+        <span class="platform-tag">▶️ YouTube Shorts</span>
+        <span class="platform-tag">🎵 9:16 Portrait</span>
+      </div>
+    </section>
+
+    <!-- ────────────────── PROGRESS PANEL ──────────────────── -->
+    <section class="card progress-card" id="progress-card" style="display:none;">
+      <div class="progress-header">
+        <div class="progress-title">
+          <span class="spinner" id="progress-spinner">⚙️</span>
+          <span id="progress-step-label">Processing…</span>
+        </div>
+        <span class="progress-pct" id="progress-pct">0%</span>
+      </div>
+
+      <div class="progress-track">
+        <div class="progress-bar" id="progress-bar" style="width:0%"></div>
+      </div>
+
+      <!-- Pipeline steps -->
+      <div class="pipeline-steps" id="pipeline-steps">
+        <div class="pipe-step" data-step="download"    id="step-download">📥 Download</div>
+        <div class="pipe-step" data-step="transcribe"  id="step-transcribe">🎙️ Transcribe</div>
+        <div class="pipe-step" data-step="analyse"     id="step-analyse">🧠 Analyse</div>
+        <div class="pipe-step" data-step="hooks"       id="step-hooks">✍️ Hooks</div>
+        <div class="pipe-step" data-step="captions"    id="step-captions">💬 Captions</div>
+        <div class="pipe-step" data-step="render"      id="step-render">🎬 Render</div>
+      </div>
+
+      <p class="progress-detail" id="progress-detail">Initialising pipeline…</p>
+    </section>
+
+    <!-- ────────────────── ERROR PANEL ──────────────────── -->
+    <section class="card error-card" id="error-card" style="display:none;">
+      <div class="error-icon">⚠️</div>
+      <h3 class="error-title">Something went wrong</h3>
+      <p class="error-msg" id="error-msg"></p>
+      <button class="retry-btn" onclick="resetUI()">↩ Try Again</button>
+    </section>
+
+    <!-- ────────────────── RESULTS SECTION ──────────────────── -->
+    <section id="results-section" style="display:none;">
+      <div class="results-header">
+        <h2 class="results-title">
+          🎉 Your Shorts Are Ready!
+          <span class="clip-count" id="clip-count-badge">0 clips</span>
+        </h2>
+        <button class="download-all-btn" id="download-all-btn" onclick="downloadAll()">
+          ⬇️ Download All
+        </button>
+      </div>
+
+      <div class="clips-grid" id="clips-grid"></div>
+    </section>
+
+    <!-- ────────────────── HOW IT WORKS ──────────────────── -->
+    <section class="how-it-works" id="how-section">
+      <h2 class="how-title">How It Works</h2>
+      <div class="steps-row">
+        <div class="how-step">
+          <div class="how-icon">📋</div>
+          <div class="how-label">Paste URL</div>
+          <div class="how-desc">Any YouTube video link</div>
+        </div>
+        <div class="how-arrow">→</div>
+        <div class="how-step">
+          <div class="how-icon">🤖</div>
+          <div class="how-label">Local AI</div>
+          <div class="how-desc">Whisper + Ollama analyse content</div>
+        </div>
+        <div class="how-arrow">→</div>
+        <div class="how-step">
+          <div class="how-icon">📊</div>
+          <div class="how-label">Viral Score</div>
+          <div class="how-desc">Best segments selected automatically</div>
+        </div>
+        <div class="how-arrow">→</div>
+        <div class="how-step">
+          <div class="how-icon">🎬</div>
+          <div class="how-label">Render</div>
+          <div class="how-desc">9:16 clips with hooks &amp; captions</div>
+        </div>
+        <div class="how-arrow">→</div>
+        <div class="how-step">
+          <div class="how-icon">⬇️</div>
+          <div class="how-label">Download</div>
+          <div class="how-desc">Ready-to-post MP4 files</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ────────────────── FOOTER ──────────────────── -->
+  <footer class="footer">
+    <p>AI Shorts Generator · Powered by Faster-Whisper · Ollama · MoviePy · yt-dlp</p>
+    <p class="footer-sub">All processing is done locally. No data leaves your machine. 🔒</p>
+  </footer>
+
+  <!-- ────────────────── CLIP CARD TEMPLATE ──────────────────── -->
+  <template id="clip-card-template">
+    <div class="clip-card">
+      <div class="clip-video-wrapper">
+        <video class="clip-video" controls preload="metadata">
+          <source src="" type="video/mp4" />
+        </video>
+        <div class="clip-badge-score"></div>
+      </div>
+      <div class="clip-info">
+        <p class="clip-title"></p>
+        <div class="clip-meta-row">
+          <span class="clip-duration">⏱ </span>
+          <span class="clip-score">🔥 </span>
+        </div>
+        <p class="clip-hook"></p>
+        <a class="download-btn" download>⬇️ Download</a>
+      </div>
+    </div>
+  </template>
+
+  <script src="/static/script.js"></script>
+</body>
+</html>

@@ -14,6 +14,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     libpq-dev \
     curl \
+    pkg-config \
+    libavformat-dev \
+    libavcodec-dev \
+    libavdevice-dev \
+    libavutil-dev \
+    libswscale-dev \
+    libswresample-dev \
+    libavfilter-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -25,13 +33,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Download spaCy model
 RUN python -m spacy download en_core_web_sm
 
+# Pre-download Whisper tiny model so first request isn't slow
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"
+
 # Copy application code
 COPY backend/ ./backend/
 COPY alembic/ ./alembic/
 COPY alembic.ini .
 
-# Create data directories (clips, videos, broll)
-RUN mkdir -p data/clips data/videos data/broll
+# Create data directories (clips, videos)
+RUN mkdir -p data/clips data/videos
 
 # Port exposed by Railway
 EXPOSE 8000

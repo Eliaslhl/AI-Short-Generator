@@ -95,12 +95,16 @@ async def run_pipeline(job_id: str, youtube_url: str, user_id: str, max_clips: i
         if is_proplus:
             update(60, "Generating titles & hashtags (Pro+)…")
             for seg in top_segments:
-                seg["title"]    = await asyncio.to_thread(generate_title,    seg["text"])
+                seg["ai_title"] = await asyncio.to_thread(generate_title,    seg["text"])
                 seg["hashtags"] = await asyncio.to_thread(generate_hashtags, seg["text"])
 
         update(65, "Building emoji captions…")
         for seg in top_segments:
-            seg["captions"] = await asyncio.to_thread(build_captions, seg["text"])
+            seg["captions"] = await asyncio.to_thread(
+                build_captions,
+                seg["text"],
+                seg.get("words"),   # word-level timestamps for accurate sync
+            )
 
         update(72, "Searching B-roll library…")
         for seg in top_segments:

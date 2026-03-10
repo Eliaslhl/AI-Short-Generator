@@ -444,17 +444,23 @@ export default function GeneratorPage() {
         {/* Language selector — Standard and above */}
         {user?.plan !== 'free' && (
           <div className={`p-4 rounded-xl mb-4 ${
-            user?.plan === 'proplus'
-              ? 'bg-pink-500/5 border border-pink-500/20'
-              : 'bg-yellow-500/5 border border-yellow-500/20'
+            user?.plan === 'proplus'  ? 'bg-pink-500/5 border border-pink-500/20'
+            : user?.plan === 'pro'   ? 'bg-yellow-500/5 border border-yellow-500/20'
+                                     : 'bg-blue-500/5 border border-blue-500/20'
           }`}>
             <div className="flex items-center gap-2 mb-3">
-              <Globe className={`w-4 h-4 ${user?.plan === 'proplus' ? 'text-pink-400' : 'text-yellow-400'}`} />
+              <Globe className={`w-4 h-4 ${
+                user?.plan === 'proplus' ? 'text-pink-400'
+                : user?.plan === 'pro'  ? 'text-yellow-400'
+                                        : 'text-blue-400'
+              }`} />
               <span className="text-sm font-medium text-white">Transcription language</span>
               {user?.plan === 'proplus' ? (
                 <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold">PRO+</span>
-              ) : (
+              ) : user?.plan === 'pro' ? (
                 <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO</span>
+              ) : (
+                <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold">STANDARD</span>
               )}
             </div>
             <select
@@ -462,9 +468,9 @@ export default function GeneratorPage() {
               onChange={(e) => setLanguage(e.target.value)}
               disabled={isProcessing}
               className={`w-full px-3 py-2.5 bg-black/30 rounded-lg text-white text-sm focus:outline-none transition disabled:opacity-50 cursor-pointer border ${
-                user?.plan === 'proplus'
-                  ? 'border-pink-500/20 focus:border-pink-400'
-                  : 'border-yellow-500/20 focus:border-yellow-400'
+                user?.plan === 'proplus' ? 'border-pink-500/20 focus:border-pink-400'
+                : user?.plan === 'pro'  ? 'border-yellow-500/20 focus:border-yellow-400'
+                                        : 'border-blue-500/20 focus:border-blue-400'
               }`}
             >
               {LANGUAGES.map((l) => (
@@ -480,17 +486,23 @@ export default function GeneratorPage() {
         {/* Subtitle style selector — Standard and above */}
         {user?.plan !== 'free' && (
           <div className={`p-4 rounded-xl mb-4 ${
-            user?.plan === 'proplus'
-              ? 'bg-pink-500/5 border border-pink-500/20'
-              : 'bg-yellow-500/5 border border-yellow-500/20'
+            user?.plan === 'proplus'  ? 'bg-pink-500/5 border border-pink-500/20'
+            : user?.plan === 'pro'   ? 'bg-yellow-500/5 border border-yellow-500/20'
+                                     : 'bg-blue-500/5 border border-blue-500/20'
           }`}>
             <div className="flex items-center gap-2 mb-3">
-              <Type className={`w-4 h-4 ${user?.plan === 'proplus' ? 'text-pink-400' : 'text-yellow-400'}`} />
+              <Type className={`w-4 h-4 ${
+                user?.plan === 'proplus' ? 'text-pink-400'
+                : user?.plan === 'pro'  ? 'text-yellow-400'
+                                        : 'text-blue-400'
+              }`} />
               <span className="text-sm font-medium text-white">Subtitle style</span>
               {user?.plan === 'proplus' ? (
                 <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold">PRO+</span>
-              ) : (
+              ) : user?.plan === 'pro' ? (
                 <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO</span>
+              ) : (
+                <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold">STANDARD</span>
               )}
             </div>
             <div className="grid grid-cols-5 gap-2">
@@ -503,12 +515,12 @@ export default function GeneratorPage() {
                   title={s.desc}
                   className={`px-2 py-2 rounded-lg text-xs font-medium border transition text-center disabled:opacity-50 disabled:cursor-not-allowed ${
                     subtitleStyle === s.code
-                      ? user?.plan === 'proplus'
-                        ? 'bg-pink-500/20 border-pink-400 text-pink-300'
-                        : 'bg-yellow-500/20 border-yellow-400 text-yellow-300'
-                      : user?.plan === 'proplus'
-                        ? 'bg-black/20 border-white/10 text-gray-400 hover:border-pink-500/40 hover:text-white'
-                        : 'bg-black/20 border-white/10 text-gray-400 hover:border-yellow-500/40 hover:text-white'
+                      ? user?.plan === 'proplus' ? 'bg-pink-500/20 border-pink-400 text-pink-300'
+                        : user?.plan === 'pro'   ? 'bg-yellow-500/20 border-yellow-400 text-yellow-300'
+                                                 : 'bg-blue-500/20 border-blue-400 text-blue-300'
+                      : user?.plan === 'proplus' ? 'bg-black/20 border-white/10 text-gray-400 hover:border-pink-500/40 hover:text-white'
+                        : user?.plan === 'pro'   ? 'bg-black/20 border-white/10 text-gray-400 hover:border-yellow-500/40 hover:text-white'
+                                                 : 'bg-black/20 border-white/10 text-gray-400 hover:border-blue-500/40 hover:text-white'
                   }`}
                 >
                   {s.label}

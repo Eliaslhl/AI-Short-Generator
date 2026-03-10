@@ -93,8 +93,9 @@ def build_captions(
     segment_text : str
         Raw transcript text of the segment.
     word_timestamps : list, optional
-        Word-level timestamps from Whisper. When provided, each caption line
-        gets accurate start/end times. Falls back to evenly distributed timing.
+        Word-level timestamps from Whisper (absolute times).
+        When provided, each caption line gets accurate start/end times.
+        Falls back to evenly distributed timing.
 
     Returns
     -------
@@ -119,28 +120,31 @@ def build_captions(
     captions: List[Dict[str, Any]] = []
 
     if word_timestamps:
-        # Build word→timestamp lookup
-        wt_map = {w["word"].strip().lower(): (w["start"], w["end"]) for w in word_timestamps}
+        # Use word timestamps sequentially — avoids duplicate-word lookup errors.
+        # Each line gets the time range of its corresponding words in order.
+        wt_list = [w for w in word_timestamps if "start" in w and "end" in w]
+        word_idx = 0  # pointer into wt_list
 
         for line in result_lines:
-            clean_words = [re.sub(r"[^a-zA-Z0-9]", "", w).lower() for w in line.split()]
-            clean_words = [cw for cw in clean_words if cw]  # remove empty strings
+            # Count how many original words this line contains (strip emojis for counting)
+            line_word_count = len(re.sub(r"[^\w\s]", "", line).split())
+            line_word_count = max(1, line_word_count)
 
-            t_starts = []
-            t_ends   = []
-            for cw in clean_words:
-                if cw in wt_map:
-                    t_starts.append(wt_map[cw][0])
-                    t_ends.append(wt_map[cw][1])
+            # Grab the timestamp slice for those words
+            slice_end = min(word_idx + line_word_count, len(wt_list))
+            ts_slice  = wt_list[word_idx:slice_end]
 
-            if t_starts:
-                captions.append({"text": line, "start": min(t_starts), "end": max(t_ends)})
+            if ts_slice:
+                t_start = ts_slice[0]["start"]
+                t_end   = ts_slice[-1]["end"]
+                captions.append({"text": line, "start": t_start, "end": t_end})
+                word_idx = slice_end
             else:
-                # No timestamp found: append with sentinel values
+                # Ran out of timestamps — extend from last known end
                 prev_end = captions[-1]["end"] if captions else 0.0
                 captions.append({"text": line, "start": prev_end, "end": prev_end + 1.5})
     else:
-        # Evenly distribute caption lines over the segment (dummy timing)
+        # No timestamps: evenly distribute over segment
         avg_line_dur = 1.5  # seconds per line
         t = 0.0
         for line in result_lines:

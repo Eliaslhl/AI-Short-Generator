@@ -46,8 +46,8 @@ class Settings(BaseSettings):
 
     # ---------- Clip selection ----------
     max_clips: int       = 10
-    min_clip_duration: int = 15              # seconds
-    max_clip_duration: int = 45              # seconds
+    min_clip_duration: int = 20              # seconds — min to have enough content
+    max_clip_duration: int = 60              # seconds — 1 min max for shorts
 
     # ---------- Video output ----------
     output_width: int    = 1080

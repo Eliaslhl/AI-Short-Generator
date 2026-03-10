@@ -22,7 +22,50 @@ logger = logging.getLogger(__name__)
 
 
 # ──────────────────────────────────────────────
-#  Colour / font constants
+#  Font resolution  (PIL needs a path or a known alias)
+# ──────────────────────────────────────────────
+def _resolve_font(prefer_bold: bool = True) -> str:
+    """
+    Return a usable font path for PIL/MoviePy TextClip.
+    Tries common macOS / Linux / Windows paths in order.
+    Falls back to the first working one.
+    """
+    import os
+    candidates = (
+        [
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",   # macOS
+            "/System/Library/Fonts/Supplemental/Impact.ttf",       # macOS
+            "/System/Library/Fonts/Arial.ttf",                     # macOS (older)
+            "/Library/Fonts/Arial Bold.ttf",                       # macOS user fonts
+        ]
+        if prefer_bold else
+        [
+            "/System/Library/Fonts/Arial.ttf",
+            "/Library/Fonts/Arial.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+        ]
+    ) + [
+        # Linux
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        # Windows
+        "C:/Windows/Fonts/arialbd.ttf",
+        "C:/Windows/Fonts/impact.ttf",
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    # Last resort: let PIL pick whatever "Arial" resolves to
+    return "Arial"
+
+
+FONT_BOLD   = _resolve_font(prefer_bold=True)
+FONT_NORMAL = _resolve_font(prefer_bold=False)
+logger.info(f"Using fonts — bold: {FONT_BOLD} | normal: {FONT_NORMAL}")
+
+# ──────────────────────────────────────────────
+#  Colour / size constants
 # ──────────────────────────────────────────────
 HOOK_FONT_SIZE    = 52
 CAPTION_FONT_SIZE = 44
@@ -30,17 +73,18 @@ HOOK_COLOR        = "white"
 CAPTION_COLOR     = "#FFFF00"      # yellow for captions
 STROKE_COLOR      = "black"
 STROKE_WIDTH      = 3
-FONT              = "Arial-Bold"   # must be available on the system
 
 # ──────────────────────────────────────────────
 #  Subtitle style presets  (Pro feature)
 # ──────────────────────────────────────────────
+# Note: font keys are replaced at runtime with FONT_BOLD / FONT_NORMAL
+# after the _resolve_font() call below.
 SUBTITLE_STYLES: dict[str, dict] = {
-    "default":  {"color": "#FFFF00", "font": "Arial-Bold",  "stroke_color": "black",   "stroke_width": 3},
-    "bold":     {"color": "white",   "font": "Arial-Bold",  "stroke_color": "black",   "stroke_width": 4},
-    "outlined": {"color": "white",   "font": "Arial-Bold",  "stroke_color": "#3B82F6", "stroke_width": 4},
-    "neon":     {"color": "#00FF88", "font": "Arial-Bold",  "stroke_color": "black",   "stroke_width": 5},
-    "minimal":  {"color": "white",   "font": "Arial",       "stroke_color": None,      "stroke_width": 0},
+    "default":  {"color": "#FFFF00", "font": None, "stroke_color": "black",   "stroke_width": 3},
+    "bold":     {"color": "white",   "font": None, "stroke_color": "black",   "stroke_width": 4},
+    "outlined": {"color": "white",   "font": None, "stroke_color": "#3B82F6", "stroke_width": 4},
+    "neon":     {"color": "#00FF88", "font": None, "stroke_color": "black",   "stroke_width": 5},
+    "minimal":  {"color": "white",   "font": None, "stroke_color": None,      "stroke_width": 0},
 }
 
 
@@ -98,7 +142,7 @@ def _add_hook_overlay(clip, hook_text: str):
             TextClip(
                 text=wrapped,
                 font_size=HOOK_FONT_SIZE,
-                font=FONT,
+                font=FONT_BOLD,
                 color=HOOK_COLOR,
                 stroke_color=STROKE_COLOR,
                 stroke_width=STROKE_WIDTH,
@@ -122,7 +166,8 @@ def _add_caption_overlays(clip, captions: List[Dict[str, Any]], seg_start: float
 
         style = SUBTITLE_STYLES.get(subtitle_style, SUBTITLE_STYLES["default"])
         cap_color    = style["color"]
-        cap_font     = style["font"]
+        # Use minimal style → normal font, all others → bold
+        cap_font     = FONT_NORMAL if subtitle_style == "minimal" else FONT_BOLD
         cap_stroke_c = style["stroke_color"] or "black"
         cap_stroke_w = style["stroke_width"]
 
@@ -162,7 +207,7 @@ def _add_caption_overlays(clip, captions: List[Dict[str, Any]], seg_start: float
 
         return CompositeVideoClip(overlay_clips)
     except Exception as exc:
-        logger.warning(f"Could not add caption overlays: {exc}")
+        logger.error(f"Caption overlay error (style={subtitle_style}): {exc}", exc_info=True)
         return clip
 
 
@@ -230,6 +275,9 @@ def render_clip(
     hook     = segment.get("hook", "")
     captions = segment.get("captions", [])
     broll    = segment.get("broll")
+    # "ai_title" = Pro+ generated title; "title" = clip_selector first-sentence fallback
+    ai_title   = segment.get("ai_title") or segment.get("title", f"Clip {clip_index + 1}")
+    hashtags   = segment.get("hashtags")   # Pro+ only
 
     output_path = _make_output_path(job_id, clip_index)
 
@@ -278,10 +326,11 @@ def render_clip(
     relative_url = f"/clips/{job_id}/{output_path.name}"
     return {
         "file":        relative_url,
-        "title":       segment.get("title", f"Clip {clip_index + 1}"),
+        "title":       ai_title,
         "duration":    round(duration, 1),
         "viral_score": round(segment.get("viral_score", 0.0), 2),
         "hook":        hook,
+        "hashtags":    hashtags,
         "start":       round(start, 2),
         "end":         round(end, 2),
     }

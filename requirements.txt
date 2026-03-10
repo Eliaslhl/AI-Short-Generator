@@ -43,6 +43,7 @@ decorator==4.4.2
 sqlalchemy==2.0.30
 aiosqlite==0.20.0         # SQLite async driver (dev)
 asyncpg==0.29.0           # PostgreSQL async driver (prod)
+psycopg2-binary==2.9.9    # PostgreSQL sync driver (alembic migrations)
 alembic==1.13.1           # DB migrations
 
 # Auth & email

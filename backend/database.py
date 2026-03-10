@@ -20,10 +20,18 @@ from sqlalchemy.pool import AsyncAdaptedQueuePool, NullPool
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL: str = os.getenv(
+_raw_url: str = os.getenv(
     "DATABASE_URL",
     "sqlite+aiosqlite:///./data/app.db",
 )
+
+# Railway injecte postgresql:// ou postgres:// — on convertit en asyncpg
+if _raw_url.startswith("postgres://"):
+    _raw_url = _raw_url.replace("postgres://", "postgresql+asyncpg://", 1)
+elif _raw_url.startswith("postgresql://") and "+asyncpg" not in _raw_url:
+    _raw_url = _raw_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+DATABASE_URL: str = _raw_url
 
 _is_sqlite    = DATABASE_URL.startswith("sqlite")
 _is_postgres  = DATABASE_URL.startswith("postgres")

@@ -32,6 +32,14 @@ target_metadata = Base.metadata
 # Override sqlalchemy.url from environment (DATABASE_URL) if set,
 # falling back to the value in alembic.ini
 _db_url = os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
+
+# Alembic async engine needs postgresql+asyncpg://
+# Railway injects postgres:// or postgresql:// — convert it
+if _db_url and _db_url.startswith("postgres://"):
+    _db_url = _db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+elif _db_url and _db_url.startswith("postgresql://") and "+asyncpg" not in _db_url:
+    _db_url = _db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
 config.set_main_option("sqlalchemy.url", _db_url or "")
 
 

@@ -48,7 +48,8 @@ RUN mkdir -p data/clips data/videos
 EXPOSE 8000
 
 # Run Alembic migrations then start uvicorn
-CMD alembic upgrade head && \
+# alembic || true : ne bloque pas le démarrage si la DB n'est pas encore prête
+CMD alembic upgrade head || echo "Alembic warning (ignored)" && \
     uvicorn backend.main:app \
         --host 0.0.0.0 \
         --port ${PORT:-8000} \

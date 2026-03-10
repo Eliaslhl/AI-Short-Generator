@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { Film, LogOut, User, Crown, Sparkles, Rocket, LayoutDashboard, Clapperboard, Menu, X } from 'lucide-react'
+import { LogOut, User, Crown, Sparkles, Rocket, LayoutDashboard, Clapperboard, Menu, X } from 'lucide-react'
 
 const PLAN_BADGE: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
   pro: {
@@ -39,11 +39,8 @@ export default function Navbar() {
       <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
 
         {/* Logo */}
-        <Link to="/" className="flex items-center gap-2 font-bold text-white text-lg shrink-0">
-          <Film className="w-6 h-6 text-purple-400" />
-          <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-            AI Shorts
-          </span>
+        <Link to="/" className="flex items-center shrink-0">
+          <img src="/logoshort.png" alt="AI Shorts Generator" className="h-9 w-auto" />
         </Link>
 
         {/* Desktop right */}

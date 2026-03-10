@@ -50,19 +50,23 @@ def download_video(youtube_url: str, job_id: str) -> tuple[Path, str]:
 
     cmd = [
         str(_YTDLP_BIN),
-        "--format",   "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        # Format selector: many fallbacks to handle age-restricted, members-only,
+        # live recordings, and videos where mp4/m4a streams are unavailable.
+        "--format",
+            "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]"
+            "/bestvideo[height<=1080]+bestaudio"
+            "/best[height<=1080]"
+            "/best",
         "--merge-output-format", "mp4",
         "--output",   output_template,
         "--no-playlist",
         "--no-warnings",
-        # Bypass bot-detection / throttling
-        "--extractor-args", "youtube:player_client=web,mweb,ios",
+        # Bypass bot-detection / throttling — try multiple clients
+        "--extractor-args", "youtube:player_client=web,mweb,ios,android",
         "--user-agent",
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/124.0.0.0 Safari/537.36",
-        "--sleep-interval", "2",
-        "--max-sleep-interval", "5",
         "--print",    "after_move:filepath",   # print final path after download
         youtube_url,
     ]

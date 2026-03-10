@@ -44,13 +44,12 @@ COPY alembic.ini .
 # Create data directories (clips, videos)
 RUN mkdir -p data/clips data/videos
 
+# Copy and prepare startup script
+COPY start.sh .
+RUN chmod +x start.sh
+
 # Port exposed by Railway
 EXPOSE 8000
 
-# Run Alembic migrations then start uvicorn
-# alembic || true : ne bloque pas le démarrage si la DB n'est pas encore prête
-CMD alembic upgrade head || echo "Alembic warning (ignored)" && \
-    uvicorn backend.main:app \
-        --host 0.0.0.0 \
-        --port ${PORT:-8000} \
-        --workers ${UVICORN_WORKERS:-2}
+# Start via script (handles alembic + uvicorn cleanly)
+CMD ["./start.sh"]

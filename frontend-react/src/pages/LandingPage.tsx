@@ -53,7 +53,7 @@ const PLANS = [
     style: 'default' as const,
     badge: null as null,
     features: [
-      '10 videos / month',
+      '20 videos / month',
       '5 shorts per video',
       'Export 1080p',
       'Automatic subtitles',
@@ -73,9 +73,8 @@ const PLANS = [
     style: 'pro' as const,
     badge: '⭐ MOST POPULAR' as string | null,
     features: [
-      '25 videos / month',
+      '50 videos / month',
       '10 shorts per video',
-      'Auto B-roll',
       'Auto zoom speaker',
       'Smart subtitles',
       'Batch processing',
@@ -94,7 +93,7 @@ const PLANS = [
     style: 'proplus' as const,
     badge: null as null,
     features: [
-      '50 videos / month',
+      '100 videos / month',
       '20 shorts per video',
       'Auto title generator',
       'Auto hashtags',
@@ -106,6 +105,13 @@ const PLANS = [
     ctaHref: null as string | null,
   },
 ]
+
+// Stripe Price IDs (monthly + yearly) — must match your Stripe dashboard
+const PRICE_IDS = {
+  standard: { monthly: 'price_1T9TOzEjLhnJfUeo7r6bk5H3', yearly: 'price_1T9TOzEjLhnJfUeoOd4Q6vIw' },
+  pro:      { monthly: 'price_1T9TPOEjLhnJfUeo8wr3XuPa', yearly: 'price_1T9TPxEjLhnJfUeoHQmyDdNT' },
+  proplus:  { monthly: 'price_1T9TQsEjLhnJfUeohPBAd8wD', yearly: 'price_1T9TREEjLhnJfUeoY8RkeQqG' },
+} as const
 
 type PlanIcon = typeof PLANS[number]['icon']
 function PlanIcon({ icon }: { icon: PlanIcon }) {
@@ -124,7 +130,10 @@ export default function LandingPage() {
     if (!user) { window.location.href = '/register'; return }
     setLoadingKey(planKey)
     try {
-      const res = await authApi.createCheckout()
+      const priceIds = PRICE_IDS[planKey as keyof typeof PRICE_IDS]
+      if (!priceIds) { window.location.href = '/register'; return }
+      const priceId = billing === 'yearly' ? priceIds.yearly : priceIds.monthly
+      const res = await authApi.createCheckout(priceId)
       window.location.href = res.data.checkout_url
     } catch {
       window.location.href = '/#pricing'

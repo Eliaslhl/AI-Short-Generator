@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     # ---------- Whisper ----------
     whisper_model: str   = "base"            # tiny | base | small | medium | large
     whisper_device: str  = "cpu"             # cpu | cuda
-    whisper_language: str = "en"             # set to "" for auto-detect
+    whisper_language: str = ""               # "" = auto-detect (recommended); set "en", "fr"… to force a language
 
     # ---------- Clip selection ----------
     max_clips: int       = 10
@@ -57,6 +57,16 @@ class Settings(BaseSettings):
 
     # ---------- spaCy ----------
     spacy_model: str     = "en_core_web_sm"
+
+    # ---------- Stripe ----------
+    stripe_secret_key: str                  = ""
+    stripe_webhook_secret: str              = ""
+    stripe_standard_monthly_price_id: str   = ""
+    stripe_standard_yearly_price_id: str    = ""
+    stripe_pro_monthly_price_id: str        = ""
+    stripe_pro_yearly_price_id: str         = ""
+    stripe_proplus_monthly_price_id: str    = ""
+    stripe_proplus_yearly_price_id: str     = ""
 
     # ---------- Paths (as strings for .env compat) ----------
     data_dir:  str = str(DATA_DIR)

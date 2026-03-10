@@ -58,17 +58,25 @@ class User(Base):
     # Relationships
     jobs: Mapped[list["Job"]] = relationship("Job", back_populates="user", cascade="all, delete-orphan")
 
+    # Monthly generation limits per plan
+    PLAN_LIMITS: dict = {
+        Plan.FREE:     2,
+        Plan.STANDARD: 20,
+        Plan.PRO:      50,
+        Plan.PROPLUS:  100,
+    }
+
+    @property
+    def monthly_limit(self) -> int:
+        return self.PLAN_LIMITS.get(self.plan, 2)
+
     @property
     def free_generations_left(self) -> int:
-        if self.plan == Plan.PRO:
-            return 999
-        return max(0, 2 - self.generations_this_month)
+        return max(0, self.monthly_limit - self.generations_this_month)
 
     @property
     def can_generate(self) -> bool:
-        if self.plan == Plan.PRO:
-            return True
-        return self.generations_this_month < 2
+        return self.generations_this_month < self.monthly_limit
 
 
 class Job(Base):

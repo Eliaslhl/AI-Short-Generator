@@ -59,6 +59,13 @@ export default function Navbar() {
                   {user.free_generations_left} free left
                 </span>
               )}
+              {/* Quota counter for all plans */}
+              <span className="text-xs text-gray-500">
+                {user.free_generations_left}
+                {'/'}
+                {user.plan === 'standard' ? '20' : user.plan === 'pro' ? '50' : user.plan === 'proplus' ? '100' : '2'}
+                {' left'}
+              </span>
 
               <Link
                 to="/generate"
@@ -143,9 +150,12 @@ export default function Navbar() {
                   <span className="text-white text-sm font-medium truncate">
                     {user.full_name ?? user.email}
                   </span>
-                  {!planBadge && (
-                    <span className="text-gray-400 text-xs">{user.free_generations_left} free left</span>
-                  )}
+                  <span className="text-gray-400 text-xs">
+                    {user.free_generations_left}
+                    {'/'}
+                    {user.plan === 'standard' ? '20' : user.plan === 'pro' ? '50' : user.plan === 'proplus' ? '100' : '2'}
+                    {' left this month'}
+                  </span>
                 </div>
               </div>
 

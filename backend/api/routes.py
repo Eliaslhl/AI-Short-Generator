@@ -28,7 +28,6 @@ from backend.services.transcription_service import transcribe_video
 from backend.services.clip_selector        import select_top_segments
 from backend.services.hook_service         import generate_hook
 from backend.services.emoji_caption_service import build_captions
-from backend.services.broll_service        import find_broll
 from backend.services.title_service        import generate_title
 from backend.services.hashtag_service      import generate_hashtags
 from backend.video.video_editor            import render_clip
@@ -105,10 +104,6 @@ async def run_pipeline(job_id: str, youtube_url: str, user_id: str, max_clips: i
                 seg["text"],
                 seg.get("words"),   # word-level timestamps for accurate sync
             )
-
-        update(72, "Searching B-roll library…")
-        for seg in top_segments:
-            seg["broll"] = await asyncio.to_thread(find_broll, seg.get("keywords", []))
 
         clips = []
         total = len(top_segments)

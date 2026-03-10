@@ -22,8 +22,11 @@ export const authApi = {
     window.location.href = `${client.defaults.baseURL}/auth/google`
   },
 
-  createCheckout: (): Promise<AxiosResponse<CheckoutResponse>> =>
-    client.post('/auth/stripe/checkout'),
+  createCheckout: (priceId: string): Promise<AxiosResponse<CheckoutResponse>> =>
+    client.post('/auth/stripe/checkout', { price_id: priceId }),
+
+  cancelSubscription: (): Promise<AxiosResponse<{ message: string }>> =>
+    client.post('/auth/stripe/cancel'),
 }
 
 export const generatorApi = {

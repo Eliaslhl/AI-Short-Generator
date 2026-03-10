@@ -7,21 +7,19 @@ auth/router.py – Authentication routes:
   GET  /auth/google/callback    – Google OAuth callback
   POST /auth/forgot-password    – send password reset email
   POST /auth/reset-password     – set new password via token
+  POST /auth/stripe/checkout    – create Stripe checkout session
   POST /auth/stripe/webhook     – Stripe webhook for subscription updates
 """
 
-import json
 import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from dotenv import load_dotenv
-load_dotenv()
-
 import bcrypt
 import stripe
 from authlib.integrations.httpx_client import AsyncOAuth2Client
+from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
@@ -31,8 +29,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.auth.dependencies import get_current_user
 from backend.auth.jwt import create_access_token
 from backend.database import get_db
-from backend.models.user import Plan, User, PasswordResetToken
+from backend.models.user import Plan, PasswordResetToken, User
 from backend.services.email_service import send_reset_email
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,18 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 # ── Stripe config ───────────────────────────────────────────────────────────
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
-STRIPE_PRO_PRICE_ID = os.getenv("STRIPE_PRO_PRICE_ID", "")
+
+# Map price_id → Plan (covers monthly + yearly for all 3 plans)
+PRICE_TO_PLAN: dict[str, Plan] = {
+    os.getenv("STRIPE_STANDARD_MONTHLY_PRICE_ID", ""): Plan.STANDARD,
+    os.getenv("STRIPE_STANDARD_YEARLY_PRICE_ID",  ""): Plan.STANDARD,
+    os.getenv("STRIPE_PRO_MONTHLY_PRICE_ID",      ""): Plan.PRO,
+    os.getenv("STRIPE_PRO_YEARLY_PRICE_ID",       ""): Plan.PRO,
+    os.getenv("STRIPE_PROPLUS_MONTHLY_PRICE_ID",  ""): Plan.PROPLUS,
+    os.getenv("STRIPE_PROPLUS_YEARLY_PRICE_ID",   ""): Plan.PROPLUS,
+}
+# Remove empty-key entries (unset env vars)
+PRICE_TO_PLAN = {k: v for k, v in PRICE_TO_PLAN.items() if k}
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -164,7 +175,7 @@ async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
         client_secret=GOOGLE_CLIENT_SECRET,
         redirect_uri=GOOGLE_REDIRECT_URI,
     ) as client:
-        token = await client.fetch_token(
+        await client.fetch_token(
             "https://oauth2.googleapis.com/token",
             code=code,
         )
@@ -212,15 +223,22 @@ async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
 
 
 # ── Stripe: create checkout session ──────────────────────────────────────────
+class CheckoutRequest(BaseModel):
+    price_id: str
+
+
 @router.post("/stripe/checkout")
-async def create_checkout(user: User = Depends(get_current_user)):
-    if not stripe.api_key or not STRIPE_PRO_PRICE_ID:
+async def create_checkout(body: CheckoutRequest, user: User = Depends(get_current_user)):
+    if not stripe.api_key:
         raise HTTPException(status_code=501, detail="Stripe not configured")
+
+    # Validate the price_id is one of our known prices
+    if body.price_id not in PRICE_TO_PLAN:
+        raise HTTPException(status_code=400, detail="Invalid price ID")
 
     # Create or retrieve Stripe customer
     if not user.stripe_customer_id:
         customer = stripe.Customer.create(email=user.email, metadata={"user_id": user.id})
-        # Note: update in DB done in webhook
         customer_id = customer.id
     else:
         customer_id = user.stripe_customer_id
@@ -228,13 +246,35 @@ async def create_checkout(user: User = Depends(get_current_user)):
     session = stripe.checkout.Session.create(
         customer=customer_id,
         payment_method_types=["card"],
-        line_items=[{"price": STRIPE_PRO_PRICE_ID, "quantity": 1}],
+        line_items=[{"price": body.price_id, "quantity": 1}],
         mode="subscription",
         success_url=f"{FRONTEND_URL}/dashboard?upgraded=true",
-        cancel_url=f"{FRONTEND_URL}/pricing",
+        cancel_url=f"{FRONTEND_URL}/#pricing",
         metadata={"user_id": user.id},
     )
     return {"checkout_url": session.url}
+
+
+# ── Stripe: cancel subscription ───────────────────────────────────────────────
+@router.post("/stripe/cancel")
+async def cancel_subscription(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if not stripe.api_key:
+        raise HTTPException(status_code=501, detail="Stripe not configured")
+
+    if user.plan == Plan.FREE or not user.stripe_subscription_id:
+        raise HTTPException(status_code=400, detail="No active subscription to cancel")
+
+    try:
+        # Cancel at period end — user keeps access until billing cycle ends
+        stripe.Subscription.modify(
+            user.stripe_subscription_id,
+            cancel_at_period_end=True,
+        )
+        logger.info(f"User {user.email} requested subscription cancellation")
+        return {"message": "Your subscription will be cancelled at the end of the current billing period."}
+    except Exception as e:
+        logger.error(f"Stripe cancel error for {user.email}: {e}")
+        raise HTTPException(status_code=502, detail="Could not cancel subscription. Please try again.")
 
 
 # ── Stripe: webhook ───────────────────────────────────────────────────────────
@@ -258,11 +298,21 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             result = await db.execute(select(User).where(User.id == user_id))
             user = result.scalar_one_or_none()
             if user:
-                user.plan = Plan.PRO
+                # Retrieve the subscription to get the price_id
+                target_plan = Plan.PRO  # fallback
+                if subscription_id:
+                    try:
+                        sub = stripe.Subscription.retrieve(subscription_id)
+                        price_id = sub["items"]["data"][0]["price"]["id"]
+                        target_plan = PRICE_TO_PLAN.get(price_id, Plan.PRO)
+                    except Exception as e:
+                        logger.warning(f"Could not retrieve subscription price: {e}")
+
+                user.plan = target_plan
                 user.stripe_customer_id = customer_id
                 user.stripe_subscription_id = subscription_id
                 await db.commit()
-                logger.info(f"User {user.email} upgraded to Pro")
+                logger.info(f"User {user.email} upgraded to {target_plan.value}")
 
     elif event["type"] in ("customer.subscription.deleted", "customer.subscription.paused"):
         subscription = event["data"]["object"]
@@ -273,7 +323,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
         if user:
             user.plan = Plan.FREE
             await db.commit()
-            logger.info(f"User {user.email} downgraded to Free")
+            logger.info(f"User {user.email} downgraded to Free (subscription cancelled)")
 
     return {"status": "ok"}
 

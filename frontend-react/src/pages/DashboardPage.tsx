@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { authApi, generatorApi } from '../api'
+import { generatorApi, authApi } from '../api'
 import type { Job, JobStatus } from '../types'
 import { Crown, Sparkles, Rocket, Clock, CheckCircle, AlertCircle, Film, TrendingUp } from 'lucide-react'
 
@@ -19,10 +19,11 @@ const PLAN_CONFIG = {
 } as const
 
 export default function DashboardPage() {
-  const { user } = useAuth()
+  const { user, refreshUser } = useAuth()
   const [history, setHistory] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
-  const [loadingCheckout, setLoadingCheckout] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
+  const [cancelConfirm, setCancelConfirm] = useState(false)
 
   useEffect(() => {
     generatorApi
@@ -33,14 +34,21 @@ export default function DashboardPage() {
   }, [])
 
   const handleUpgrade = async (): Promise<void> => {
-    setLoadingCheckout(true)
+    window.location.href = '/#pricing'
+  }
+
+  const handleCancelSubscription = async (): Promise<void> => {
+    if (!cancelConfirm) { setCancelConfirm(true); return }
+    setCancelling(true)
     try {
-      const res = await authApi.createCheckout()
-      window.location.href = res.data.checkout_url
+      await authApi.cancelSubscription()
+      await refreshUser()
+      setCancelConfirm(false)
     } catch {
-      // Stripe not configured yet → redirect to pricing section
-      window.location.href = '/#pricing'
-      setLoadingCheckout(false)
+      // fallback: redirect to Stripe billing portal
+      window.open('https://billing.stripe.com', '_blank')
+    } finally {
+      setCancelling(false)
     }
   }
 
@@ -74,18 +82,48 @@ export default function DashboardPage() {
               </p>
               <button
                 onClick={() => void handleUpgrade()}
-                disabled={loadingCheckout}
-                className="w-full py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-sm font-semibold rounded-lg transition disabled:opacity-50"
+                className="w-full py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-sm font-semibold rounded-lg transition"
               >
-                {loadingCheckout ? '...' : 'Upgrade to Pro'}
+                Upgrade plan
               </button>
             </>
           ) : (
-            <p className={`text-sm ${planConfig.textClass}`}>
-              {plan === 'standard' ? '10 videos / month'
-                : plan === 'pro'   ? '25 videos / month'
-                                   : '50 videos / month'}
-            </p>
+            <>
+              <p className={`text-sm mb-3 ${planConfig.textClass}`}>
+                <span className="text-white font-semibold">{user?.free_generations_left}</span>
+                {' / '}
+                {plan === 'standard' ? '20' : plan === 'pro' ? '50' : '100'}
+                {' videos left this month'}
+              </p>
+              {/* Cancel subscription */}
+              {!cancelConfirm ? (
+                <button
+                  onClick={() => setCancelConfirm(true)}
+                  className="w-full py-2 bg-white/5 hover:bg-red-500/10 border border-white/10 hover:border-red-500/30 text-gray-400 hover:text-red-400 text-xs font-medium rounded-lg transition"
+                >
+                  Cancel subscription
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-red-400 text-center">Are you sure? You'll lose your plan at the end of the billing period.</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setCancelConfirm(false)}
+                      className="flex-1 py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-medium rounded-lg transition"
+                    >
+                      Keep plan
+                    </button>
+                    <button
+                      onClick={() => void handleCancelSubscription()}
+                      disabled={cancelling}
+                      className="flex-1 py-1.5 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 text-xs font-medium rounded-lg transition disabled:opacity-50"
+                    >
+                      {cancelling ? '...' : 'Yes, cancel'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 

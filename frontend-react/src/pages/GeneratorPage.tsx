@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type FormEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { generatorApi, authApi } from '../api'
+import { generatorApi } from '../api'
 import { type AxiosError } from 'axios'
 import type { StatusResponse, Clip } from '../types'
 import { Link2, Sparkles, Download, Crown, CheckCircle, Clock, AlertCircle, SlidersHorizontal, Expand, X, Lightbulb, Globe, Type } from 'lucide-react'
@@ -232,7 +232,7 @@ export default function GeneratorPage() {
   const [status, setStatus] = useState<StatusResponse | null>(null)
   const [error, setError] = useState('')
   const [upgradeError, setUpgradeError] = useState(false)
-  const [loadingCheckout, setLoadingCheckout] = useState(false)
+  const [loadingCheckout] = useState(false)
   const [modalIndex, setModalIndex] = useState<number | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -274,18 +274,13 @@ export default function GeneratorPage() {
   }
 
   const handleUpgrade = async (): Promise<void> => {
-    setLoadingCheckout(true)
-    try {
-      const res = await authApi.createCheckout()
-      window.location.href = res.data.checkout_url
-    } catch {
-      setLoadingCheckout(false)
-    }
+    // Redirect to pricing section — user will choose their plan there
+    window.location.href = '/#pricing'
   }
 
   const currentStep = status ? stepIndex(status.progress) : -1
   const isProcessing = status?.status === 'processing' || status?.status === 'pending'
-  const quotaEmpty = user?.plan === 'free' && user.free_generations_left === 0
+  const quotaEmpty = (user?.free_generations_left ?? 1) === 0
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-12">
@@ -296,15 +291,19 @@ export default function GeneratorPage() {
           </span>
         </h1>
         <p className="text-gray-400">Turn any YouTube video into viral shorts</p>
-        {user?.plan === 'free' && (
+        {user && (
           <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-full text-sm">
-            {user.free_generations_left > 0 ? (
+            {(user.free_generations_left ?? 0) > 0 ? (
               <span className="text-gray-300">
-                <span className="text-purple-400 font-semibold">{user.free_generations_left}</span>{' '}
-                free generation{user.free_generations_left > 1 ? 's' : ''} left
+                <span className="text-purple-400 font-semibold">{user.free_generations_left}</span>
+                {' / '}
+                <span className="text-gray-400">
+                  {user.plan === 'standard' ? '20' : user.plan === 'pro' ? '50' : user.plan === 'proplus' ? '100' : '2'}
+                </span>
+                {' generation'}{user.free_generations_left !== 1 ? 's' : ''}{' left this month'}
               </span>
             ) : (
-              <span className="text-red-400">No free generations left this month</span>
+              <span className="text-red-400">No generations left this month</span>
             )}
           </div>
         )}
@@ -314,13 +313,21 @@ export default function GeneratorPage() {
         <div className="mb-6 bg-gradient-to-r from-purple-900/50 to-pink-900/50 border border-purple-500/30 rounded-2xl p-6 text-center">
           <Crown className="w-8 h-8 text-yellow-400 mx-auto mb-3" />
           <h3 className="text-white font-semibold text-lg mb-1">Limit reached</h3>
-          <p className="text-gray-400 text-sm mb-4">You used your 2 free generations this month.</p>
+          <p className="text-gray-400 text-sm mb-4">
+            {user?.plan === 'free'
+              ? "You've used your 2 free generations this month."
+              : user?.plan === 'standard'
+              ? "You've used all 20 of your Standard plan generations this month."
+              : user?.plan === 'pro'
+              ? "You've used all 50 of your Pro plan generations this month."
+              : "You've used all 100 of your Pro+ plan generations this month."}
+          </p>
           <button
             onClick={() => void handleUpgrade()}
             disabled={loadingCheckout}
             className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold rounded-lg transition disabled:opacity-50"
           >
-            {loadingCheckout ? 'Loading...' : 'Upgrade to Pro'}
+            {loadingCheckout ? 'Loading...' : 'Upgrade your plan'}
           </button>
         </div>
       )}

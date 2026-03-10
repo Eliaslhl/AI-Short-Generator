@@ -15,7 +15,7 @@ slowapi==0.1.9
 yt-dlp==2024.4.9
 
 # Audio transcription (local, no API key)
-faster-whisper==1.0.1
+faster-whisper==1.1.1
 
 # Video processing
 moviepy==1.0.3

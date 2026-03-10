@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Film, Zap, Clock, Download, Star, ArrowRight, CheckCircle } from 'lucide-react'
+import { Film, Zap, Clock, Download, Star, ArrowRight, CheckCircle, Crown, Sparkles, Rocket } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { authApi } from '../api'
 
 const features = [
   {
@@ -20,45 +22,131 @@ const features = [
   },
 ]
 
-const plans = [
+// ── Pricing plans ────────────────────────────────────────────────────────────
+const PLANS = [
   {
+    key: 'free',
     name: 'Free',
-    price: '0',
-    period: 'forever',
-    features: ['3 generations per month', 'Up to 3 clips per video', 'Standard quality'],
+    icon: null as null,
+    monthlyEur: 0,
+    yearlyEur: 0,
+    yearlyTotal: 0,
+    style: 'default' as const,
+    badge: null as null,
+    features: [
+      '1 video / month',
+      '3 shorts per video',
+      'Export 1080p',
+      'Auto captions',
+      'Watermark on exports',
+    ],
     cta: 'Get started free',
-    href: '/register',
-    highlight: false,
+    ctaHref: '/register' as string | null,
   },
   {
+    key: 'standard',
+    name: 'Standard',
+    icon: 'sparkles' as const,
+    monthlyEur: 4.99,
+    yearlyEur: +(44.99 / 12).toFixed(2),
+    yearlyTotal: 44.99,
+    style: 'default' as const,
+    badge: null as null,
+    features: [
+      '10 videos / month',
+      '5 shorts per video',
+      'Export 1080p',
+      'Automatic subtitles',
+      'Hook generator',
+      'Emoji captions',
+    ],
+    cta: 'Start Standard',
+    ctaHref: null as string | null,
+  },
+  {
+    key: 'pro',
     name: 'Pro',
-    price: '12',
-    period: 'per month',
-    features: ['Unlimited generations', 'Up to 10 clips per video', 'Priority processing', 'Early access to new features'],
+    icon: 'crown' as const,
+    monthlyEur: 19.99,
+    yearlyEur: +(179 / 12).toFixed(2),
+    yearlyTotal: 179,
+    style: 'pro' as const,
+    badge: '⭐ MOST POPULAR' as string | null,
+    features: [
+      '25 videos / month',
+      '10 shorts per video',
+      'Auto B-roll',
+      'Auto zoom speaker',
+      'Smart subtitles',
+      'Batch processing',
+      'Fast export',
+    ],
     cta: 'Start Pro',
-    href: '/register',
-    highlight: true,
+    ctaHref: null as string | null,
+  },
+  {
+    key: 'proplus',
+    name: 'Pro+',
+    icon: 'rocket' as const,
+    monthlyEur: 39.99,
+    yearlyEur: +(359 / 12).toFixed(2),
+    yearlyTotal: 359,
+    style: 'proplus' as const,
+    badge: null as null,
+    features: [
+      '50 videos / month',
+      '20 shorts per video',
+      'Auto title generator',
+      'Auto hashtags',
+      'Priority rendering (coming soon)',
+      'Multi-channel support (coming soon)',
+      'Team access (coming soon)',
+    ],
+    cta: 'Start Pro+',
+    ctaHref: null as string | null,
   },
 ]
 
+type PlanIcon = typeof PLANS[number]['icon']
+function PlanIcon({ icon }: { icon: PlanIcon }) {
+  if (icon === 'crown')    return <Crown className="w-4 h-4 text-yellow-400" />
+  if (icon === 'sparkles') return <Sparkles className="w-4 h-4 text-blue-400" />
+  if (icon === 'rocket')   return <Rocket className="w-4 h-4 text-pink-400" />
+  return null
+}
+
 export default function LandingPage() {
   const { user } = useAuth()
+  const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly')
+  const [loadingKey, setLoadingKey] = useState<string | null>(null)
+
+  const handleUpgrade = async (planKey: string) => {
+    if (!user) { window.location.href = '/register'; return }
+    setLoadingKey(planKey)
+    try {
+      const res = await authApi.createCheckout()
+      window.location.href = res.data.checkout_url
+    } catch {
+      window.location.href = '/#pricing'
+      setLoadingKey(null)
+    }
+  }
+
+  const currentPlan = user?.plan ?? 'free'
 
   return (
     <div className="w-full text-white">
-      {/* Hero */}
+
+      {/* ── Hero ── */}
       <section className="relative overflow-hidden">
-        {/* Background glow */}
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-purple-700/20 rounded-full blur-3xl" />
         </div>
-
         <div className="relative max-w-5xl mx-auto px-6 pt-24 pb-20 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-purple-500/40 bg-purple-500/10 text-purple-300 text-sm font-medium mb-8">
             <Star className="w-4 h-4" />
             100% free to start — no credit card required
           </div>
-
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold leading-tight tracking-tight mb-6">
             Turn any YouTube video
             <br />
@@ -66,11 +154,9 @@ export default function LandingPage() {
               into viral short clips
             </span>
           </h1>
-
           <p className="text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-10">
             Paste a YouTube URL. Our AI finds the best moments, cuts them into portrait shorts, and lets you download them instantly.
           </p>
-
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             {user ? (
               <Link
@@ -99,21 +185,14 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Features */}
+      {/* ── Features ── */}
       <section className="max-w-5xl mx-auto px-6 py-20">
         <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">How it works</h2>
-        <p className="text-center text-gray-400 mb-14 max-w-xl mx-auto">
-          No setup, no plugins. Just paste and go.
-        </p>
+        <p className="text-center text-gray-400 mb-14 max-w-xl mx-auto">No setup, no plugins. Just paste and go.</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
           {features.map((f) => (
-            <div
-              key={f.title}
-              className="flex flex-col gap-4 p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-purple-500/40 transition"
-            >
-              <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center">
-                {f.icon}
-              </div>
+            <div key={f.title} className="flex flex-col gap-4 p-6 rounded-2xl bg-white/5 border border-white/10 hover:border-purple-500/40 transition">
+              <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center">{f.icon}</div>
               <h3 className="font-semibold text-lg text-white">{f.title}</h3>
               <p className="text-gray-400 text-sm leading-relaxed">{f.desc}</p>
             </div>
@@ -121,7 +200,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Steps */}
+      {/* ── Steps ── */}
       <section className="bg-white/[0.02] border-y border-white/10">
         <div className="max-w-5xl mx-auto px-6 py-20">
           <h2 className="text-3xl sm:text-4xl font-bold text-center mb-14">3 steps to your first clip</h2>
@@ -141,69 +220,183 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Pricing */}
-      <section className="max-w-4xl mx-auto px-6 py-20">
-        <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">Simple pricing</h2>
-        <p className="text-center text-gray-400 mb-14">Start free. Upgrade when you need more.</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
-          {plans.map((plan) => (
-            <div
-              key={plan.name}
-              className={`relative flex flex-col gap-6 p-8 rounded-2xl border transition ${
-                plan.highlight
-                  ? 'bg-purple-600/10 border-purple-500/60 shadow-xl shadow-purple-900/30'
-                  : 'bg-white/5 border-white/10'
+      {/* ── Pricing ── */}
+      <section id="pricing" className="max-w-7xl mx-auto px-6 py-24">
+        <h2 className="text-3xl sm:text-4xl font-bold text-center mb-3">Simple pricing</h2>
+        <p className="text-center text-gray-400 mb-8">Start free. Scale when you grow.</p>
+
+        {/* Billing toggle */}
+        <div className="flex items-center justify-center mb-14">
+          <div className="flex items-center gap-1 p-1 bg-white/5 border border-white/10 rounded-xl">
+            <button
+              onClick={() => setBilling('monthly')}
+              className={`px-5 py-2 rounded-lg text-sm font-medium transition ${
+                billing === 'monthly' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-white'
               }`}
             >
-              {plan.highlight && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-purple-600 text-white text-xs font-bold rounded-full uppercase tracking-wider">
-                  Most popular
-                </span>
-              )}
-              <div>
-                <p className="text-gray-400 text-sm font-medium mb-1">{plan.name}</p>
-                <div className="flex items-end gap-1">
-                  <span className="text-4xl font-extrabold text-white">${plan.price}</span>
-                  <span className="text-gray-400 pb-1 text-sm">/{plan.period}</span>
-                </div>
-              </div>
-              <ul className="flex flex-col gap-3">
-                {plan.features.map((feat) => (
-                  <li key={feat} className="flex items-center gap-2 text-sm text-gray-300">
-                    <CheckCircle className="w-4 h-4 text-purple-400 shrink-0" />
-                    {feat}
-                  </li>
-                ))}
-              </ul>
-              <Link
-                to={plan.href}
-                className={`mt-auto text-center px-6 py-3 rounded-xl font-semibold text-sm transition ${
-                  plan.highlight
-                    ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-900/40'
-                    : 'border border-white/20 hover:border-white/40 hover:bg-white/5 text-white'
+              Monthly
+            </button>
+            <button
+              onClick={() => setBilling('yearly')}
+              className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium transition ${
+                billing === 'yearly' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              Yearly
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-500/20 text-green-400 border border-green-500/30">
+                −15%
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Plans grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 items-stretch">
+          {PLANS.map((plan) => {
+            const isPro     = plan.style === 'pro'
+            const isProPlus = plan.style === 'proplus'
+            const isCurrent = currentPlan === plan.key
+
+            return (
+              <div
+                key={plan.key}
+                className={`relative flex flex-col gap-6 p-7 rounded-2xl border transition ${
+                  isPro
+                    ? 'bg-purple-600/10 border-purple-500/60 shadow-2xl shadow-purple-900/40 xl:scale-[1.04]'
+                    : isProPlus
+                    ? 'bg-gradient-to-b from-pink-900/20 to-purple-900/10 border-pink-500/30'
+                    : 'bg-white/5 border-white/10'
                 }`}
               >
-                {plan.cta}
-              </Link>
-            </div>
-          ))}
+                {/* Badge */}
+                {plan.badge && (
+                  <span className="absolute -top-4 left-1/2 -translate-x-1/2 whitespace-nowrap px-3 py-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-[11px] font-bold rounded-full shadow-lg tracking-wide">
+                    {plan.badge}
+                  </span>
+                )}
+
+                {/* Header */}
+                <div>
+                  <p className={`text-sm font-semibold mb-2 flex items-center gap-1.5 ${
+                    isPro ? 'text-purple-300' : isProPlus ? 'text-pink-300' : 'text-gray-400'
+                  }`}>
+                    <PlanIcon icon={plan.icon} />
+                    {plan.name}
+                  </p>
+                  <div className="relative flex items-end gap-1 flex-wrap">
+                    {billing === 'yearly' && plan.yearlyTotal > 0 && (
+                      <span className="absolute -top-3 right-0 text-[10px] font-semibold text-green-400">
+                        Save €{(plan.monthlyEur * 12 - plan.yearlyTotal).toFixed(0)}
+                      </span>
+                    )}
+                    <span className="text-4xl font-extrabold text-white">
+                      {plan.monthlyEur === 0
+                        ? '€0'
+                        : billing === 'yearly' && plan.yearlyTotal > 0
+                        ? `€${plan.yearlyTotal}`
+                        : `€${plan.monthlyEur}`}
+                    </span>
+                    <span className="text-gray-400 pb-1 text-sm">
+                      {plan.monthlyEur === 0
+                        ? '/ forever'
+                        : billing === 'yearly' && plan.yearlyTotal > 0
+                        ? '/ yr'
+                        : '/ mo'}
+                    </span>
+                  </div>
+                  {billing === 'yearly' && plan.yearlyTotal > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      €{plan.yearlyEur} / mo
+                    </p>
+                  )}
+                </div>
+
+                {/* Features */}
+                <ul className="flex flex-col gap-2.5 flex-1">
+                  {plan.features.map((feat) => {
+                    const isSoon = feat.includes('(coming soon)')
+                    const label = feat.replace(' (coming soon)', '')
+                    return (
+                      <li key={feat} className={`flex items-start gap-2 text-sm ${isSoon ? 'text-gray-600' : 'text-gray-300'}`}>
+                        {isSoon ? (
+                          <Clock className="w-4 h-4 shrink-0 mt-0.5 text-gray-600" />
+                        ) : (
+                          <CheckCircle className={`w-4 h-4 shrink-0 mt-0.5 ${
+                            isPro ? 'text-purple-400' : isProPlus ? 'text-pink-400' : 'text-gray-500'
+                          }`} />
+                        )}
+                        {label}
+                        {isSoon && (
+                          <span className="ml-auto text-[10px] text-gray-600 border border-gray-700 rounded-full px-1.5 py-0.5 shrink-0">
+                            soon
+                          </span>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+
+                {/* CTA */}
+                {isCurrent ? (
+                  <div className={`mt-auto text-center px-4 py-2.5 rounded-xl text-sm font-semibold border ${
+                    isPro
+                      ? 'border-purple-500/30 bg-purple-600/20 text-purple-300'
+                      : 'border-white/10 text-gray-500'
+                  }`}>
+                    ✓ Current plan
+                  </div>
+                ) : plan.ctaHref ? (
+                  <Link
+                    to={plan.ctaHref}
+                    className="mt-auto text-center px-4 py-2.5 rounded-xl text-sm font-semibold border border-white/20 hover:border-white/40 hover:bg-white/5 text-white transition"
+                  >
+                    {plan.cta}
+                  </Link>
+                ) : (
+                  <button
+                    onClick={() => void handleUpgrade(plan.key)}
+                    disabled={loadingKey === plan.key}
+                    className={`mt-auto w-full px-4 py-2.5 rounded-xl text-sm font-semibold transition disabled:opacity-50 ${
+                      isPro
+                        ? 'bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 text-white shadow-lg shadow-purple-900/40'
+                        : isProPlus
+                        ? 'bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white shadow-lg shadow-pink-900/30'
+                        : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
+                    }`}
+                  >
+                    {loadingKey === plan.key ? 'Redirecting…' : plan.cta}
+                  </button>
+                )}
+              </div>
+            )
+          })}
         </div>
+
+        {/* Annual savings nudge */}
+        {billing === 'monthly' && (
+          <p className="text-center text-gray-500 text-sm mt-10">
+            💡 Switch to yearly billing and save up to{' '}
+            <span className="text-green-400 font-semibold">€120/year</span> on Pro+
+          </p>
+        )}
       </section>
 
-      {/* Footer CTA */}
-      <section className="border-t border-white/10 bg-white/[0.02]">
-        <div className="max-w-3xl mx-auto px-6 py-20 text-center">
-          <Film className="w-10 h-10 text-purple-400 mx-auto mb-6" />
-          <h2 className="text-3xl sm:text-4xl font-bold mb-4">Ready to go viral?</h2>
-          <p className="text-gray-400 mb-8">Join thousands of creators repurposing content in seconds.</p>
-          <Link
-            to="/register"
-            className="inline-flex items-center gap-2 px-8 py-3.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-xl text-base transition shadow-lg shadow-purple-900/40"
-          >
-            Create your free account <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-      </section>
+      {/* ── Footer CTA — hidden if logged in ── */}
+      {!user && (
+        <section className="border-t border-white/10 bg-white/[0.02]">
+          <div className="max-w-3xl mx-auto px-6 py-20 text-center">
+            <Film className="w-10 h-10 text-purple-400 mx-auto mb-6" />
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">Ready to go viral?</h2>
+            <p className="text-gray-400 mb-8">Join thousands of creators repurposing content in seconds.</p>
+            <Link
+              to="/register"
+              className="inline-flex items-center gap-2 px-8 py-3.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-xl text-base transition shadow-lg shadow-purple-900/40"
+            >
+              Create your free account <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </section>
+      )}
     </div>
   )
 }

@@ -29,6 +29,8 @@ from backend.services.clip_selector        import select_top_segments
 from backend.services.hook_service         import generate_hook
 from backend.services.emoji_caption_service import build_captions
 from backend.services.broll_service        import find_broll
+from backend.services.title_service        import generate_title
+from backend.services.hashtag_service      import generate_hashtags
 from backend.video.video_editor            import render_clip
 
 logger = logging.getLogger(__name__)
@@ -60,7 +62,7 @@ class StatusResponse(BaseModel):
 
 
 # ── Background pipeline ──────────────────────────────────────────────────────
-async def run_pipeline(job_id: str, youtube_url: str, user_id: str, max_clips: int = 3, language: str = "", subtitle_style: str = "default"):
+async def run_pipeline(job_id: str, youtube_url: str, user_id: str, max_clips: int = 3, language: str = "", subtitle_style: str = "default", is_proplus: bool = False):
     """Full async pipeline: download → transcribe → score → render."""
 
     def update(progress: int, step: str):
@@ -78,12 +80,23 @@ async def run_pipeline(job_id: str, youtube_url: str, user_id: str, max_clips: i
         update(20, "Transcribing audio with Faster-Whisper…")
         segments = await asyncio.to_thread(transcribe_video, str(video_path), language or None)
 
+        # Get video duration for precise padding/clamping
+        from moviepy import VideoFileClip
+        video_duration = await asyncio.to_thread(lambda: VideoFileClip(str(video_path)).duration)
+
         update(40, "Analysing and scoring segments…")
-        top_segments = await asyncio.to_thread(select_top_segments, segments, max_clips)
+        top_segments = await asyncio.to_thread(select_top_segments, segments, max_clips, video_duration)
 
         update(55, "Generating viral hooks with local LLM…")
         for seg in top_segments:
             seg["hook"] = await asyncio.to_thread(generate_hook, seg["text"])
+
+        # Pro+ only: auto title + auto hashtags
+        if is_proplus:
+            update(60, "Generating titles & hashtags (Pro+)…")
+            for seg in top_segments:
+                seg["title"]    = await asyncio.to_thread(generate_title,    seg["text"])
+                seg["hashtags"] = await asyncio.to_thread(generate_hashtags, seg["text"])
 
         update(65, "Building emoji captions…")
         for seg in top_segments:
@@ -151,11 +164,16 @@ async def generate(
     """Start a generation job. Requires auth + quota check."""
     job_id = str(uuid.uuid4())[:8]
 
-    # Enforce max_clips per plan
-    if user.plan.value == "free":
-        allowed_clips = max(1, min(request.max_clips, 5))   # FREE: 1–5
-    else:
-        allowed_clips = max(1, min(request.max_clips, 20))  # PRO: 1–20
+    # Enforce max_clips per plan server-side
+    plan = user.plan.value
+    if plan == "proplus":
+        allowed_clips = max(1, min(request.max_clips, 20))
+    elif plan == "pro":
+        allowed_clips = max(1, min(request.max_clips, 10))
+    elif plan == "standard":
+        allowed_clips = max(1, min(request.max_clips, 5))
+    else:  # free
+        allowed_clips = max(1, min(request.max_clips, 3))
 
     # Create DB record
     job_record = Job(
@@ -180,13 +198,13 @@ async def generate(
         "user_id":  user.id,
     }
 
-    # Language: PRO can specify, FREE always uses auto-detect
-    language = request.language if user.plan.value == "pro" else ""
+    # Language: standard and above can specify; free always uses auto-detect
+    language = request.language if plan != "free" else ""
 
-    # Subtitle style: PRO can pick, FREE always uses default
-    subtitle_style = request.subtitle_style if user.plan.value == "pro" else "default"
+    # Subtitle style: standard and above can pick; free always uses default
+    subtitle_style = request.subtitle_style if plan != "free" else "default"
 
-    background_tasks.add_task(run_pipeline, job_id, request.youtube_url, user.id, allowed_clips, language, subtitle_style)
+    background_tasks.add_task(run_pipeline, job_id, request.youtube_url, user.id, allowed_clips, language, subtitle_style, plan == "proplus")
     return GenerateResponse(job_id=job_id, message="Job started.")
 
 

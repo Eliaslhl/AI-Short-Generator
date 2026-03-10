@@ -1,6 +1,24 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Film, LogOut, User, Crown, LayoutDashboard, Clapperboard } from 'lucide-react'
+import { Film, LogOut, User, Crown, Sparkles, Rocket, LayoutDashboard, Clapperboard } from 'lucide-react'
+
+const PLAN_BADGE: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
+  pro: {
+    label: 'PRO',
+    className: 'bg-yellow-500/20 text-yellow-400',
+    icon: <Crown className="w-3 h-3" />,
+  },
+  standard: {
+    label: 'STANDARD',
+    className: 'bg-blue-500/20 text-blue-400',
+    icon: <Sparkles className="w-3 h-3" />,
+  },
+  proplus: {
+    label: 'PRO+',
+    className: 'bg-pink-500/20 text-pink-400',
+    icon: <Rocket className="w-3 h-3" />,
+  },
+}
 
 export default function Navbar() {
   const { user, logout } = useAuth()
@@ -10,6 +28,8 @@ export default function Navbar() {
     logout()
     navigate('/')
   }
+
+  const planBadge = user ? PLAN_BADGE[user.plan] : null
 
   return (
     <nav className="border-b border-white/10 bg-black/40 backdrop-blur-md sticky top-0 z-50">
@@ -26,9 +46,9 @@ export default function Navbar() {
         <div className="flex items-center gap-3">
           {user ? (
             <>
-              {user.plan === 'pro' ? (
-                <span className="flex items-center gap-1 px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded-full text-xs font-semibold">
-                  <Crown className="w-3 h-3" /> PRO
+              {planBadge ? (
+                <span className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${planBadge.className}`}>
+                  {planBadge.icon} {planBadge.label}
                 </span>
               ) : (
                 <span className="text-xs text-gray-400">

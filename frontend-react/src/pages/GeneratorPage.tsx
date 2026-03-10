@@ -73,10 +73,23 @@ function ClipCard({ clip, index, onExpand }: ClipCardProps) {
         </button>
       </div>
       <div className="p-3">
-        <p className="text-white text-xs font-medium truncate mb-1">Short {index + 1}</p>
-        <p className="text-gray-500 text-xs mb-3">{clip.duration}s</p>
+        {clip.title ? (
+          <p className="text-white text-xs font-semibold truncate mb-0.5">{clip.title}</p>
+        ) : (
+          <p className="text-white text-xs font-medium truncate mb-1">Short {index + 1}</p>
+        )}
+        <p className="text-gray-500 text-xs mb-2">{clip.duration}s</p>
         {clip.hook && (
-          <p className="text-gray-400 text-xs italic line-clamp-2 mb-3">&ldquo;{clip.hook}&rdquo;</p>
+          <p className="text-gray-400 text-xs italic line-clamp-2 mb-2">&ldquo;{clip.hook}&rdquo;</p>
+        )}
+        {clip.hashtags && clip.hashtags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-2">
+            {clip.hashtags.map((tag) => (
+              <span key={tag} className="text-[10px] text-pink-400 bg-pink-500/10 px-1.5 py-0.5 rounded-full">
+                {tag}
+              </span>
+            ))}
+          </div>
         )}
         <a
           href={`${API_BASE}${clip.file}`}
@@ -154,11 +167,25 @@ function VideoModal({ clip, index, total, onClose, onPrev, onNext }: VideoModalP
           autoPlay
         />
 
-        {/* Hook text */}
+        {/* Title + Hook + Hashtags */}
+        {clip.title && (
+          <p className="mt-3 text-white text-sm font-semibold text-center max-w-sm">
+            {clip.title}
+          </p>
+        )}
         {clip.hook && (
-          <p className="mt-3 text-gray-300 text-sm italic text-center max-w-sm">
+          <p className="mt-1 text-gray-300 text-sm italic text-center max-w-sm">
             &ldquo;{clip.hook}&rdquo;
           </p>
+        )}
+        {clip.hashtags && clip.hashtags.length > 0 && (
+          <div className="flex flex-wrap justify-center gap-1.5 mt-2 max-w-sm">
+            {clip.hashtags.map((tag) => (
+              <span key={tag} className="text-xs text-pink-400 bg-pink-500/10 border border-pink-500/20 px-2 py-0.5 rounded-full">
+                {tag}
+              </span>
+            ))}
+          </div>
         )}
 
         {/* Prev / Next */}
@@ -194,7 +221,11 @@ export default function GeneratorPage() {
   const [showTip, setShowTip] = useState(() => !localStorage.getItem('has_generated'))
 
   // Keep maxClips within plan limits if plan changes
-  const maxAllowed = user?.plan === 'pro' ? 20 : 5
+  const maxAllowed =
+    user?.plan === 'proplus'  ? 20 :
+    user?.plan === 'pro'      ? 10 :
+    user?.plan === 'standard' ?  5 :
+    3 // free
   useEffect(() => {
     if (maxClips > maxAllowed) setMaxClips(maxAllowed)
   }, [maxAllowed, maxClips])
@@ -345,67 +376,96 @@ export default function GeneratorPage() {
           )}
         </div>
 
-        {/* Clip count slider — FREE (1–5) and PRO (1–20) */}
+        {/* Clip count slider */}
         <div className={`p-4 rounded-xl mb-4 ${
-          user?.plan === 'pro'
-            ? 'bg-yellow-500/5 border border-yellow-500/20'
-            : 'bg-white/5 border border-white/10'
+          user?.plan === 'proplus'  ? 'bg-pink-500/5 border border-pink-500/20'
+          : user?.plan === 'pro'   ? 'bg-yellow-500/5 border border-yellow-500/20'
+          : user?.plan === 'standard' ? 'bg-blue-500/5 border border-blue-500/20'
+          : 'bg-white/5 border border-white/10'
         }`}>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <SlidersHorizontal className={`w-4 h-4 ${user?.plan === 'pro' ? 'text-yellow-400' : 'text-purple-400'}`} />
+              <SlidersHorizontal className={`w-4 h-4 ${user?.plan !== 'free' ? 'text-yellow-400' : 'text-purple-400'}`} />
               <span className="text-sm font-medium text-white">Number of clips</span>
-              {user?.plan === 'pro' ? (
-                <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO</span>
+              {user?.plan === 'proplus' ? (
+                <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold">PRO+ · max 20</span>
+              ) : user?.plan === 'pro' ? (
+                <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO · max 10</span>
+              ) : user?.plan === 'standard' ? (
+                <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold">STANDARD · max 5</span>
               ) : (
-                <span className="px-1.5 py-0.5 bg-white/10 text-gray-400 text-xs rounded-full">max 5 — upgrade for 20</span>
+                <span className="px-1.5 py-0.5 bg-white/10 text-gray-400 text-xs rounded-full">max 3 — upgrade for more</span>
               )}
             </div>
-            <span className={`text-3xl font-bold w-10 text-center ${user?.plan === 'pro' ? 'text-yellow-400' : 'text-purple-400'}`}>
+            <span className={`text-3xl font-bold w-10 text-center ${user?.plan === 'proplus' ? 'text-pink-400' : user?.plan === 'pro' ? 'text-yellow-400' : 'text-purple-400'}`}>
               {maxClips}
             </span>
           </div>
           <input
             type="range"
             min={1}
-            max={user?.plan === 'pro' ? 20 : 5}
+            max={maxAllowed}
             step={1}
             value={maxClips}
             onChange={(e) => setMaxClips(Number(e.target.value))}
             disabled={isProcessing}
-            className={`w-full cursor-pointer disabled:opacity-50 ${user?.plan === 'pro' ? 'accent-yellow-400' : 'accent-purple-500'}`}
+            className={`w-full cursor-pointer disabled:opacity-50 ${user?.plan === 'proplus' ? 'accent-pink-400' : user?.plan === 'pro' ? 'accent-yellow-400' : 'accent-purple-500'}`}
           />
           <div className="flex justify-between text-xs text-gray-500 mt-1">
             <span>1</span>
-            {user?.plan === 'pro' ? (
+            {user?.plan === 'proplus' ? (
               <>
                 <span>5</span>
                 <span>10</span>
                 <span>15</span>
                 <span>20</span>
               </>
-            ) : (
+            ) : user?.plan === 'pro' ? (
               <>
                 <span>3</span>
                 <span>5</span>
+                <span>8</span>
+                <span>10</span>
+              </>
+            ) : user?.plan === 'standard' ? (
+              <>
+                <span>3</span>
+                <span>5</span>
+              </>
+            ) : (
+              <>
+                <span>2</span>
+                <span>3</span>
               </>
             )}
           </div>
         </div>
 
-        {/* Language selector — PRO only */}
-        {user?.plan === 'pro' && (
-          <div className="p-4 bg-yellow-500/5 border border-yellow-500/20 rounded-xl mb-4">
+        {/* Language selector — Standard and above */}
+        {user?.plan !== 'free' && (
+          <div className={`p-4 rounded-xl mb-4 ${
+            user?.plan === 'proplus'
+              ? 'bg-pink-500/5 border border-pink-500/20'
+              : 'bg-yellow-500/5 border border-yellow-500/20'
+          }`}>
             <div className="flex items-center gap-2 mb-3">
-              <Globe className="w-4 h-4 text-yellow-400" />
+              <Globe className={`w-4 h-4 ${user?.plan === 'proplus' ? 'text-pink-400' : 'text-yellow-400'}`} />
               <span className="text-sm font-medium text-white">Transcription language</span>
-              <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO</span>
+              {user?.plan === 'proplus' ? (
+                <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold">PRO+</span>
+              ) : (
+                <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO</span>
+              )}
             </div>
             <select
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
               disabled={isProcessing}
-              className="w-full px-3 py-2.5 bg-black/30 border border-yellow-500/20 rounded-lg text-white text-sm focus:outline-none focus:border-yellow-400 transition disabled:opacity-50 cursor-pointer"
+              className={`w-full px-3 py-2.5 bg-black/30 rounded-lg text-white text-sm focus:outline-none transition disabled:opacity-50 cursor-pointer border ${
+                user?.plan === 'proplus'
+                  ? 'border-pink-500/20 focus:border-pink-400'
+                  : 'border-yellow-500/20 focus:border-yellow-400'
+              }`}
             >
               {LANGUAGES.map((l) => (
                 <option key={l.code} value={l.code}>{l.label}</option>
@@ -417,13 +477,21 @@ export default function GeneratorPage() {
           </div>
         )}
 
-        {/* Subtitle style selector — PRO only */}
-        {user?.plan === 'pro' && (
-          <div className="p-4 bg-yellow-500/5 border border-yellow-500/20 rounded-xl mb-4">
+        {/* Subtitle style selector — Standard and above */}
+        {user?.plan !== 'free' && (
+          <div className={`p-4 rounded-xl mb-4 ${
+            user?.plan === 'proplus'
+              ? 'bg-pink-500/5 border border-pink-500/20'
+              : 'bg-yellow-500/5 border border-yellow-500/20'
+          }`}>
             <div className="flex items-center gap-2 mb-3">
-              <Type className="w-4 h-4 text-yellow-400" />
+              <Type className={`w-4 h-4 ${user?.plan === 'proplus' ? 'text-pink-400' : 'text-yellow-400'}`} />
               <span className="text-sm font-medium text-white">Subtitle style</span>
-              <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO</span>
+              {user?.plan === 'proplus' ? (
+                <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold">PRO+</span>
+              ) : (
+                <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO</span>
+              )}
             </div>
             <div className="grid grid-cols-5 gap-2">
               {SUBTITLE_STYLES.map((s) => (
@@ -435,8 +503,12 @@ export default function GeneratorPage() {
                   title={s.desc}
                   className={`px-2 py-2 rounded-lg text-xs font-medium border transition text-center disabled:opacity-50 disabled:cursor-not-allowed ${
                     subtitleStyle === s.code
-                      ? 'bg-yellow-500/20 border-yellow-400 text-yellow-300'
-                      : 'bg-black/20 border-white/10 text-gray-400 hover:border-yellow-500/40 hover:text-white'
+                      ? user?.plan === 'proplus'
+                        ? 'bg-pink-500/20 border-pink-400 text-pink-300'
+                        : 'bg-yellow-500/20 border-yellow-400 text-yellow-300'
+                      : user?.plan === 'proplus'
+                        ? 'bg-black/20 border-white/10 text-gray-400 hover:border-pink-500/40 hover:text-white'
+                        : 'bg-black/20 border-white/10 text-gray-400 hover:border-yellow-500/40 hover:text-white'
                   }`}
                 >
                   {s.label}

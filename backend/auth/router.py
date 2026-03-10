@@ -16,6 +16,9 @@ import os
 import secrets
 from datetime import datetime, timedelta, timezone
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import bcrypt
 import stripe
 from authlib.integrations.httpx_client import AsyncOAuth2Client

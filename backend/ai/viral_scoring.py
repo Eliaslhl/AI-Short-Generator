@@ -40,12 +40,13 @@ EMOTION_WORDS = {
 
 # Component weights (must sum to 1.0)
 WEIGHTS = {
-    "numbers":  0.20,
+    "numbers":  0.15,
     "emotion":  0.30,
     "question": 0.15,
     "length":   0.15,
     "density":  0.10,
     "duration": 0.10,
+    "momentum": 0.05,   # bonus for high emotion density at the START of the clip
 }
 
 
@@ -114,6 +115,20 @@ def _duration_score(duration_secs: float) -> float:
     return max(0.0, 10.0 - (duration_secs - 45) / 5)
 
 
+def _momentum_score(text: str) -> float:
+    """
+    Bonus for clips that open with a strong emotional hook.
+    Checks the first 30 words for emotional trigger density.
+    A clip that grabs attention immediately retains viewers better.
+    """
+    words = text.split()[:30]
+    if not words:
+        return 0.0
+    opening = " ".join(words).lower()
+    hits = sum(1 for w in re.findall(r"\b[a-z]+\b", opening) if w in EMOTION_WORDS)
+    return min(hits / 3 * 10.0, 10.0)
+
+
 def compute_viral_score(text: str, duration_secs: float) -> float:
     """
     Compute a 0–10 viral score for a transcript segment.
@@ -136,6 +151,7 @@ def compute_viral_score(text: str, duration_secs: float) -> float:
         "length":   _length_score(text),
         "density":  _density_score(text),
         "duration": _duration_score(duration_secs),
+        "momentum": _momentum_score(text),
     }
 
     score = sum(WEIGHTS[k] * v for k, v in components.items())

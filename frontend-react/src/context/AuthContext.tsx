@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import { authApi } from '../api'
 import type { User } from '../types'
+import { useToast } from './ToastContext'
 
 interface AuthContextValue {
   user: User | null
@@ -17,6 +18,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   // Start as true only when a token exists — avoids the sync setState-in-effect
   const [loading, setLoading] = useState(() => !!localStorage.getItem('token'))
+  const { showToast } = useToast()
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -33,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await authApi.login(email, password)
     localStorage.setItem('token', res.data.access_token)
     setUser(res.data.user)
+    showToast('Connexion réussie 👋', 'success')
     return res.data.user
   }
 
@@ -40,12 +43,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await authApi.register(email, password, fullName)
     localStorage.setItem('token', res.data.access_token)
     setUser(res.data.user)
+    showToast('Compte créé avec succès 🎉', 'success')
     return res.data.user
   }
 
   const logout = (): void => {
     localStorage.removeItem('token')
     setUser(null)
+    showToast('Déconnexion réussie', 'info')
   }
 
   const refreshUser = async (): Promise<User> => {

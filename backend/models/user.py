@@ -21,8 +21,10 @@ def _uuid():
 
 
 class Plan(str, PyEnum):
-    FREE = "free"
-    PRO = "pro"
+    FREE     = "free"
+    STANDARD = "standard"
+    PRO      = "pro"
+    PROPLUS  = "proplus"
 
 
 class User(Base):

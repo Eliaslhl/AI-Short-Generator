@@ -1,6 +1,6 @@
 // ─── Domain types ─────────────────────────────────────────────────────────────
 
-export type Plan = 'free' | 'pro'
+export type Plan = 'free' | 'standard' | 'pro' | 'proplus'
 
 export interface User {
   id: number
@@ -17,6 +17,8 @@ export interface Clip {
   duration: number
   viral_score: number
   hook: string | null
+  title: string | null
+  hashtags: string[] | null
   start_time: number
   end_time: number
 }

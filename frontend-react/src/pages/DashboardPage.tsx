@@ -3,13 +3,20 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { authApi, generatorApi } from '../api'
 import type { Job, JobStatus } from '../types'
-import { Crown, Sparkles, Clock, CheckCircle, AlertCircle, Film, TrendingUp } from 'lucide-react'
+import { Crown, Sparkles, Rocket, Clock, CheckCircle, AlertCircle, Film, TrendingUp } from 'lucide-react'
 
 function StatusIcon({ status }: { status: JobStatus }) {
   if (status === 'done') return <CheckCircle className="w-5 h-5 text-green-400 shrink-0" />
   if (status === 'error') return <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
   return <Clock className="w-5 h-5 text-yellow-400 shrink-0" />
 }
+
+const PLAN_CONFIG = {
+  free:     { label: 'Free Plan',     icon: <Film className="w-5 h-5 text-gray-500" />,       cardClass: 'bg-white/5 border-white/10',          textClass: 'text-gray-400'  },
+  standard: { label: 'Standard Plan', icon: <Sparkles className="w-5 h-5 text-blue-400" />,   cardClass: 'bg-blue-500/10 border-blue-500/30',   textClass: 'text-blue-300'  },
+  pro:      { label: 'Pro Plan',      icon: <Crown className="w-5 h-5 text-yellow-400" />,    cardClass: 'bg-yellow-500/10 border-yellow-500/30', textClass: 'text-yellow-300' },
+  proplus:  { label: 'Pro+ Plan',     icon: <Rocket className="w-5 h-5 text-pink-400" />,     cardClass: 'bg-pink-500/10 border-pink-500/30',   textClass: 'text-pink-300'  },
+} as const
 
 export default function DashboardPage() {
   const { user } = useAuth()
@@ -31,26 +38,36 @@ export default function DashboardPage() {
       const res = await authApi.createCheckout()
       window.location.href = res.data.checkout_url
     } catch {
+      // Stripe not configured yet → redirect to pricing section
+      window.location.href = '/#pricing'
       setLoadingCheckout(false)
     }
   }
 
-  const isPro = user?.plan === 'pro'
+  const plan: string = user?.plan ?? 'free'
+  const planConfig = PLAN_CONFIG[plan as keyof typeof PLAN_CONFIG] ?? PLAN_CONFIG.free
   const totalClips = history.reduce((acc, j) => acc + (j.clips_count ?? 0), 0)
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10">
-      <h1 className="text-2xl font-bold text-white mb-8">Dashboard</h1>
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+        <Link
+          to="/generate"
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-xl transition"
+        >
+          <Sparkles className="w-4 h-4" />
+          New generation
+        </Link>
+      </div>
 
       <div className="grid md:grid-cols-3 gap-4 mb-8">
-        <div className={`col-span-1 rounded-2xl p-5 border ${isPro ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-white/5 border-white/10'}`}>
+        <div className={`col-span-1 rounded-2xl p-5 border ${planConfig.cardClass}`}>
           <div className="flex items-center gap-2 mb-3">
-            <Crown className={`w-5 h-5 ${isPro ? 'text-yellow-400' : 'text-gray-500'}`} />
-            <span className="text-white font-semibold">{isPro ? 'Pro Plan' : 'Free Plan'}</span>
+            {planConfig.icon}
+            <span className="text-white font-semibold">{planConfig.label}</span>
           </div>
-          {isPro ? (
-            <p className="text-yellow-300/80 text-sm">Unlimited generations</p>
-          ) : (
+          {plan === 'free' ? (
             <>
               <p className="text-gray-400 text-sm mb-3">
                 <span className="text-white font-semibold">{user?.free_generations_left}</span>/2 generations this month
@@ -63,6 +80,12 @@ export default function DashboardPage() {
                 {loadingCheckout ? '...' : 'Upgrade to Pro'}
               </button>
             </>
+          ) : (
+            <p className={`text-sm ${planConfig.textClass}`}>
+              {plan === 'standard' ? '10 videos / month'
+                : plan === 'pro'   ? '25 videos / month'
+                                   : '50 videos / month'}
+            </p>
           )}
         </div>
 
@@ -81,16 +104,6 @@ export default function DashboardPage() {
           </div>
           <p className="text-3xl font-bold text-white">{totalClips}</p>
         </div>
-      </div>
-
-      <div className="mb-8">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-xl transition"
-        >
-          <Sparkles className="w-4 h-4" />
-          New generation
-        </Link>
       </div>
 
       <div>

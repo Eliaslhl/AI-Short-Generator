@@ -11,7 +11,7 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
-      '/auth': {
+      '/auth/google': {
         target: 'http://localhost:8000',
         changeOrigin: true,
       },

@@ -1,12 +1,14 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
 
 // Handles the redirect from Google OAuth: /auth/callback?token=XXX
 export default function AuthCallbackPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { refreshUser } = useAuth()
+  const { showToast } = useToast()
   const handled = useRef(false)
 
   useEffect(() => {
@@ -17,12 +19,15 @@ export default function AuthCallbackPage() {
     if (token) {
       localStorage.setItem('token', token)
       refreshUser()
-        .then(() => navigate('/dashboard', { replace: true }))
+        .then(() => {
+          showToast('Connexion Google réussie 👋', 'success')
+          navigate('/dashboard', { replace: true })
+        })
         .catch(() => navigate('/login', { replace: true }))
     } else {
       navigate('/login', { replace: true })
     }
-  }, [navigate, refreshUser, searchParams])
+  }, [navigate, refreshUser, searchParams, showToast])
 
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">

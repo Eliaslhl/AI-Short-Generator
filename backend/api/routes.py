@@ -149,6 +149,12 @@ async def run_pipeline(job_id: str, youtube_url: str, user_id: str, max_clips: i
             if job_record:
                 job_record.status = "error"
                 job_record.error = str(exc)
+                # ── Refund the generation credit on failure ──────────────────
+                user_result = await db.execute(select(User).where(User.id == user_id))
+                user_record = user_result.scalar_one_or_none()
+                if user_record and user_record.generations_this_month > 0:
+                    user_record.generations_this_month -= 1
+                    logger.info(f"Refunded generation credit for user {user_id} (job {job_id} failed)")
                 await db.commit()
 
 
@@ -208,27 +214,62 @@ async def generate(
 
 
 @router.get("/status/{job_id}", response_model=StatusResponse)
-async def get_status(job_id: str, user: User = Depends(get_current_user)):
-    if job_id not in jobs:
+async def get_status(job_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # Fast path: job still in memory
+    if job_id in jobs:
+        job = jobs[job_id]
+        if job.get("user_id") and job["user_id"] != user.id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        return StatusResponse(
+            job_id=job_id,
+            status=job["status"],
+            progress=job["progress"],
+            step=job["step"],
+            clips=job.get("clips", []),
+        )
+
+    # Fallback: job lost from memory (container restart) — reload from DB
+    import json
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job_record = result.scalar_one_or_none()
+    if not job_record:
         raise HTTPException(status_code=404, detail="Job not found")
-    job = jobs[job_id]
-    # Security: only the owner can poll
-    if job.get("user_id") and job["user_id"] != user.id:
+    if job_record.user_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
+
+    clips = json.loads(job_record.clips_json) if job_record.clips_json else []
+    step = "done" if job_record.status == "done" else (job_record.error or job_record.status)
+    progress = 100 if job_record.status == "done" else 0
+
+    # Restore into memory so subsequent polls are fast
+    jobs[job_id] = {
+        "status":   job_record.status,
+        "progress": progress,
+        "step":     step,
+        "clips":    clips,
+        "user_id":  user.id,
+    }
     return StatusResponse(
         job_id=job_id,
-        status=job["status"],
-        progress=job["progress"],
-        step=job["step"],
-        clips=job.get("clips", []),
+        status=job_record.status,
+        progress=progress,
+        step=step,
+        clips=clips,
     )
 
 
 @router.get("/clips/{job_id}")
-async def get_clips(job_id: str, user: User = Depends(get_current_user)):
-    if job_id not in jobs:
+async def get_clips(job_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    import json
+    if job_id in jobs:
+        return JSONResponse({"clips": jobs[job_id].get("clips", [])})
+    # Fallback to DB
+    result = await db.execute(select(Job).where(Job.id == job_id, Job.user_id == user.id))
+    job_record = result.scalar_one_or_none()
+    if not job_record:
         raise HTTPException(status_code=404, detail="Job not found")
-    return JSONResponse({"clips": jobs[job_id].get("clips", [])})
+    clips = json.loads(job_record.clips_json) if job_record.clips_json else []
+    return JSONResponse({"clips": clips})
 
 
 @router.get("/history")

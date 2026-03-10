@@ -55,12 +55,25 @@ def download_video(youtube_url: str, job_id: str) -> tuple[Path, str]:
         "--output",   output_template,
         "--no-playlist",
         "--no-warnings",
+        # Bypass bot-detection / throttling
+        "--extractor-args", "youtube:player_client=web,mweb,ios",
+        "--user-agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36",
+        "--sleep-interval", "2",
+        "--max-sleep-interval", "5",
         "--print",    "after_move:filepath",   # print final path after download
         youtube_url,
     ]
 
     logger.info(f"Running yt-dlp for job {job_id}: {youtube_url}")
-    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"yt-dlp stderr: {e.stderr}")
+        logger.error(f"yt-dlp stdout: {e.stdout}")
+        raise RuntimeError(f"yt-dlp failed (exit {e.returncode}): {e.stderr.strip() or e.stdout.strip()}")
 
     # The last non-empty line is the final file path (from --print after_move:filepath)
     lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]

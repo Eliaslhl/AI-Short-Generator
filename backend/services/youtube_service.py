@@ -4,10 +4,13 @@ youtube_service.py – Download a YouTube video using yt-dlp.
 Returns the local file path and the video title.
 """
 
+import base64
 import logging
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from backend.config import settings
@@ -18,6 +21,29 @@ _VENV_BIN = Path(sys.executable).parent
 _YTDLP_BIN = _VENV_BIN / "yt-dlp"
 
 logger = logging.getLogger(__name__)
+
+
+def _write_cookies_file() -> str | None:
+    """
+    Decode the YOUTUBE_COOKIES_B64 env var and write to a temp file.
+    Returns the path to the cookie file, or None if not configured.
+    """
+    b64 = os.environ.get("YOUTUBE_COOKIES_B64", "").strip()
+    if not b64:
+        return None
+    try:
+        content = base64.b64decode(b64).decode("utf-8")
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False, prefix="yt_cookies_"
+        )
+        tmp.write(content)
+        tmp.flush()
+        tmp.close()
+        logger.info(f"YouTube cookies written to {tmp.name}")
+        return tmp.name
+    except Exception as exc:
+        logger.warning(f"Could not decode YOUTUBE_COOKIES_B64: {exc}")
+        return None
 
 
 def _sanitize_filename(name: str) -> str:
@@ -56,12 +82,15 @@ def download_video(youtube_url: str, job_id: str) -> tuple[Path, str]:
         "--output",   output_template,
         "--no-playlist",
         "--no-warnings",
-        # tv_embedded bypasses the "Sign in to confirm you're not a bot" check
-        # without needing cookies — works for most public videos
-        "--extractor-args", "youtube:player_client=tv_embedded,ios,web",
         "--print", "after_move:filepath",
         youtube_url,
     ]
+
+    # Inject YouTube cookies if available (required for datacenter IPs)
+    cookies_file = _write_cookies_file()
+    if cookies_file:
+        cmd.extend(["--cookies", cookies_file])
+        logger.info("Using YouTube cookies for download")
 
     logger.info(f"Running yt-dlp for job {job_id}: {youtube_url}")
     try:
@@ -70,6 +99,13 @@ def download_video(youtube_url: str, job_id: str) -> tuple[Path, str]:
         logger.error(f"yt-dlp stderr: {e.stderr}")
         logger.error(f"yt-dlp stdout: {e.stdout}")
         raise RuntimeError(f"yt-dlp failed (exit {e.returncode}): {e.stderr.strip() or e.stdout.strip()}")
+    finally:
+        # Clean up temp cookie file
+        if cookies_file:
+            try:
+                os.unlink(cookies_file)
+            except Exception:
+                pass
 
     # The last non-empty line is the final file path (from --print after_move:filepath)
     lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]

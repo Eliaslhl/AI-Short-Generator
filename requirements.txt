@@ -18,7 +18,7 @@ yt-dlp==2026.3.3
 faster-whisper==1.1.1
 
 # Video processing
-moviepy==1.0.3
+moviepy==2.1.1
 ffmpeg-python==0.2.0
 
 # AI / NLP

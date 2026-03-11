@@ -80,8 +80,15 @@ async def run_pipeline(job_id: str, youtube_url: str, user_id: str, max_clips: i
         segments = await asyncio.to_thread(transcribe_video, str(video_path), language or None)
 
         # Get video duration for precise padding/clamping
-        from moviepy import VideoFileClip
-        video_duration = await asyncio.to_thread(lambda: VideoFileClip(str(video_path)).duration)
+        import subprocess
+        import json as _json
+        def _get_duration(path: str) -> float:
+            r = subprocess.run(
+                ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", str(path)],
+                capture_output=True, text=True
+            )
+            return float(_json.loads(r.stdout)["format"]["duration"])
+        video_duration = await asyncio.to_thread(_get_duration, str(video_path))
 
         update(40, "Analysing and scoring segments…")
         top_segments = await asyncio.to_thread(select_top_segments, segments, max_clips, video_duration)

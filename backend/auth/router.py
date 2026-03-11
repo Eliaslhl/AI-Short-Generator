@@ -30,7 +30,7 @@ from backend.auth.dependencies import get_current_user
 from backend.auth.jwt import create_access_token
 from backend.database import get_db
 from backend.models.user import Plan, PasswordResetToken, User
-from backend.services.email_service import send_reset_email
+from backend.services.email_service import send_reset_email, send_welcome_email
 
 load_dotenv()
 
@@ -121,6 +121,13 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
     token = create_access_token(user.id, user.email)
     logger.info(f"New user registered: {user.email}")
+
+    # Send welcome email (non-blocking — won't fail registration if SMTP is down)
+    try:
+        await send_welcome_email(user.email, body.full_name or "")
+    except Exception:
+        pass
+
     return {"access_token": token, "token_type": "bearer", "user": _user_dict(user)}
 
 

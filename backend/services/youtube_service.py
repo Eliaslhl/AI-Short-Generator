@@ -56,12 +56,9 @@ def download_video(youtube_url: str, job_id: str) -> tuple[Path, str]:
         "--output",   output_template,
         "--no-playlist",
         "--no-warnings",
-        # Bypass bot-detection — try all available clients
-        "--extractor-args", "youtube:player_client=web,mweb,ios,android",
-        "--user-agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36",
+        # tv_embedded bypasses the "Sign in to confirm you're not a bot" check
+        # without needing cookies — works for most public videos
+        "--extractor-args", "youtube:player_client=tv_embedded,ios,web",
         "--print", "after_move:filepath",
         youtube_url,
     ]

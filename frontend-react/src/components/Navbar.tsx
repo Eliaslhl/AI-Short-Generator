@@ -40,7 +40,7 @@ export default function Navbar() {
 
         {/* Logo */}
         <Link to="/" className="flex items-center shrink-0">
-            <img src="/logoshort.png" alt="AI Shorts Generator" className="h-12 w-auto" />
+            <img src="/logoshort.png" alt="AI Shorts Generator" className="h-25 w-auto" />
         </Link>
 
         {/* Desktop right */}

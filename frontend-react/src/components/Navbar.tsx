@@ -40,7 +40,7 @@ export default function Navbar() {
 
         {/* Logo */}
         <Link to="/" className="flex items-center shrink-0">
-          <img src="/logoshort.png" alt="AI Shorts Generator" className="h-9 w-auto" />
+            <img src="/logoshort.png" alt="AI Shorts Generator" className="h-12 w-auto" />
         </Link>
 
         {/* Desktop right */}
@@ -94,22 +94,22 @@ export default function Navbar() {
               <button
                 onClick={handleLogout}
                 className="p-1.5 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition"
-                title="Se déconnecter"
+                  title="Sign out"
               >
                 <LogOut className="w-4 h-4" />
               </button>
             </>
           ) : (
             <>
-              <Link to="/login" className="text-sm text-gray-300 hover:text-white transition">
-                Se connecter
-              </Link>
-              <Link
-                to="/register"
-                className="px-4 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm rounded-lg transition"
-              >
-                S'inscrire
-              </Link>
+                <Link to="/login" className="text-sm text-gray-300 hover:text-white transition">
+                  Sign in
+                </Link>
+                <Link
+                  to="/register"
+                  className="px-4 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm rounded-lg transition"
+                >
+                  Sign up
+                </Link>
             </>
           )}
         </div>
@@ -173,10 +173,10 @@ export default function Navbar() {
               </Link>
 
               <button
-                onClick={handleLogout}
+                onClick={() => { handleLogout(); setMenuOpen(false); }}
                 className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 transition w-full text-left"
               >
-                <LogOut className="w-4 h-4" /> Se déconnecter
+                <LogOut className="w-4 h-4" /> Sign out
               </button>
             </>
           ) : (
@@ -186,14 +186,14 @@ export default function Navbar() {
                 onClick={() => setMenuOpen(false)}
                 className="px-3 py-2.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-white/10 transition"
               >
-                Se connecter
+                Sign in
               </Link>
               <Link
                 to="/register"
                 onClick={() => setMenuOpen(false)}
                 className="px-3 py-2.5 bg-purple-600 hover:bg-purple-500 text-white text-sm rounded-lg transition text-center"
               >
-                S'inscrire
+                Sign up
               </Link>
             </>
           )}

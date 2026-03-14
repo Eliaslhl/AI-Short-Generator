@@ -15,6 +15,9 @@ import AuthCallbackPage from './pages/AuthCallbackPage'
 import YoutubeShortsGenerator from './pages/YoutubeShortsGenerator'
 import YoutubeVideoToShorts from './pages/YoutubeVideoToShorts'
 import AiClipGenerator from './pages/AiClipGenerator'
+import AiShortsGeneratorSEO from './pages/seo/AiShortsGeneratorSEO'
+import YoutubeShortsGeneratorSEO from './pages/seo/YoutubeShortsGeneratorSEO'
+import ConvertYoutubeToShortsSEO from './pages/seo/ConvertYoutubeToShortsSEO'
 
 export default function App() {
   // Scroll to hash on navigation (e.g. /#pricing) to support SPA anchor links
@@ -50,6 +53,11 @@ export default function App() {
               <Route path="/youtube-shorts-generator" element={<YoutubeShortsGenerator />} />
               <Route path="/youtube-video-to-shorts" element={<YoutubeVideoToShorts />} />
               <Route path="/ai-clip-generator" element={<AiClipGenerator />} />
+
+              {/* SEO landing pages */}
+              <Route path="/seo/ai-shorts-generator" element={<AiShortsGeneratorSEO />} />
+              <Route path="/seo/youtube-shorts-generator" element={<YoutubeShortsGeneratorSEO />} />
+              <Route path="/seo/convert-youtube-to-shorts" element={<ConvertYoutubeToShortsSEO />} />
 
               {/* Protected */}
               <Route path="/generate" element={

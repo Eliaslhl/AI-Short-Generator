@@ -30,8 +30,16 @@ export default function App() {
       // small timeout to allow route renders
       const id = hash.replace('#', '')
       setTimeout(() => {
-        const el = document.getElementById(id)
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        try {
+          const el = document.getElementById(id)
+          if (el && typeof (el as Element).scrollIntoView === 'function') {
+            (el as Element).scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
+        } catch (e) {
+          // defensive: if any unexpected error occurs, ignore to avoid breaking the page
+          // (some environments / SSR might not have full DOM APIs)
+          // console.debug('ScrollToHash error', e)
+        }
       }, 50)
     }, [hash, pathname])
     return null

@@ -112,9 +112,13 @@ export default function Navbar() {
                 >
                   Sign up
                 </Link>
-                <Link to="/privacy" className="ml-3 text-sm text-gray-400 hover:text-white transition">Privacy</Link>
+                <Link to="/privacy" onClick={(e) => { e.preventDefault(); navigate('/privacy'); window.location.href = '/privacy'; }} className="ml-3 text-sm text-gray-400 hover:text-white transition">Privacy</Link>
                 <button onClick={() => setCookieOpen(true)} className="ml-3 text-sm text-gray-400 hover:text-white transition">Cookies</button>
             </>
+          )}
+          {/* Always-visible privacy link for authenticated users as well */}
+          {user && (
+            <Link to="/privacy" onClick={(e) => { e.preventDefault(); navigate('/privacy'); window.location.href = '/privacy'; }} className="ml-3 text-sm text-gray-400 hover:text-white transition">Privacy</Link>
           )}
         </div>
 
@@ -136,7 +140,7 @@ export default function Navbar() {
       </div>
 
       {/* Mobile dropdown */}
-      {menuOpen && (
+        {menuOpen && (
         <div className="md:hidden border-t border-white/10 bg-black/60 backdrop-blur-md px-4 py-3 flex flex-col gap-1">
           {user ? (
             <>
@@ -199,8 +203,15 @@ export default function Navbar() {
               >
                 Sign up
               </Link>
-                  <Link to="/privacy" onClick={() => setMenuOpen(false)} className="px-3 py-2.5 text-sm text-gray-400 hover:text-white transition">Privacy</Link>
+                  <Link to="/privacy" onClick={(e) => { e.preventDefault(); setMenuOpen(false); navigate('/privacy'); window.location.href = '/privacy'; }} className="px-3 py-2.5 text-sm text-gray-400 hover:text-white transition">Privacy</Link>
                   <button onClick={() => { setCookieOpen(true); setMenuOpen(false) }} className="px-3 py-2.5 text-sm text-gray-400 hover:text-white transition text-left">Cookies</button>
+            </>
+          )}
+          {/* If user is authenticated, still show Privacy + Cookies in the mobile menu */}
+          {user && (
+            <>
+              <Link to="/privacy" onClick={(e) => { e.preventDefault(); setMenuOpen(false); navigate('/privacy'); window.location.href = '/privacy'; }} className="px-3 py-2.5 text-sm text-gray-400 hover:text-white transition">Privacy</Link>
+              <button onClick={() => { setCookieOpen(true); setMenuOpen(false) }} className="px-3 py-2.5 text-sm text-gray-400 hover:text-white transition text-left">Cookies</button>
             </>
           )}
         </div>

@@ -196,7 +196,10 @@ def select_top_segments(
     """
     min_dur = settings.min_clip_duration
     max_dur = settings.max_clip_duration
-    n_clips = max(1, min(max_clips if max_clips is not None else settings.max_clips, 10))
+    # Allow the caller (routes) to decide the allowed number of clips per plan.
+    # `max_clips` is passed from the request after server-side enforcement.
+    # Fall back to settings.max_clips when not provided.
+    n_clips = max(1, (max_clips if max_clips is not None else settings.max_clips))
 
     # ── 1. Merge raw segments into clip-sized chunks ─────────────────────
     chunks = _merge_segments(segments, min_dur, max_dur)

@@ -18,6 +18,8 @@ import AiClipGenerator from './pages/AiClipGenerator'
 import AiShortsGeneratorSEO from './pages/seo/AiShortsGeneratorSEO'
 import YoutubeShortsGeneratorSEO from './pages/seo/YoutubeShortsGeneratorSEO'
 import ConvertYoutubeToShortsSEO from './pages/seo/ConvertYoutubeToShortsSEO'
+import CookieConsent from './components/CookieConsent'
+import PrivacyPolicy from './pages/PrivacyPolicy'
 
 export default function App() {
   // Scroll to hash on navigation (e.g. /#pricing) to support SPA anchor links
@@ -42,6 +44,7 @@ export default function App() {
         <AuthProvider>
           <div className="min-h-screen w-full bg-gray-950 text-white">
             <Navbar />
+            <CookieConsent />
             <Routes>
               {/* Public */}
               <Route path="/" element={<LandingPage />} />
@@ -69,6 +72,9 @@ export default function App() {
 
               {/* Fallback */}
               <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+            <Routes>
+              <Route path="/privacy" element={<PrivacyPolicy />} />
             </Routes>
           </div>
         </AuthProvider>

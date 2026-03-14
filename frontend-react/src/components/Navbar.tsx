@@ -110,6 +110,7 @@ export default function Navbar() {
                 >
                   Sign up
                 </Link>
+                <Link to="/privacy" className="ml-3 text-sm text-gray-400 hover:text-white transition">Privacy</Link>
             </>
           )}
         </div>
@@ -195,6 +196,7 @@ export default function Navbar() {
               >
                 Sign up
               </Link>
+                  <Link to="/privacy" onClick={() => setMenuOpen(false)} className="px-3 py-2.5 text-sm text-gray-400 hover:text-white transition">Privacy</Link>
             </>
           )}
         </div>

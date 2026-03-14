@@ -37,18 +37,30 @@
           }
         }
 
-        // Load after page load idle or on first user interaction
-        if (document.readyState === 'complete') {
-          scheduleInit();
-        } else {
-          window.addEventListener('load', scheduleInit, {once: true});
+        // Load after page load idle or on first user interaction — only if cookie consent given
+        function handleConsentChange() {
+          try {
+            var consent = localStorage.getItem('cookie_consent') === 'true'
+            if (consent) scheduleInit()
+          } catch (e) {}
         }
 
+        // If consent already given, schedule immediately
+        handleConsentChange()
+
+        // Listen for a custom event dispatched by the cookie banner when the user accepts
+        window.addEventListener('cookie-consent', handleConsentChange, {once: true})
+
+        // Also trigger on first interaction only when consent exists
         ['click','keydown','touchstart','scroll'].forEach(function(evt) {
           window.addEventListener(evt, function onFirst() {
-            scheduleInit();
-            window.removeEventListener(evt, onFirst);
-          }, {passive: true, once: true});
+            try {
+              if (localStorage.getItem('cookie_consent') === 'true') {
+                scheduleInit();
+                window.removeEventListener(evt, onFirst);
+              }
+            } catch (e) {}
+          }, {passive: true});
         });
       })();
     </script>
@@ -58,19 +70,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI Shorts Generator – Turn YouTube Videos into Viral Shorts Automatically</title>
   <meta name="description" content="AI Shorts Generator turns long YouTube videos into viral YouTube Shorts, TikTok and Reels automatically with AI." />
-    <!-- Google Tag Manager -->
-    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-    })(window,document,'script','dataLayer','GTM-5VQ2XKGN');</script>
-    <!-- End Google Tag Manager -->
+    <!-- Google Tag Manager is loaded only after cookie consent -->
   </head>
   <body>
-  <!-- Google Tag Manager (noscript) - kept for no-JS users -->
-  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5VQ2XKGN"
-  height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
-  <!-- End Google Tag Manager (noscript) -->
+  <!-- Note: GTM noscript iframe intentionally not included here to respect consent for no-JS users. -->
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

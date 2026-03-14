@@ -2,6 +2,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { LogOut, User, Crown, Sparkles, Rocket, LayoutDashboard, Clapperboard, Menu, X } from './icons'
+import CookieSettings from './CookieSettings'
 
 const PLAN_BADGE: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
   pro: {
@@ -25,6 +26,7 @@ export default function Navbar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [cookieOpen, setCookieOpen] = useState(false)
 
   const handleLogout = (): void => {
     logout()
@@ -111,6 +113,7 @@ export default function Navbar() {
                   Sign up
                 </Link>
                 <Link to="/privacy" className="ml-3 text-sm text-gray-400 hover:text-white transition">Privacy</Link>
+                <button onClick={() => setCookieOpen(true)} className="ml-3 text-sm text-gray-400 hover:text-white transition">Cookies</button>
             </>
           )}
         </div>
@@ -197,10 +200,12 @@ export default function Navbar() {
                 Sign up
               </Link>
                   <Link to="/privacy" onClick={() => setMenuOpen(false)} className="px-3 py-2.5 text-sm text-gray-400 hover:text-white transition">Privacy</Link>
+                  <button onClick={() => { setCookieOpen(true); setMenuOpen(false) }} className="px-3 py-2.5 text-sm text-gray-400 hover:text-white transition text-left">Cookies</button>
             </>
           )}
         </div>
       )}
+      <CookieSettings open={cookieOpen} onClose={() => setCookieOpen(false)} />
     </nav>
   )
 }

@@ -38,10 +38,10 @@ export default function Navbar() {
     <nav className="border-b border-white/10 bg-black/40 backdrop-blur-md sticky top-0 z-50">
       <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
 
-        {/* Logo */}
-        <Link to="/" className="flex items-center shrink-0">
-            <img src="/logoshort.png" alt="AI Shorts Generator" className="h-25 w-auto" />
-        </Link>
+    {/* Logo */}
+    <Link to="/" className="flex items-center shrink-0 mr-auto md:mr-0">
+      <img src="/logoshort.png" alt="AI Shorts Generator" className="h-20 max-h-16 w-auto object-contain" />
+    </Link>
 
         {/* Desktop right */}
         <div className="hidden md:flex items-center gap-3">

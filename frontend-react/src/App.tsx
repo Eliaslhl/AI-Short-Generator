@@ -11,6 +11,9 @@ import ResetPasswordPage from './pages/ResetPasswordPage'
 import GeneratorPage from './pages/GeneratorPage'
 import DashboardPage from './pages/DashboardPage'
 import AuthCallbackPage from './pages/AuthCallbackPage'
+import YoutubeShortsGenerator from './pages/YoutubeShortsGenerator'
+import YoutubeVideoToShorts from './pages/YoutubeVideoToShorts'
+import AiClipGenerator from './pages/AiClipGenerator'
 
 export default function App() {
   return (
@@ -27,6 +30,9 @@ export default function App() {
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/auth/callback" element={<AuthCallbackPage />} />
+              <Route path="/youtube-shorts-generator" element={<YoutubeShortsGenerator />} />
+              <Route path="/youtube-video-to-shorts" element={<YoutubeVideoToShorts />} />
+              <Route path="/ai-clip-generator" element={<AiClipGenerator />} />
 
               {/* Protected */}
               <Route path="/generate" element={

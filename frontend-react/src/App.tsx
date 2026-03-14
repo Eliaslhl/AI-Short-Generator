@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
 import { AuthProvider } from './context/AuthContext'
 import { ToastProvider } from './context/ToastContext'
 import Navbar from './components/Navbar'
@@ -16,8 +17,24 @@ import YoutubeVideoToShorts from './pages/YoutubeVideoToShorts'
 import AiClipGenerator from './pages/AiClipGenerator'
 
 export default function App() {
+  // Scroll to hash on navigation (e.g. /#pricing) to support SPA anchor links
+  function ScrollToHash() {
+    const { hash, pathname } = useLocation()
+    useEffect(() => {
+      if (!hash) return
+      // small timeout to allow route renders
+      const id = hash.replace('#', '')
+      setTimeout(() => {
+        const el = document.getElementById(id)
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 50)
+    }, [hash, pathname])
+    return null
+  }
+
   return (
     <BrowserRouter>
+      <ScrollToHash />
       <ToastProvider>
         <AuthProvider>
           <div className="min-h-screen w-full bg-gray-950 text-white">

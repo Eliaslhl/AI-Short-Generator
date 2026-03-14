@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { LogOut, User, Crown, Sparkles, Rocket, LayoutDashboard, Clapperboard, Menu, X } from 'lucide-react'
+import { LogOut, User, Crown, Sparkles, Rocket, LayoutDashboard, Clapperboard, Menu, X } from './icons'
 
 const PLAN_BADGE: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
   pro: {

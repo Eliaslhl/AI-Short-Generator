@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Film, Zap, Clock, Download, Star, ArrowRight, CheckCircle, Crown, Sparkles, Rocket } from 'lucide-react'
+import { Film, Zap, Clock, Download, Star, ArrowRight, CheckCircle, Crown, Sparkles, Rocket } from '../components/icons'
 import { useAuth } from '../context/AuthContext'
 import { authApi } from '../api'
 

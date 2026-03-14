@@ -1,14 +1,56 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-ZCVTW1YJMD"></script>
+    <!-- Google tag (gtag.js) & Google Tag Manager
+         Loaded lazily after initial render (requestIdleCallback or on first interaction)
+         to avoid blocking LCP and Speed Index on mobile. -->
     <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
+      (function() {
+        function insertScript(src) {
+          var s = document.createElement('script');
+          s.src = src;
+          s.async = true;
+          document.head.appendChild(s);
+          return s;
+        }
 
-      gtag('config', 'G-ZCVTW1YJMD');
+        function initAnalytics() {
+          // Load GTM and gtag non-blocking
+          insertScript('https://www.googletagmanager.com/gtm.js?id=GTM-5VQ2XKGN');
+          insertScript('https://www.googletagmanager.com/gtag/js?id=G-ZCVTW1YJMD');
+
+          // Minimal gtag shim so calls before the lib loads are buffered
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){ window.dataLayer.push(arguments); }
+          window.gtag = window.gtag || gtag;
+          window.gtag('js', new Date());
+          window.gtag('config', 'G-ZCVTW1YJMD');
+        }
+
+        function scheduleInit() {
+          if (window.__ai_shorts_gtm_loaded) return;
+          window.__ai_shorts_gtm_loaded = true;
+          if ('requestIdleCallback' in window) {
+            requestIdleCallback(initAnalytics, {timeout: 2000});
+          } else {
+            setTimeout(initAnalytics, 2000);
+          }
+        }
+
+        // Load after page load idle or on first user interaction
+        if (document.readyState === 'complete') {
+          scheduleInit();
+        } else {
+          window.addEventListener('load', scheduleInit, {once: true});
+        }
+
+        ['click','keydown','touchstart','scroll'].forEach(function(evt) {
+          window.addEventListener(evt, function onFirst() {
+            scheduleInit();
+            window.removeEventListener(evt, onFirst);
+          }, {passive: true, once: true});
+        });
+      })();
     </script>
   <meta charset="UTF-8" />
   <meta name="google-site-verification" content="Y-dMt68EI5104K73SH7vYVYQY6_0DpLfLfGSDmPT2bQ" />
@@ -25,10 +67,10 @@
     <!-- End Google Tag Manager -->
   </head>
   <body>
-    <!-- Google Tag Manager (noscript) -->
-    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5VQ2XKGN"
-    height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
-    <!-- End Google Tag Manager (noscript) -->
+  <!-- Google Tag Manager (noscript) - kept for no-JS users -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5VQ2XKGN"
+  height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+  <!-- End Google Tag Manager (noscript) -->
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

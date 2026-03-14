@@ -238,7 +238,6 @@ class CheckoutRequest(BaseModel):
 async def create_checkout(body: CheckoutRequest, user: User = Depends(get_current_user)):
     if not stripe.api_key:
         raise HTTPException(status_code=501, detail="Stripe not configured")
-
     # Validate the price_id is one of our known prices
     if body.price_id not in PRICE_TO_PLAN:
         raise HTTPException(status_code=400, detail="Invalid price ID")
@@ -249,7 +248,7 @@ async def create_checkout(body: CheckoutRequest, user: User = Depends(get_curren
         customer_id = customer.id
     else:
         customer_id = user.stripe_customer_id
-
+    # Create checkout using a predefined price id
     session = stripe.checkout.Session.create(
         customer=customer_id,
         payment_method_types=["card"],
@@ -305,15 +304,24 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             result = await db.execute(select(User).where(User.id == user_id))
             user = result.scalar_one_or_none()
             if user:
-                # Retrieve the subscription to get the price_id
+                # First, prefer a plan explicitly attached to the session metadata
+                # (used for local TEST:<PLAN> sessions). If not present, fall
+                # back to retrieving the subscription and mapping by price_id.
                 target_plan = Plan.PRO  # fallback
-                if subscription_id:
+                meta_plan = session.get("metadata", {}).get("plan")
+                if meta_plan:
                     try:
-                        sub = stripe.Subscription.retrieve(subscription_id)
-                        price_id = sub["items"]["data"][0]["price"]["id"]
-                        target_plan = PRICE_TO_PLAN.get(price_id, Plan.PRO)
-                    except Exception as e:
-                        logger.warning(f"Could not retrieve subscription price: {e}")
+                        target_plan = Plan[meta_plan]
+                    except Exception:
+                        logger.warning(f"Unknown plan in session metadata: {meta_plan}")
+                else:
+                    if subscription_id:
+                        try:
+                            sub = stripe.Subscription.retrieve(subscription_id)
+                            price_id = sub["items"]["data"][0]["price"]["id"]
+                            target_plan = PRICE_TO_PLAN.get(price_id, Plan.PRO)
+                        except Exception as e:
+                            logger.warning(f"Could not retrieve subscription price: {e}")
 
                 user.plan = target_plan
                 user.stripe_customer_id = customer_id
@@ -333,6 +341,9 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             logger.info(f"User {user.email} downgraded to Free (subscription cancelled)")
 
     return {"status": "ok"}
+
+
+
 
 
 # ── Forgot password ───────────────────────────────────────────────────────────

@@ -21,36 +21,99 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────
 EMOJI_MAP: Dict[str, str] = {
     # Tech / AI
-    "ai": "🤖", "artificial intelligence": "🤖", "robot": "🤖",
-    "code": "💻", "software": "💻", "program": "💻", "developer": "💻",
-    "data": "📊", "algorithm": "⚙️", "machine learning": "🧠",
+    "ai": "🤖",
+    "artificial intelligence": "🤖",
+    "robot": "🤖",
+    "code": "💻",
+    "software": "💻",
+    "program": "💻",
+    "developer": "💻",
+    "data": "📊",
+    "algorithm": "⚙️",
+    "machine learning": "🧠",
     # Money / Business
-    "money": "💰", "million": "💰", "billion": "💰", "profit": "💰",
-    "business": "💼", "startup": "🚀", "company": "🏢",
-    "market": "📈", "stock": "📈", "invest": "💹",
+    "money": "💰",
+    "million": "💰",
+    "billion": "💰",
+    "profit": "💰",
+    "business": "💼",
+    "startup": "🚀",
+    "company": "🏢",
+    "market": "📈",
+    "stock": "📈",
+    "invest": "💹",
     # Science / Space
-    "science": "🔬", "research": "🔬", "study": "📚",
-    "space": "🚀", "nasa": "🚀", "planet": "🪐", "universe": "🌌",
+    "science": "🔬",
+    "research": "🔬",
+    "study": "📚",
+    "space": "🚀",
+    "nasa": "🚀",
+    "planet": "🪐",
+    "universe": "🌌",
     # Health
-    "health": "❤️", "brain": "🧠", "body": "💪",
-    "exercise": "🏋️", "food": "🍎", "diet": "🥗",
+    "health": "❤️",
+    "brain": "🧠",
+    "body": "💪",
+    "exercise": "🏋️",
+    "food": "🍎",
+    "diet": "🥗",
     # Emotions / energy
-    "amazing": "🤩", "incredible": "😱", "crazy": "🤪",
-    "love": "❤️", "hate": "😤", "fear": "😨", "hope": "🌟",
-    "win": "🏆", "success": "✅", "fail": "❌", "mistake": "⚠️",
+    "amazing": "🤩",
+    "incredible": "😱",
+    "crazy": "🤪",
+    "love": "❤️",
+    "hate": "😤",
+    "fear": "😨",
+    "hope": "🌟",
+    "win": "🏆",
+    "success": "✅",
+    "fail": "❌",
+    "mistake": "⚠️",
     # Time
-    "secret": "🤫", "truth": "💡", "fact": "📌",
-    "future": "🔮", "history": "📜", "change": "🔄",
+    "secret": "🤫",
+    "truth": "💡",
+    "fact": "📌",
+    "future": "🔮",
+    "history": "📜",
+    "change": "🔄",
     # Nature
-    "fire": "🔥", "water": "💧", "earth": "🌍", "energy": "⚡",
+    "fire": "🔥",
+    "water": "💧",
+    "earth": "🌍",
+    "energy": "⚡",
 }
 
 # Words that should always be uppercased for emphasis
 EMPHASIS_WORDS = {
-    "never", "always", "every", "all", "none", "nothing", "everything",
-    "most", "best", "worst", "only", "must", "will", "can", "huge",
-    "massive", "insane", "secret", "real", "true", "free", "now",
-    "today", "first", "last", "new", "big", "zero", "one",
+    "never",
+    "always",
+    "every",
+    "all",
+    "none",
+    "nothing",
+    "everything",
+    "most",
+    "best",
+    "worst",
+    "only",
+    "must",
+    "will",
+    "can",
+    "huge",
+    "massive",
+    "insane",
+    "secret",
+    "real",
+    "true",
+    "free",
+    "now",
+    "today",
+    "first",
+    "last",
+    "new",
+    "big",
+    "zero",
+    "one",
 }
 
 MAX_WORDS_PER_LINE = 6
@@ -76,7 +139,7 @@ def _split_into_lines(text: str, max_words: int = MAX_WORDS_PER_LINE) -> List[st
     words = text.split()
     lines = []
     for i in range(0, len(words), max_words):
-        chunk = words[i: i + max_words]
+        chunk = words[i : i + max_words]
         lines.append(" ".join(chunk))
     return lines
 
@@ -103,8 +166,8 @@ def build_captions(
     """
     # ── 1. Stylise words ──────────────────────────────────────────────────
     words_in_text = segment_text.split()
-    styled_words  = [_stylise_word(w) for w in words_in_text]
-    styled_text   = " ".join(styled_words)
+    styled_words = [_stylise_word(w) for w in words_in_text]
+    styled_text = " ".join(styled_words)
 
     # ── 2. Split into short lines ────────────────────────────────────────
     lines = _split_into_lines(styled_text)
@@ -132,17 +195,19 @@ def build_captions(
 
             # Grab the timestamp slice for those words
             slice_end = min(word_idx + line_word_count, len(wt_list))
-            ts_slice  = wt_list[word_idx:slice_end]
+            ts_slice = wt_list[word_idx:slice_end]
 
             if ts_slice:
                 t_start = ts_slice[0]["start"]
-                t_end   = ts_slice[-1]["end"]
+                t_end = ts_slice[-1]["end"]
                 captions.append({"text": line, "start": t_start, "end": t_end})
                 word_idx = slice_end
             else:
                 # Ran out of timestamps — extend from last known end
                 prev_end = captions[-1]["end"] if captions else 0.0
-                captions.append({"text": line, "start": prev_end, "end": prev_end + 1.5})
+                captions.append(
+                    {"text": line, "start": prev_end, "end": prev_end + 1.5}
+                )
     else:
         # No timestamps: evenly distribute over segment
         avg_line_dur = 1.5  # seconds per line

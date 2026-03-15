@@ -25,6 +25,7 @@ def _get_nlp():
         try:
             import spacy
             from backend.config import settings
+
             _nlp = spacy.load(settings.spacy_model)
             logger.info(f"spaCy model '{settings.spacy_model}' loaded.")
         except Exception as exc:
@@ -37,10 +38,37 @@ def _get_nlp():
 #  Stop words (supplement spaCy's built-in list)
 # ──────────────────────────────────────────────
 EXTRA_STOP_WORDS = {
-    "like", "just", "also", "get", "got", "let", "make", "made",
-    "say", "said", "way", "go", "going", "know", "think", "really",
-    "even", "back", "right", "ve", "ll", "re", "don", "didn",
-    "isn", "wasn", "aren", "haven", "wouldn", "couldn", "shouldn",
+    "like",
+    "just",
+    "also",
+    "get",
+    "got",
+    "let",
+    "make",
+    "made",
+    "say",
+    "said",
+    "way",
+    "go",
+    "going",
+    "know",
+    "think",
+    "really",
+    "even",
+    "back",
+    "right",
+    "ve",
+    "ll",
+    "re",
+    "don",
+    "didn",
+    "isn",
+    "wasn",
+    "aren",
+    "haven",
+    "wouldn",
+    "couldn",
+    "shouldn",
 }
 
 

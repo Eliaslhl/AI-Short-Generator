@@ -6,18 +6,18 @@ export default function Footer() {
       <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="flex flex-col">
           <div className="text-white font-semibold text-lg">AI Shorts Generator</div>
-          <div className="text-sm text-gray-400 mt-1">Transformez vos vidéos YouTube en shorts viraux</div>
+          <div className="text-sm text-gray-400 mt-1">Turn your YouTube videos into viral shorts</div>
         </div>
 
         <nav className="flex gap-6 flex-wrap">
-          <Link to="/legal/mentions" className="text-sm text-gray-300 hover:text-white">Mentions légales</Link>
-          <Link to="/legal/cgu" className="text-sm text-gray-300 hover:text-white">CGU</Link>
-          <Link to="/privacy" className="text-sm text-gray-300 hover:text-white">Politique de confidentialité</Link>
+          <Link to="/legal/mentions" className="text-sm text-gray-300 hover:text-white">Legal notice</Link>
+          <Link to="/legal/cgu" className="text-sm text-gray-300 hover:text-white">Terms</Link>
+          <Link to="/privacy" className="text-sm text-gray-300 hover:text-white">Privacy policy</Link>
           <Link to="/legal/cookies" className="text-sm text-gray-300 hover:text-white">Cookies</Link>
-          <Link to="/sitemap" className="text-sm text-gray-300 hover:text-white">Plan du site</Link>
+          <Link to="/sitemap" className="text-sm text-gray-300 hover:text-white">Sitemap</Link>
         </nav>
       </div>
-      <div className="border-t border-white/5 text-center text-xs text-gray-500 py-3">© {new Date().getFullYear()} AI Shorts Generator — Tous droits réservés.</div>
+      <div className="border-t border-white/5 text-center text-xs text-gray-500 py-3">© {new Date().getFullYear()} AI Shorts Generator — All rights reserved.</div>
     </footer>
   )
 }

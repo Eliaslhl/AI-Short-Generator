@@ -22,37 +22,38 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
-import bcrypt
-from sqlalchemy import select
-from backend.database import AsyncSessionLocal, create_tables
-from backend.models.user import Plan, User
+import bcrypt  # noqa: E402
+from sqlalchemy import select  # noqa: E402
+from backend.database import AsyncSessionLocal, create_tables  # noqa: E402
+from backend.models.user import Plan, User  # noqa: E402
 
 TEST_ACCOUNTS = [
     {
-        "email":     "test.free@test.com",
-        "password":  "Test1234!",
+        "email": "test.free@test.com",
+        "password": "Test1234!",
         "full_name": "Test Free",
-        "plan":      Plan.FREE,
+        "plan": Plan.FREE,
     },
     {
-        "email":     "test.standard@test.com",
-        "password":  "Test1234!",
+        "email": "test.standard@test.com",
+        "password": "Test1234!",
         "full_name": "Test Standard",
-        "plan":      Plan.STANDARD,
+        "plan": Plan.STANDARD,
     },
     {
-        "email":     "test.pro@test.com",
-        "password":  "Test1234!",
+        "email": "test.pro@test.com",
+        "password": "Test1234!",
         "full_name": "Test Pro",
-        "plan":      Plan.PRO,
+        "plan": Plan.PRO,
     },
     {
-        "email":     "test.proplus@test.com",
-        "password":  "Test1234!",
+        "email": "test.proplus@test.com",
+        "password": "Test1234!",
         "full_name": "Test Pro+",
-        "plan":      Plan.PROPLUS,
+        "plan": Plan.PROPLUS,
     },
 ]
 
@@ -74,7 +75,9 @@ async def seed():
             if existing:
                 # Update plan in case it changed
                 existing.plan = account["plan"]
-                print(f"  ↻  {account['email']}  (already exists, plan updated to {account['plan']})")
+                print(
+                    f"  ↻  {account['email']}  (already exists, plan updated to {account['plan']})"
+                )
             else:
                 user = User(
                     email=account["email"],

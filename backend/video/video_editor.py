@@ -32,15 +32,16 @@ def _resolve_font(prefer_bold: bool = True) -> str:
     Falls back to the first working one.
     """
     import os
+
     candidates = (
         [
-            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",   # macOS
-            "/System/Library/Fonts/Supplemental/Impact.ttf",       # macOS
-            "/System/Library/Fonts/Arial.ttf",                     # macOS (older)
-            "/Library/Fonts/Arial Bold.ttf",                       # macOS user fonts
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",  # macOS
+            "/System/Library/Fonts/Supplemental/Impact.ttf",  # macOS
+            "/System/Library/Fonts/Arial.ttf",  # macOS (older)
+            "/Library/Fonts/Arial Bold.ttf",  # macOS user fonts
         ]
-        if prefer_bold else
-        [
+        if prefer_bold
+        else [
             "/System/Library/Fonts/Arial.ttf",
             "/Library/Fonts/Arial.ttf",
             "/System/Library/Fonts/Supplemental/Arial.ttf",
@@ -61,19 +62,19 @@ def _resolve_font(prefer_bold: bool = True) -> str:
     return "Arial"
 
 
-FONT_BOLD   = _resolve_font(prefer_bold=True)
+FONT_BOLD = _resolve_font(prefer_bold=True)
 FONT_NORMAL = _resolve_font(prefer_bold=False)
 logger.info(f"Using fonts — bold: {FONT_BOLD} | normal: {FONT_NORMAL}")
 
 # ──────────────────────────────────────────────
 #  Colour / size constants
 # ──────────────────────────────────────────────
-HOOK_FONT_SIZE    = 52
+HOOK_FONT_SIZE = 52
 CAPTION_FONT_SIZE = 44
-HOOK_COLOR        = "white"
-CAPTION_COLOR     = "#FFFF00"      # yellow for captions
-STROKE_COLOR      = "black"
-STROKE_WIDTH      = 3
+HOOK_COLOR = "white"
+CAPTION_COLOR = "#FFFF00"  # yellow for captions
+STROKE_COLOR = "black"
+STROKE_WIDTH = 3
 
 # ──────────────────────────────────────────────
 #  Subtitle style presets  (Pro feature)
@@ -81,11 +82,36 @@ STROKE_WIDTH      = 3
 # Note: font keys are replaced at runtime with FONT_BOLD / FONT_NORMAL
 # after the _resolve_font() call below.
 SUBTITLE_STYLES: dict[str, dict] = {
-    "default":  {"color": "#FFFF00", "font": None, "stroke_color": "black",   "stroke_width": 3},
-    "bold":     {"color": "white",   "font": None, "stroke_color": "black",   "stroke_width": 4},
-    "outlined": {"color": "white",   "font": None, "stroke_color": "#3B82F6", "stroke_width": 4},
-    "neon":     {"color": "#00FF88", "font": None, "stroke_color": "black",   "stroke_width": 5},
-    "minimal":  {"color": "white",   "font": None, "stroke_color": None,      "stroke_width": 0},
+    "default": {
+        "color": "#FFFF00",
+        "font": None,
+        "stroke_color": "black",
+        "stroke_width": 3,
+    },
+    "bold": {
+        "color": "white",
+        "font": None,
+        "stroke_color": "black",
+        "stroke_width": 4,
+    },
+    "outlined": {
+        "color": "white",
+        "font": None,
+        "stroke_color": "#3B82F6",
+        "stroke_width": 4,
+    },
+    "neon": {
+        "color": "#00FF88",
+        "font": None,
+        "stroke_color": "black",
+        "stroke_width": 5,
+    },
+    "minimal": {
+        "color": "white",
+        "font": None,
+        "stroke_color": None,
+        "stroke_width": 0,
+    },
 }
 
 
@@ -104,8 +130,8 @@ def _crop_to_portrait(clip):
     """
     from moviepy.video.fx import Crop, Resize
 
-    target_w = settings.output_width    # 1080
-    target_h = settings.output_height   # 1920
+    target_w = settings.output_width  # 1080
+    target_h = settings.output_height  # 1920
     target_ratio = target_w / target_h  # 0.5625
 
     w, h = clip.size
@@ -136,7 +162,7 @@ def _add_hook_overlay(clip, hook_text: str):
         words = hook_text.split()
         lines = []
         for i in range(0, len(words), 4):
-            lines.append(" ".join(words[i:i + 4]))
+            lines.append(" ".join(words[i : i + 4]))
         wrapped = "\n".join(lines)
 
         txt = (
@@ -160,30 +186,35 @@ def _add_hook_overlay(clip, hook_text: str):
         return clip
 
 
-def _add_caption_overlays(clip, captions: List[Dict[str, Any]], seg_start: float, subtitle_style: str = "default"):
+def _add_caption_overlays(
+    clip,
+    captions: List[Dict[str, Any]],
+    seg_start: float,
+    subtitle_style: str = "default",
+):
     """Overlay timed caption lines at the bottom of the clip."""
     try:
         from moviepy import TextClip, CompositeVideoClip
 
         style = SUBTITLE_STYLES.get(subtitle_style, SUBTITLE_STYLES["default"])
-        cap_color    = style["color"]
+        cap_color = style["color"]
         # Use minimal style → normal font, all others → bold
-        cap_font     = FONT_NORMAL if subtitle_style == "minimal" else FONT_BOLD
+        cap_font = FONT_NORMAL if subtitle_style == "minimal" else FONT_BOLD
         cap_stroke_c = style["stroke_color"] or "black"
         cap_stroke_w = style["stroke_width"]
 
         overlay_clips = [clip]
-        bottom_y = settings.output_height - 220   # 220 px from bottom
+        bottom_y = settings.output_height - 220  # 220 px from bottom
 
         for cap in captions:
             # Caption times are relative to segment start
             cap_start = cap["start"] - seg_start
-            cap_end   = cap["end"]   - seg_start
+            cap_end = cap["end"] - seg_start
 
             # Clamp to clip duration
             cap_start = max(0.0, min(cap_start, clip.duration - 0.1))
-            cap_end   = max(cap_start + 0.1, min(cap_end, clip.duration))
-            duration  = cap_end - cap_start
+            cap_end = max(cap_start + 0.1, min(cap_end, clip.duration))
+            duration = cap_end - cap_start
 
             if duration <= 0:
                 continue
@@ -208,7 +239,9 @@ def _add_caption_overlays(clip, captions: List[Dict[str, Any]], seg_start: float
 
         return CompositeVideoClip(overlay_clips)
     except Exception as exc:
-        logger.error(f"Caption overlay error (style={subtitle_style}): {exc}", exc_info=True)
+        logger.error(
+            f"Caption overlay error (style={subtitle_style}): {exc}", exc_info=True
+        )
         return clip
 
 
@@ -249,6 +282,7 @@ def render_clip(
     job_id: str,
     clip_index: int,
     subtitle_style: str = "default",
+    render_profile: str | None = None,  # options: None|'hq1080'|'hq4k'
 ) -> Dict[str, Any]:
     """
     Render a single short clip from a source video segment.
@@ -270,8 +304,8 @@ def render_clip(
     """
     from moviepy import VideoFileClip
 
-    start    = segment["start"]
-    end      = segment["end"]
+    start = segment["start"]
+    end = segment["end"]
     duration = end - start
     # Keep the hook text in metadata but do NOT render it on the video
     # (user requested no title at the top). Use `hook_text` for metadata and
@@ -279,20 +313,44 @@ def render_clip(
     hook_text = segment.get("hook", "")
     overlay_hook = None
     captions = segment.get("captions", [])
-    broll    = segment.get("broll")
+    broll = segment.get("broll")
     # "ai_title" = Pro+ generated title; "title" = clip_selector first-sentence fallback
-    ai_title   = segment.get("ai_title") or segment.get("title", f"Clip {clip_index + 1}")
-    hashtags   = segment.get("hashtags")   # Pro+ only
+    ai_title = segment.get("ai_title") or segment.get("title", f"Clip {clip_index + 1}")
+    hashtags = segment.get("hashtags")  # Pro+ only
 
     output_path = _make_output_path(job_id, clip_index)
 
-    logger.info(f"Rendering clip {clip_index + 1}: {start:.1f}s – {end:.1f}s  →  {output_path.name}")
+    logger.info(
+        f"Rendering clip {clip_index + 1}: {start:.1f}s – {end:.1f}s  →  {output_path.name}"
+    )
 
     # First try an ffmpeg-based fast path (hardware encoder if available).
     try:
         # pass overlay_hook (None) to avoid burning a title/hook at the top
+        # Decide target dimensions from profile (portrait orientation)
+        profile = (
+            render_profile or settings.render_quality
+            if hasattr(settings, "render_quality")
+            else None
+        )
+        if profile == "hq4k":
+            target_w, target_h = 2160, 3840
+        else:
+            # hq1080 or default both map to 1080x1920
+            target_w, target_h = 1080, 1920
+
         ffmpeg_success = _render_with_ffmpeg(
-            video_path, start, end, output_path, overlay_hook, captions, subtitle_style, broll
+            video_path,
+            start,
+            end,
+            output_path,
+            overlay_hook,
+            captions,
+            subtitle_style,
+            broll,
+            target_w=target_w,
+            target_h=target_h,
+            quality_profile=profile or "default",
         )
         if ffmpeg_success:
             logger.info(f"Clip {clip_index + 1} saved (ffmpeg): {output_path}")
@@ -313,7 +371,7 @@ def render_clip(
     try:
         # ── Load and cut source video ─────────────────────────────────────
         source = VideoFileClip(video_path)
-        clip   = source.subclipped(start, min(end, source.duration))
+        clip = source.subclipped(start, min(end, source.duration))
 
         # ── Convert to portrait 9:16 ──────────────────────────────────────
         clip = _crop_to_portrait(clip)
@@ -335,7 +393,7 @@ def render_clip(
             audio_codec="aac",
             bitrate=settings.output_bitrate,
             threads=4,
-            logger=None,     # suppress MoviePy's verbose progress bar
+            logger=None,  # suppress MoviePy's verbose progress bar
         )
 
         source.close()
@@ -351,25 +409,27 @@ def render_clip(
     # ── Return metadata ───────────────────────────────────────────────────
     relative_url = f"/clips/{job_id}/{output_path.name}"
     # Attempt to create a thumbnail (poster) image next to the video file.
+    # _create_thumbnail will try WebP first, then JPEG fallback if necessary.
     poster_rel = None
     try:
-        # prefer WebP thumbnails for better quality-to-size ratio
-        thumb_path = output_path.with_suffix('.webp')
-        _create_thumbnail(str(output_path), float(duration), str(thumb_path))
-        poster_rel = f"/clips/{job_id}/{thumb_path.name}"
+        thumb_path = output_path.with_suffix(".webp")
+        created = _create_thumbnail(str(output_path), float(duration), str(thumb_path))
+        if created:
+            # created is the actual path string returned
+            poster_rel = f"/clips/{job_id}/{Path(created).name}"
     except Exception as exc:
         logger.warning(f"Could not create thumbnail for {output_path}: {exc}")
 
     return {
-        "file":        relative_url,
-        "poster":      poster_rel,
-        "title":       ai_title,
-        "duration":    round(duration, 1),
+        "file": relative_url,
+        "poster": poster_rel,
+        "title": ai_title,
+        "duration": round(duration, 1),
         "viral_score": round(segment.get("viral_score", 0.0), 2),
-        "hook":        hook_text,
-        "hashtags":    hashtags,
-        "start":       round(start, 2),
-        "end":         round(end, 2),
+        "hook": hook_text,
+        "hashtags": hashtags,
+        "start": round(start, 2),
+        "end": round(end, 2),
     }
 
 
@@ -379,18 +439,26 @@ def _create_placeholder_clip(output_path: Path, segment: Dict[str, Any]):
     Uses ffmpeg directly to avoid MoviePy overhead.
     """
     import subprocess
+
     duration = segment["end"] - segment["start"]
     cmd = [
-        "ffmpeg", "-y",
-        "-f", "lavfi", "-i", f"color=black:s=1080x1920:d={duration:.2f}",
-        "-c:v", "libx264", "-t", str(duration),
+        "ffmpeg",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        f"color=black:s=1080x1920:d={duration:.2f}",
+        "-c:v",
+        "libx264",
+        "-t",
+        str(duration),
         str(output_path),
     ]
     subprocess.run(cmd, capture_output=True)
     logger.warning(f"Placeholder clip created: {output_path}")
 
 
-def _create_thumbnail(video_path: str, at_time: float, out_path: str) -> bool:
+def _create_thumbnail(video_path: str, at_time: float, out_path: str) -> str | None:
     """
     Create a single-frame JPEG thumbnail for the given video file.
 
@@ -401,6 +469,7 @@ def _create_thumbnail(video_path: str, at_time: float, out_path: str) -> bool:
     out_path: output path for the thumbnail image
     """
     import subprocess
+
     try:
         # pick a timestamp roughly in the middle, but keep a small margin
         mid = max(0.1, min(at_time / 2.0, max(0.1, at_time - 0.1)))
@@ -424,12 +493,47 @@ def _create_thumbnail(video_path: str, at_time: float, out_path: str) -> bool:
             "60",
             str(out_path),
         ]
-        subprocess.run(cmd, capture_output=True, check=True)
-        logger.info(f"Thumbnail created: {out_path}")
-        return True
+        res = subprocess.run(cmd, capture_output=True)
+        if res.returncode == 0:
+            logger.info(f"Thumbnail created: {out_path}")
+            return out_path
+        logger.warning(
+            f"WebP thumbnail creation failed (returncode={res.returncode}): {res.stderr.decode('utf8', 'replace')}\nFalling back to JPEG"
+        )
     except Exception as exc:
-        logger.warning(f"Failed to create thumbnail for {video_path}: {exc}")
-        return False
+        logger.warning(
+            f"Failed to create WebP thumbnail for {video_path}: {exc}\nFalling back to JPEG"
+        )
+
+    # Fallback: try JPEG (more widely supported encoder). Use .jpg suffix.
+    try:
+        jpg_out = Path(out_path).with_suffix(".jpg")
+        cmd2 = [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            f"{max(0.1, mid):.3f}",
+            "-i",
+            str(video_path),
+            "-vframes",
+            "1",
+            "-vf",
+            "scale=360:-1:flags=lanczos",
+            "-q:v",
+            "6",
+            str(jpg_out),
+        ]
+        res2 = subprocess.run(cmd2, capture_output=True)
+        if res2.returncode == 0:
+            logger.info(f"JPEG thumbnail created: {jpg_out}")
+            return str(jpg_out)
+        logger.warning(
+            f"JPEG thumbnail creation also failed (returncode={res2.returncode}): {res2.stderr.decode('utf8', 'replace')}"
+        )
+    except Exception as exc:
+        logger.warning(f"Failed to create JPEG thumbnail for {video_path}: {exc}")
+
+    return None
 
 
 def _render_with_ffmpeg(
@@ -441,6 +545,9 @@ def _render_with_ffmpeg(
     captions: List[Dict[str, Any]] | None,
     subtitle_style: str,
     broll: str | None,
+    target_w: int | None = None,
+    target_h: int | None = None,
+    quality_profile: str = "default",
 ) -> bool:
     """
     Fast path renderer using ffmpeg. Returns True on success.
@@ -455,6 +562,7 @@ def _render_with_ffmpeg(
     import shlex
     from subprocess import run, CalledProcessError
     import tempfile
+    import shutil
 
     duration = max(0.1, end - start)
 
@@ -473,39 +581,149 @@ def _render_with_ffmpeg(
 
         # 2) Optionally create subtitles SRT (relative times)
         srt_path = None
+        ass_path = None
+        subtitle_path_for_filter = None
         if captions:
             fd, srt_path = tempfile.mkstemp(suffix=".srt", prefix="caps_")
             os.close(fd)
             _write_srt(captions, start, srt_path)
             tmp_files.append(srt_path)
-
-        # 3) Build filter graph: scale/pad to 1080x1920 and overlay hook if present
+            # Try converting SRT -> ASS to improve compatibility with ffmpeg subtitles filter
+            try:
+                fd2, ass_path = tempfile.mkstemp(suffix=".ass", prefix="caps_")
+                os.close(fd2)
+                # Use ffmpeg to convert subtitle format; if this fails we'll fall back to SRT
+                run(
+                    ["ffmpeg", "-y", "-i", str(srt_path), str(ass_path)],
+                    capture_output=True,
+                    check=True,
+                )
+                tmp_files.append(ass_path)
+                subtitle_path_for_filter = str(ass_path)
+            except Exception:
+                # fallback to SRT if conversion fails
+                subtitle_path_for_filter = str(srt_path)
+        # 3) Build filter graph: scale/pad to target WxH and overlay hook if present
+        tw = int(target_w) if target_w else settings.output_width
+        th = int(target_h) if target_h else settings.output_height
         vf_parts = []
-        # scale/pad to ensure 1080x1920 output while preserving aspect
-        vf_parts.append("scale=1080:1920:force_original_aspect_ratio=decrease")
-        vf_parts.append("pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black")
+        # scale/pad to ensure output while preserving aspect
+        vf_parts.append(f"scale={tw}:{th}:force_original_aspect_ratio=decrease")
+        vf_parts.append(f"pad={tw}:{th}:(ow-iw)/2:(oh-ih)/2:color=black")
         vf_main = ",".join(vf_parts)
 
         filter_complex = None
-        cmd = ["ffmpeg", "-y", "-ss", str(start), "-t", f"{duration:.3f}", "-i", str(video_path)]
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            str(start),
+            "-t",
+            f"{duration:.3f}",
+            "-i",
+            str(video_path),
+        ]
 
         # If hook image present, add as second input and use complex filter to overlay
         if hook_png:
             cmd += ["-i", hook_png]
             # overlay near top center (x=(W-w)/2, y=80)
-            filter_complex = f"[0:v]{vf_main}[v0];[v0][1:v]overlay=(W-w)/2:80"
+            # we'll label intermediate outputs and produce a final labeled video [vout]
+            # base chain: scale/pad -> [v0]; overlay -> [v1]
+            base_chain = f"[0:v]{vf_main}[v0];[v0][1:v]overlay=(W-w)/2:80[v1]"
+            filter_complex = base_chain
 
-        # Subtitles: use subtitles filter if srt exists (applied after scaling/pad)
-        if srt_path:
-            if filter_complex:
-                filter_complex = filter_complex + f",subtitles='{srt_path}'"
+        # Subtitles: if present, do a safe two-pass approach to burn them in.
+        if subtitle_path_for_filter:
+            # escape any single quotes in path (ffmpeg parsing is finicky)
+            p = subtitle_path_for_filter.replace("'", "\\'")
+            # 1) create an intermediate video with subtitles applied (scale/pad + subtitles)
+            fd3, subbed_tmp = tempfile.mkstemp(suffix=".mp4", prefix="subbed_")
+            os.close(fd3)
+            tmp_files.append(subbed_tmp)
+            # build command to extract the segment and burn subtitles
+            cmd_sub = [
+                "ffmpeg",
+                "-y",
+                "-ss",
+                str(start),
+                "-t",
+                f"{duration:.3f}",
+                "-i",
+                str(video_path),
+                "-vf",
+                f"{vf_main},subtitles=filename={p}",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                str(subbed_tmp),
+            ]
+            run(cmd_sub, capture_output=True, check=True)
+
+            # 2) if a hook overlay is needed, overlay it onto the subbed_tmp; otherwise move to output
+            if hook_png:
+                # overlay hook onto the already subbed clip
+                cmd_overlay = [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(subbed_tmp),
+                    "-i",
+                    hook_png,
+                    "-filter_complex",
+                    "[0:v][1:v]overlay=(W-w)/2:80",
+                    "-map",
+                    "0:a?",
+                    "-c:a",
+                    "aac",
+                ]
+                # choose encoder settings for the final output
+                if (settings.ffmpeg_hwaccel or "").lower() in ("videotoolbox", "nvenc"):
+                    # prefer a hardware encoder if available
+                    if (settings.ffmpeg_hwaccel or "").lower() == "videotoolbox":
+                        cmd_overlay += [
+                            "-c:v",
+                            "h264_videotoolbox",
+                            "-b:v",
+                            settings.output_bitrate,
+                        ]
+                    else:
+                        cmd_overlay += [
+                            "-c:v",
+                            "h264_nvenc",
+                            "-b:v",
+                            settings.output_bitrate,
+                        ]
+                else:
+                    cmd_overlay += [
+                        "-c:v",
+                        "libx264",
+                        "-preset",
+                        "veryfast",
+                        "-b:v",
+                        settings.output_bitrate,
+                    ]
+
+                cmd_overlay += [str(output_path)]
+                run(cmd_overlay, capture_output=True, check=True)
+                return True
             else:
-                filter_complex = vf_main + f",subtitles='{srt_path}'"
+                # no overlay: move the already-encoded subbed_tmp to the final output path
+                try:
+                    os.replace(subbed_tmp, str(output_path))
+                except Exception:
+                    shutil.copy2(subbed_tmp, str(output_path))
+                return True
 
         if filter_complex:
-            # If we used overlay, ffmpeg produced [v0] as intermediate, but final filter may be in [v0]
-            # We'll map the first video stream output automatically by not specifying -map for video.
             cmd += ["-filter_complex", filter_complex]
+            # map the filtered video output explicitly
+            cmd += ["-map", "[vout]"]
         else:
             # simple scale/pad via -vf
             cmd += ["-vf", vf_main]
@@ -513,15 +731,53 @@ def _render_with_ffmpeg(
         # Map audio if present
         cmd += ["-map", "0:a?", "-c:a", "aac"]
 
-        # Choose encoder
-        hw = settings.ffmpeg_hwaccel or ""
-        if hw.lower() == "videotoolbox":
-            cmd += ["-c:v", "h264_videotoolbox", "-b:v", settings.output_bitrate]
-        elif hw.lower() == "nvenc":
-            cmd += ["-c:v", "h264_nvenc", "-b:v", settings.output_bitrate]
+        # Choose encoder and quality settings
+        hw = (settings.ffmpeg_hwaccel or "").lower()
+        if quality_profile in ("hq1080", "hq4k"):
+            # High quality presets: prefer software x264 CRF if no hw encoder
+            if hw == "videotoolbox":
+                # hardware encoder: use a higher bitrate for quality
+                br = (
+                    settings.hq1080_bitrate
+                    if quality_profile == "hq1080"
+                    else settings.hq4k_bitrate
+                )
+                cmd += ["-c:v", "h264_videotoolbox", "-b:v", br]
+            elif hw == "nvenc":
+                br = (
+                    settings.hq1080_bitrate
+                    if quality_profile == "hq1080"
+                    else settings.hq4k_bitrate
+                )
+                cmd += ["-c:v", "h264_nvenc", "-b:v", br]
+            else:
+                # software libx264 with CRF for best quality/size tradeoff
+                cmd += [
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    settings.hq_preset,
+                    "-crf",
+                    str(settings.hq_crf),
+                    "-pix_fmt",
+                    "yuv420p",
+                ]
         else:
-            # software fallback
-            cmd += ["-c:v", "libx264", "-preset", "veryfast", "-b:v", settings.output_bitrate]
+            # default/fast path
+            if hw == "videotoolbox":
+                cmd += ["-c:v", "h264_videotoolbox", "-b:v", settings.output_bitrate]
+            elif hw == "nvenc":
+                cmd += ["-c:v", "h264_nvenc", "-b:v", settings.output_bitrate]
+            else:
+                # software fallback
+                cmd += [
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "veryfast",
+                    "-b:v",
+                    settings.output_bitrate,
+                ]
 
         cmd += [str(output_path)]
 
@@ -588,7 +844,14 @@ def _render_hook_image(hook_text: str, out_path: str):
 
             x = int((img_w - w) / 2)
             try:
-                draw.text((x, y), line, font=font, fill=HOOK_COLOR, stroke_width=STROKE_WIDTH, stroke_fill=STROKE_COLOR)
+                draw.text(
+                    (x, y),
+                    line,
+                    font=font,
+                    fill=HOOK_COLOR,
+                    stroke_width=STROKE_WIDTH,
+                    stroke_fill=STROKE_COLOR,
+                )
             except TypeError:
                 draw.text((x, y), line, font=font, fill=HOOK_COLOR)
             y += line_h
@@ -600,6 +863,7 @@ def _render_hook_image(hook_text: str, out_path: str):
 
 def _write_srt(captions: List[Dict[str, Any]], seg_start: float, out_srt: str):
     """Write a simple SRT file with captions times relative to segment start."""
+
     def _fmt(t: float) -> str:
         # t in seconds -> hh:mm:ss,ms
         ms = int((t - int(t)) * 1000)
@@ -626,6 +890,7 @@ def _write_ass(captions: List[Dict[str, Any]], seg_start: float, out_ass: str):
     Dialogue lines. This avoids an extra dependency but is good enough
     for styled subtitle burning via libass.
     """
+
     def _fmt_ass(t: float) -> str:
         # ASS uses H:MM:SS.cc (centiseconds)
         total_cs = int(round(t * 100))

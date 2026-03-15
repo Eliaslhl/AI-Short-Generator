@@ -40,6 +40,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ── Password hashing ────────────────────────────────────────────────────────
 
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
@@ -51,7 +52,9 @@ def verify_password(plain: str, hashed: str) -> bool:
 # ── Google OAuth config ─────────────────────────────────────────────────────
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
+GOOGLE_REDIRECT_URI = os.getenv(
+    "GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback"
+)
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 # ── Stripe config ───────────────────────────────────────────────────────────
@@ -61,11 +64,11 @@ STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 # Map price_id → Plan (covers monthly + yearly for all 3 plans)
 PRICE_TO_PLAN: dict[str, Plan] = {
     os.getenv("STRIPE_STANDARD_MONTHLY_PRICE_ID", ""): Plan.STANDARD,
-    os.getenv("STRIPE_STANDARD_YEARLY_PRICE_ID",  ""): Plan.STANDARD,
-    os.getenv("STRIPE_PRO_MONTHLY_PRICE_ID",      ""): Plan.PRO,
-    os.getenv("STRIPE_PRO_YEARLY_PRICE_ID",       ""): Plan.PRO,
-    os.getenv("STRIPE_PROPLUS_MONTHLY_PRICE_ID",  ""): Plan.PROPLUS,
-    os.getenv("STRIPE_PROPLUS_YEARLY_PRICE_ID",   ""): Plan.PROPLUS,
+    os.getenv("STRIPE_STANDARD_YEARLY_PRICE_ID", ""): Plan.STANDARD,
+    os.getenv("STRIPE_PRO_MONTHLY_PRICE_ID", ""): Plan.PRO,
+    os.getenv("STRIPE_PRO_YEARLY_PRICE_ID", ""): Plan.PRO,
+    os.getenv("STRIPE_PROPLUS_MONTHLY_PRICE_ID", ""): Plan.PROPLUS,
+    os.getenv("STRIPE_PROPLUS_YEARLY_PRICE_ID", ""): Plan.PROPLUS,
 }
 # Remove empty-key entries (unset env vars)
 PRICE_TO_PLAN = {k: v for k, v in PRICE_TO_PLAN.items() if k}
@@ -107,7 +110,9 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Email already registered")
 
     if len(body.password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+        raise HTTPException(
+            status_code=400, detail="Password must be at least 8 characters"
+        )
 
     user = User(
         email=body.email,
@@ -137,7 +142,11 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
 
-    if not user or not user.hashed_password or not verify_password(body.password, user.hashed_password):
+    if (
+        not user
+        or not user.hashed_password
+        or not verify_password(body.password, user.hashed_password)
+    ):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     if not user.is_active:
@@ -196,7 +205,9 @@ async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
     avatar_url = info.get("picture")
 
     if not email or not google_id:
-        raise HTTPException(status_code=400, detail="Could not retrieve Google account info")
+        raise HTTPException(
+            status_code=400, detail="Could not retrieve Google account info"
+        )
 
     # Find or create user
     result = await db.execute(select(User).where(User.google_id == google_id))
@@ -235,7 +246,9 @@ class CheckoutRequest(BaseModel):
 
 
 @router.post("/stripe/checkout")
-async def create_checkout(body: CheckoutRequest, user: User = Depends(get_current_user)):
+async def create_checkout(
+    body: CheckoutRequest, user: User = Depends(get_current_user)
+):
     if not stripe.api_key:
         raise HTTPException(status_code=501, detail="Stripe not configured")
     # Validate the price_id is one of our known prices
@@ -244,7 +257,9 @@ async def create_checkout(body: CheckoutRequest, user: User = Depends(get_curren
 
     # Create or retrieve Stripe customer
     if not user.stripe_customer_id:
-        customer = stripe.Customer.create(email=user.email, metadata={"user_id": user.id})
+        customer = stripe.Customer.create(
+            email=user.email, metadata={"user_id": user.id}
+        )
         customer_id = customer.id
     else:
         customer_id = user.stripe_customer_id
@@ -263,7 +278,9 @@ async def create_checkout(body: CheckoutRequest, user: User = Depends(get_curren
 
 # ── Stripe: cancel subscription ───────────────────────────────────────────────
 @router.post("/stripe/cancel")
-async def cancel_subscription(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def cancel_subscription(
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+):
     if not stripe.api_key:
         raise HTTPException(status_code=501, detail="Stripe not configured")
 
@@ -277,10 +294,14 @@ async def cancel_subscription(user: User = Depends(get_current_user), db: AsyncS
             cancel_at_period_end=True,
         )
         logger.info(f"User {user.email} requested subscription cancellation")
-        return {"message": "Your subscription will be cancelled at the end of the current billing period."}
+        return {
+            "message": "Your subscription will be cancelled at the end of the current billing period."
+        }
     except Exception as e:
         logger.error(f"Stripe cancel error for {user.email}: {e}")
-        raise HTTPException(status_code=502, detail="Could not cancel subscription. Please try again.")
+        raise HTTPException(
+            status_code=502, detail="Could not cancel subscription. Please try again."
+        )
 
 
 # ── Stripe: webhook ───────────────────────────────────────────────────────────
@@ -321,7 +342,9 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                             price_id = sub["items"]["data"][0]["price"]["id"]
                             target_plan = PRICE_TO_PLAN.get(price_id, Plan.PRO)
                         except Exception as e:
-                            logger.warning(f"Could not retrieve subscription price: {e}")
+                            logger.warning(
+                                f"Could not retrieve subscription price: {e}"
+                            )
 
                 user.plan = target_plan
                 user.stripe_customer_id = customer_id
@@ -329,21 +352,25 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                 await db.commit()
                 logger.info(f"User {user.email} upgraded to {target_plan.value}")
 
-    elif event["type"] in ("customer.subscription.deleted", "customer.subscription.paused"):
+    elif event["type"] in (
+        "customer.subscription.deleted",
+        "customer.subscription.paused",
+    ):
         subscription = event["data"]["object"]
         customer_id = subscription.get("customer")
 
-        result = await db.execute(select(User).where(User.stripe_customer_id == customer_id))
+        result = await db.execute(
+            select(User).where(User.stripe_customer_id == customer_id)
+        )
         user = result.scalar_one_or_none()
         if user:
             user.plan = Plan.FREE
             await db.commit()
-            logger.info(f"User {user.email} downgraded to Free (subscription cancelled)")
+            logger.info(
+                f"User {user.email} downgraded to Free (subscription cancelled)"
+            )
 
     return {"status": "ok"}
-
-
-
 
 
 # ── Forgot password ───────────────────────────────────────────────────────────
@@ -352,7 +379,9 @@ class ForgotPasswordRequest(BaseModel):
 
 
 @router.post("/forgot-password")
-async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+async def forgot_password(
+    body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)
+):
     """
     Always returns 200 — never reveal whether an email exists (security best practice).
     Sends a reset link if the account exists and uses email/password auth.
@@ -397,9 +426,13 @@ class ResetPasswordRequest(BaseModel):
 
 
 @router.post("/reset-password")
-async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+async def reset_password(
+    body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)
+):
     if len(body.new_password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+        raise HTTPException(
+            status_code=400, detail="Password must be at least 8 characters."
+        )
 
     # Find the token
     result = await db.execute(
@@ -411,10 +444,15 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
         raise HTTPException(status_code=400, detail="Invalid or expired reset link.")
 
     if reset_token.used:
-        raise HTTPException(status_code=400, detail="This reset link has already been used.")
+        raise HTTPException(
+            status_code=400, detail="This reset link has already been used."
+        )
 
     if datetime.now(timezone.utc) > reset_token.expires_at:
-        raise HTTPException(status_code=400, detail="This reset link has expired. Please request a new one.")
+        raise HTTPException(
+            status_code=400,
+            detail="This reset link has expired. Please request a new one.",
+        )
 
     # Update password
     user_result = await db.execute(select(User).where(User.id == reset_token.user_id))
@@ -422,7 +460,9 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
     if not user:
         raise HTTPException(status_code=400, detail="Invalid reset link.")
 
-    user.hashed_password = bcrypt.hashpw(body.new_password.encode(), bcrypt.gensalt()).decode()
+    user.hashed_password = bcrypt.hashpw(
+        body.new_password.encode(), bcrypt.gensalt()
+    ).decode()
     reset_token.used = True
     await db.commit()
 

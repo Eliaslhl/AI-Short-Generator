@@ -28,6 +28,7 @@ def _call_groq(prompt: str) -> list[str]:
     if not settings.groq_api_key:
         raise ValueError("GROQ_API_KEY not set.")
     from groq import Groq
+
     client = Groq(api_key=settings.groq_api_key)
     response = client.chat.completions.create(
         model=settings.groq_model,
@@ -44,9 +45,38 @@ def _call_groq(prompt: str) -> list[str]:
 def _rule_based_hashtags(text: str) -> list[str]:
     """Extract the most common meaningful words as hashtags."""
     stopwords = {
-        "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
-        "of", "with", "is", "it", "this", "that", "was", "are", "be", "have",
-        "i", "you", "we", "he", "she", "they", "do", "not", "so", "if", "as",
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "but",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "of",
+        "with",
+        "is",
+        "it",
+        "this",
+        "that",
+        "was",
+        "are",
+        "be",
+        "have",
+        "i",
+        "you",
+        "we",
+        "he",
+        "she",
+        "they",
+        "do",
+        "not",
+        "so",
+        "if",
+        "as",
     }
     words = re.findall(r"\b[a-z]{4,}\b", text.lower())
     freq: dict[str, int] = {}
@@ -54,7 +84,13 @@ def _rule_based_hashtags(text: str) -> list[str]:
         if w not in stopwords:
             freq[w] = freq.get(w, 0) + 1
     top = sorted(freq, key=lambda w: freq[w], reverse=True)[:5]
-    return [f"#{w}" for w in top] or ["#shorts", "#viral", "#trending", "#fyp", "#reels"]
+    return [f"#{w}" for w in top] or [
+        "#shorts",
+        "#viral",
+        "#trending",
+        "#fyp",
+        "#reels",
+    ]
 
 
 def generate_hashtags(segment_text: str) -> list[str]:

@@ -2,6 +2,7 @@
 Test direct de l'endpoint forgot-password + envoi email.
 Lance ce script pendant que le backend tourne.
 """
+
 import asyncio
 import sys
 from pathlib import Path
@@ -10,7 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from backend.services.email_service import send_reset_email
+from backend.services.email_service import send_reset_email  # noqa: E402
+
 
 async def main():
     token = "test_token_" + "a" * 54  # 64 chars
@@ -22,6 +24,8 @@ async def main():
     except Exception as e:
         print(f"❌ Erreur: {e}")
         import traceback
+
         traceback.print_exc()
+
 
 asyncio.run(main())

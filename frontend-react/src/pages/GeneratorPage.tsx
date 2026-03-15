@@ -605,16 +605,20 @@ export default function GeneratorPage() {
               {status.clips.length} short{status.clips.length > 1 ? 's' : ''} generated
             </h2>
             <button
-              onClick={() =>
+              onClick={() => {
+                // Create, append and click anchors to trigger downloads without navigating
                 status.clips.forEach((c, i) => {
                   setTimeout(() => {
                     const a = document.createElement('a')
                     a.href = `${API_BASE}${c.file}`
-                    a.download = `short_${i + 1}.mp4`
+                    a.setAttribute('download', `short_${i + 1}.mp4`)
+                    a.style.display = 'none'
+                    document.body.appendChild(a)
                     a.click()
+                    document.body.removeChild(a)
                   }, i * 400)
                 })
-              }
+              }}
               className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-lg transition"
             >
               <Download className="w-4 h-4" /> Download all

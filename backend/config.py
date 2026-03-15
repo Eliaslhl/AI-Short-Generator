@@ -10,6 +10,7 @@ from pydantic_settings import BaseSettings
 from typing import Optional
 import math
 import os
+
 try:
     import psutil  # type: ignore
 except Exception:
@@ -19,11 +20,11 @@ except Exception:
 # ──────────────────────────────────────────────
 #  Absolute project paths
 # ──────────────────────────────────────────────
-BASE_DIR   = Path(__file__).resolve().parent.parent   # repo root
-DATA_DIR   = BASE_DIR / "data"
-VIDEO_DIR  = DATA_DIR / "videos"
-CLIPS_DIR  = DATA_DIR / "clips"
-BROLL_DIR  = DATA_DIR / "broll"
+BASE_DIR = Path(__file__).resolve().parent.parent  # repo root
+DATA_DIR = BASE_DIR / "data"
+VIDEO_DIR = DATA_DIR / "videos"
+CLIPS_DIR = DATA_DIR / "clips"
+BROLL_DIR = DATA_DIR / "broll"
 
 # Make sure every directory exists at import time
 for _d in (VIDEO_DIR, CLIPS_DIR, BROLL_DIR):
@@ -35,21 +36,25 @@ for _d in (VIDEO_DIR, CLIPS_DIR, BROLL_DIR):
 # ──────────────────────────────────────────────
 class Settings(BaseSettings):
     # ---------- Database ----------
-    database_url: str = "sqlite+aiosqlite:///./data/app.db"   # override with postgresql+asyncpg:// in prod
+    database_url: str = (
+        "sqlite+aiosqlite:///./data/app.db"  # override with postgresql+asyncpg:// in prod
+    )
 
     # ---------- Ollama ----------
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str    = "llama3"          # or "mistral"
-    ollama_timeout: int  = 60                # seconds
+    ollama_model: str = "llama3"  # or "mistral"
+    ollama_timeout: int = 60  # seconds
 
     # ---------- Groq (free cloud LLM fallback) ----------
-    groq_api_key: str    = ""                # set in .env → GROQ_API_KEY
-    groq_model: str      = "llama-3.3-70b-versatile"  # free tier model
+    groq_api_key: str = ""  # set in .env → GROQ_API_KEY
+    groq_model: str = "llama-3.3-70b-versatile"  # free tier model
 
     # ---------- Whisper ----------
-    whisper_model: str   = "base"            # tiny | base | small | medium | large
-    whisper_device: str  = "cpu"             # cpu | cuda
-    whisper_language: str = ""               # "" = auto-detect (recommended); set "en", "fr"… to force a language
+    whisper_model: str = "base"  # tiny | base | small | medium | large
+    whisper_device: str = "cpu"  # cpu | cuda
+    whisper_language: str = (
+        ""  # "" = auto-detect (recommended); set "en", "fr"… to force a language
+    )
 
     # ---------- Processing / performance tuning ----------
     # When processing a video we download a low-res "processing" copy
@@ -62,11 +67,15 @@ class Settings(BaseSettings):
     whisper_fast_model: str = "tiny"
     whisper_refine_model: str = "base"
     # Two-pass transcription tuning
-    two_pass_window_size: float = 15.0     # seconds per analysis window
-    two_pass_window_overlap: float = 1.0   # seconds overlap between windows
-    two_pass_conf_threshold: float = 0.70  # below this avg word prob we refine (higher -> more refine)
-    two_pass_pad: float = 0.5              # pad seconds around flagged windows
-    two_pass_max_refine_fraction: float = 0.15  # max fraction of audio seconds to refine (0.15 = 15%)
+    two_pass_window_size: float = 15.0  # seconds per analysis window
+    two_pass_window_overlap: float = 1.0  # seconds overlap between windows
+    two_pass_conf_threshold: float = (
+        0.70  # below this avg word prob we refine (higher -> more refine)
+    )
+    two_pass_pad: float = 0.5  # pad seconds around flagged windows
+    two_pass_max_refine_fraction: float = (
+        0.15  # max fraction of audio seconds to refine (0.15 = 15%)
+    )
     # Dynamic cap (seconds) for the refine phase — if the refine phase runs
     # longer than this, we abort submitting new windows. Helps bound latency.
     two_pass_dynamic_cap_seconds: float = 8.0
@@ -96,16 +105,33 @@ class Settings(BaseSettings):
     #                       JS-challenge-related error is detected
     ytdlp_enable_js: str = "when_cookies"
 
+    # ---------- yt-dlp download tuning (performance) ----------
+    # External downloader to use with yt-dlp (e.g. "aria2c"). Leave empty
+    # to use yt-dlp internal downloader. Using aria2c (with tuned args)
+    # can drastically speed up downloads for fragmented streams.
+    ytdlp_downloader: str = ""
+    # Arguments to pass to --downloader-args. Example: "aria2c:-x16 -s16 -k1M"
+    ytdlp_downloader_args: str = ""
+    # If >0, pass --concurrent-fragments N to yt-dlp (useful for HLS/DASH)
+    ytdlp_concurrent_fragments: int = 0
+
     # ---------- Clip selection ----------
-    max_clips: int       = 10
-    min_clip_duration: int = 20              # seconds — min to have enough content
-    max_clip_duration: int = 60              # seconds — 1 min max for shorts
+    max_clips: int = 10
+    min_clip_duration: int = 20  # seconds — min to have enough content
+    max_clip_duration: int = 60  # seconds — 1 min max for shorts
 
     # ---------- Video output ----------
-    output_width: int    = 1080
-    output_height: int   = 1920             # 9:16 portrait
-    output_fps: int      = 30
-    output_bitrate: str  = "4000k"
+    output_width: int = 1080
+    output_height: int = 1920  # 9:16 portrait
+    output_fps: int = 30
+    output_bitrate: str = "4000k"
+    # Render quality presets: "default", "hq1080", "hq4k"
+    render_quality: str = "hq1080"
+    # High quality presets (tunable)
+    hq1080_bitrate: str = "8000k"
+    hq4k_bitrate: str = "20000k"
+    hq_crf: int = 18
+    hq_preset: str = "slow"
 
     # ---------- Rendering / parallelism ----------
     # If None, compute a sane default based on CPU cores: min(4, floor(0.75 * logical_cpus)).
@@ -113,20 +139,20 @@ class Settings(BaseSettings):
     render_workers: Optional[int] = None
 
     # ---------- spaCy ----------
-    spacy_model: str     = "en_core_web_sm"
+    spacy_model: str = "en_core_web_sm"
 
     # ---------- Stripe ----------
-    stripe_secret_key: str                  = ""
-    stripe_webhook_secret: str              = ""
-    stripe_standard_monthly_price_id: str   = ""
-    stripe_standard_yearly_price_id: str    = ""
-    stripe_pro_monthly_price_id: str        = ""
-    stripe_pro_yearly_price_id: str         = ""
-    stripe_proplus_monthly_price_id: str    = ""
-    stripe_proplus_yearly_price_id: str     = ""
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_standard_monthly_price_id: str = ""
+    stripe_standard_yearly_price_id: str = ""
+    stripe_pro_monthly_price_id: str = ""
+    stripe_pro_yearly_price_id: str = ""
+    stripe_proplus_monthly_price_id: str = ""
+    stripe_proplus_yearly_price_id: str = ""
 
     # ---------- Paths (as strings for .env compat) ----------
-    data_dir:  str = str(DATA_DIR)
+    data_dir: str = str(DATA_DIR)
     video_dir: str = str(VIDEO_DIR)
     clips_dir: str = str(CLIPS_DIR)
     broll_dir: str = str(BROLL_DIR)

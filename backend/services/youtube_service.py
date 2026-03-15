@@ -78,7 +78,9 @@ def _sanitize_filename(name: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', "_", name).strip()
 
 
-def download_video(youtube_url: str, job_id: str, audio_only: bool = False) -> tuple[Path, str]:
+def download_video(
+    youtube_url: str, job_id: str, audio_only: bool = False
+) -> tuple[Path, str]:
     """
     Download a YouTube video to data/videos/<job_id>/.
 
@@ -110,14 +112,32 @@ def download_video(youtube_url: str, job_id: str, audio_only: bool = False) -> t
 
     cmd = [
         str(_YTDLP_BIN),
-        "--format", fmt,
-        "--merge-output-format", "mp4",
-        "--output", output_template,
+        "--format",
+        fmt,
+        "--merge-output-format",
+        "mp4",
+        "--output",
+        output_template,
         "--no-playlist",
         "--no-warnings",
-        "--print", "after_move:filepath",
+        "--print",
+        "after_move:filepath",
         youtube_url,
     ]
+
+    # Performance tuning: allow using an external downloader (aria2c) or
+    # passing downloader args if configured in settings. This can speed up
+    # downloads for fragmented streams (HLS/DASH) significantly.
+    downloader = getattr(settings, "ytdlp_downloader", "").strip()
+    downloader_args = getattr(settings, "ytdlp_downloader_args", "").strip()
+    concurrent_fragments = int(getattr(settings, "ytdlp_concurrent_fragments", 0) or 0)
+    if downloader:
+        cmd.extend(["--downloader", downloader])
+        if downloader_args:
+            # pass the downloader args through --downloader-args
+            cmd.extend(["--downloader-args", downloader_args])
+    if concurrent_fragments > 0:
+        cmd.extend(["--concurrent-fragments", str(concurrent_fragments)])
 
     # Inject YouTube cookies if available (required for datacenter IPs).
     # Support two methods:
@@ -126,7 +146,9 @@ def download_video(youtube_url: str, job_id: str, audio_only: bool = False) -> t
     cookies_file, cookies_is_temp = _get_cookies_file()
     if cookies_file:
         cmd.extend(["--cookies", cookies_file])
-        logger.info(f"Using YouTube cookies for download (file={cookies_file}, temp={cookies_is_temp})")
+        logger.info(
+            f"Using YouTube cookies for download (file={cookies_file}, temp={cookies_is_temp})"
+        )
 
     # Decide whether to pass JS runtime / remote-components flags based on
     # configuration policy. This allows conservative behaviour in prod.
@@ -191,15 +213,21 @@ def download_video(youtube_url: str, job_id: str, audio_only: bool = False) -> t
                     if any(m in stderr or m in stdout for m in ejs_msgs):
                         # Retry once with JS flags enabled
                         if js_runtimes or remote_components:
-                            logger.info("Retrying yt-dlp with JS runtimes / remote-components to solve JS challenges")
+                            logger.info(
+                                "Retrying yt-dlp with JS runtimes / remote-components to solve JS challenges"
+                            )
                             try:
                                 result = _run_cmd(_with_js_flags(base_cmd))
                             except subprocess.CalledProcessError as e2:
                                 logger.error(f"yt-dlp retry stderr: {e2.stderr}")
                                 logger.error(f"yt-dlp retry stdout: {e2.stdout}")
-                                raise RuntimeError(f"yt-dlp failed (exit {e2.returncode}): {e2.stderr.strip() or e2.stdout.strip()}")
+                                raise RuntimeError(
+                                    f"yt-dlp failed (exit {e2.returncode}): {e2.stderr.strip() or e2.stdout.strip()}"
+                                )
                         else:
-                            raise RuntimeError(f"yt-dlp failed (exit {e.returncode}): {e.stderr.strip() or e.stdout.strip()}")
+                            raise RuntimeError(
+                                f"yt-dlp failed (exit {e.returncode}): {e.stderr.strip() or e.stdout.strip()}"
+                            )
                     else:
                         # Not an EJS-related error; reuse existing impersonation retry
                         bot_block_msgs = [
@@ -211,32 +239,40 @@ def download_video(youtube_url: str, job_id: str, audio_only: bool = False) -> t
                         if any(m in stderr or m in stdout for m in bot_block_msgs):
                             help_msg = (
                                 "yt-dlp a renvoyé une erreur indiquant que YouTube demande une vérification ("
-                                "'Sign in to confirm you\'re not a bot'). Cela arrive souvent depuis des IP de datacenter ou "
+                                "'Sign in to confirm you're not a bot'). Cela arrive souvent depuis des IP de datacenter ou "
                                 "lorsque YouTube exige une session authentifiée."
                             )
                             suggestions = (
                                 "Options pour résoudre le problème:\n"
-                                "  1) Fournir des cookies YouTube exportés depuis votre navigateur via la variable d'environnement \"YOUTUBE_COOKIES_B64\".\n"
+                                '  1) Fournir des cookies YouTube exportés depuis votre navigateur via la variable d\'environnement "YOUTUBE_COOKIES_B64".\n'
                                 "     - Exportez (ex: via l'extension 'EditThisCookie' ou 'cookies.txt') puis encodez en base64: \n"
                                 "         cat cookies.txt | base64 | pbcopy  # macOS (copie dans le presse-papier)\n"
                                 "       Puis définissez la variable d'environnement avant de démarrer le service:\n"
-                                "         export YOUTUBE_COOKIES_B64=\"<contenu_base64>\"\n"
+                                '         export YOUTUBE_COOKIES_B64="<contenu_base64>"\n'
                                 "  2) (Temporaire) Réessayer avec une impersonation de navigateur. Le serveur va tenter ceci automatiquement une fois.\n"
                                 "  3) Voir la doc yt-dlp pour passer des cookies: https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp\n"
                             )
-                            raise RuntimeError(f"yt-dlp failed (exit {e.returncode}): {help_msg}\n\n{suggestions}")
+                            raise RuntimeError(
+                                f"yt-dlp failed (exit {e.returncode}): {help_msg}\n\n{suggestions}"
+                            )
                         if not cookies_file and not tried_impersonate:
                             tried_impersonate = True
-                            logger.info("Retrying yt-dlp once with --impersonate chrome to bypass simple bot checks")
+                            logger.info(
+                                "Retrying yt-dlp once with --impersonate chrome to bypass simple bot checks"
+                            )
                             try:
                                 retry_cmd = base_cmd + ["--impersonate", "chrome"]
                                 result = _run_cmd(retry_cmd)
                             except subprocess.CalledProcessError as e2:
                                 logger.error(f"yt-dlp retry stderr: {e2.stderr}")
                                 logger.error(f"yt-dlp retry stdout: {e2.stdout}")
-                                raise RuntimeError(f"yt-dlp failed (exit {e2.returncode}): {e2.stderr.strip() or e2.stdout.strip()}")
+                                raise RuntimeError(
+                                    f"yt-dlp failed (exit {e2.returncode}): {e2.stderr.strip() or e2.stdout.strip()}"
+                                )
                         else:
-                            raise RuntimeError(f"yt-dlp failed (exit {e.returncode}): {e.stderr.strip() or e.stdout.strip()}")
+                            raise RuntimeError(
+                                f"yt-dlp failed (exit {e.returncode}): {e.stderr.strip() or e.stdout.strip()}"
+                            )
             else:
                 # Normal path: command already has flags if should_pass_js_now
                 result = _run_cmd(cmd)
@@ -256,37 +292,45 @@ def download_video(youtube_url: str, job_id: str, audio_only: bool = False) -> t
             if any(m in stderr or m in stdout for m in bot_block_msgs):
                 help_msg = (
                     "yt-dlp a renvoyé une erreur indiquant que YouTube demande une vérification ("
-                    "'Sign in to confirm you\'re not a bot'). Cela arrive souvent depuis des IP de datacenter ou "
+                    "'Sign in to confirm you're not a bot'). Cela arrive souvent depuis des IP de datacenter ou "
                     "lorsque YouTube exige une session authentifiée."
                 )
                 suggestions = (
                     "Options pour résoudre le problème:\n"
-                    "  1) Fournir des cookies YouTube exportés depuis votre navigateur via la variable d'environnement \"YOUTUBE_COOKIES_B64\".\n"
+                    '  1) Fournir des cookies YouTube exportés depuis votre navigateur via la variable d\'environnement "YOUTUBE_COOKIES_B64".\n'
                     "     - Exportez (ex: via l'extension 'EditThisCookie' ou 'cookies.txt') puis encodez en base64: \n"
                     "         cat cookies.txt | base64 | pbcopy  # macOS (copie dans le presse-papier)\n"
                     "       Puis définissez la variable d'environnement avant de démarrer le service:\n"
-                    "         export YOUTUBE_COOKIES_B64=\"<contenu_base64>\"\n"
+                    '         export YOUTUBE_COOKIES_B64="<contenu_base64>"\n'
                     "  2) (Temporaire) Réessayer avec une impersonation de navigateur. Le serveur va tenter ceci automatiquement une fois.\n"
                     "  3) Voir la doc yt-dlp pour passer des cookies: https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp\n"
                 )
-                raise RuntimeError(f"yt-dlp failed (exit {e.returncode}): {help_msg}\n\n{suggestions}")
+                raise RuntimeError(
+                    f"yt-dlp failed (exit {e.returncode}): {help_msg}\n\n{suggestions}"
+                )
 
             # Otherwise attempt a single retry with impersonation which can help
             # for some extractor blocks. Don't do this if user provided cookies
             # (they should be preferred).
             if not cookies_file and not tried_impersonate:
                 tried_impersonate = True
-                logger.info("Retrying yt-dlp once with --impersonate chrome to bypass simple bot checks")
+                logger.info(
+                    "Retrying yt-dlp once with --impersonate chrome to bypass simple bot checks"
+                )
                 try:
                     retry_cmd = cmd + ["--impersonate", "chrome"]
                     result = _run_cmd(retry_cmd)
                 except subprocess.CalledProcessError as e2:
                     logger.error(f"yt-dlp retry stderr: {e2.stderr}")
                     logger.error(f"yt-dlp retry stdout: {e2.stdout}")
-                    raise RuntimeError(f"yt-dlp failed (exit {e2.returncode}): {e2.stderr.strip() or e2.stdout.strip()}")
+                    raise RuntimeError(
+                        f"yt-dlp failed (exit {e2.returncode}): {e2.stderr.strip() or e2.stdout.strip()}"
+                    )
             else:
                 # Not a bot/blocking message we recognized and no retry available
-                raise RuntimeError(f"yt-dlp failed (exit {e.returncode}): {e.stderr.strip() or e.stdout.strip()}")
+                raise RuntimeError(
+                    f"yt-dlp failed (exit {e.returncode}): {e.stderr.strip() or e.stdout.strip()}"
+                )
     finally:
         # Clean up temp cookie file only if we created it
         try:

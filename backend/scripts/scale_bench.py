@@ -3,6 +3,7 @@
 Runs `parallel_render.py` for different worker counts and samples system metrics using psutil.
 Writes results to data/bench/scale_results.json and scale_results.csv
 """
+
 import argparse
 import json
 import os
@@ -42,32 +43,53 @@ def sample_system(stop_event, samples):
         cpu = psutil.cpu_percent(interval=None)
         mem = psutil.virtual_memory().percent
         now_io = psutil.disk_io_counters() or None
-        read_bytes = (getattr(now_io, "read_bytes", 0) - getattr(prev_io, "read_bytes", 0)) if now_io is not None else 0
-        write_bytes = (getattr(now_io, "write_bytes", 0) - getattr(prev_io, "write_bytes", 0)) if now_io is not None else 0
+        read_bytes = (
+            (getattr(now_io, "read_bytes", 0) - getattr(prev_io, "read_bytes", 0))
+            if now_io is not None
+            else 0
+        )
+        write_bytes = (
+            (getattr(now_io, "write_bytes", 0) - getattr(prev_io, "write_bytes", 0))
+            if now_io is not None
+            else 0
+        )
         prev_io = now_io or prev_io
-        samples.append({
-            "ts": time.time(),
-            "cpu": cpu,
-            "mem": mem,
-            "read_bytes": read_bytes,
-            "write_bytes": write_bytes,
-        })
+        samples.append(
+            {
+                "ts": time.time(),
+                "cpu": cpu,
+                "mem": mem,
+                "read_bytes": read_bytes,
+                "write_bytes": write_bytes,
+            }
+        )
         time.sleep(SAMPLE_INTERVAL)
 
 
 def run_one(workers, segments, video, timeout=None):
-    cmd = ["python3", os.path.join("backend", "scripts", "parallel_render.py"), "--workers", str(workers), "--segments", str(segments)]
+    cmd = [
+        "python3",
+        os.path.join("backend", "scripts", "parallel_render.py"),
+        "--workers",
+        str(workers),
+        "--segments",
+        str(segments),
+    ]
     if video:
         cmd += ["--video", video]
     print("Running:", " ".join(cmd))
     start = time.time()
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
 
     samples = []
     stop_event = threading.Event()
     sampler = None
     if psutil is not None:
-        sampler = threading.Thread(target=sample_system, args=(stop_event, samples), daemon=True)
+        sampler = threading.Thread(
+            target=sample_system, args=(stop_event, samples), daemon=True
+        )
         sampler.start()
 
     stdout_lines = []
@@ -128,11 +150,25 @@ def run_one(workers, segments, video, timeout=None):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--workers-list", default="1,2,4,8", help="Comma-separated worker counts to test")
+    parser.add_argument(
+        "--workers-list",
+        default="1,2,4,8",
+        help="Comma-separated worker counts to test",
+    )
     parser.add_argument("--segments", type=int, default=4, help="Segments per run")
-    parser.add_argument("--repeat", type=int, default=2, help="Repeat each setting N times")
-    parser.add_argument("--video", default=None, help="Optional video path to use (first video otherwise)")
-    parser.add_argument("--use-config-default", action="store_true", help="Run a single benchmark using the config default render_workers value")
+    parser.add_argument(
+        "--repeat", type=int, default=2, help="Repeat each setting N times"
+    )
+    parser.add_argument(
+        "--video",
+        default=None,
+        help="Optional video path to use (first video otherwise)",
+    )
+    parser.add_argument(
+        "--use-config-default",
+        action="store_true",
+        help="Run a single benchmark using the config default render_workers value",
+    )
     args = parser.parse_args()
 
     if psutil is None:
@@ -143,6 +179,7 @@ def main():
     if args.use_config_default:
         try:
             from backend.config import get_render_workers
+
             workers_list = [get_render_workers()]
             print(f"Using config default render_workers={workers_list[0]}")
         except Exception as e:
@@ -164,7 +201,9 @@ def main():
         json.dump(results, f, indent=2)
 
     # save CSV
-    csv_lines = ["workers,segments,duration_secs,wall_time_reported_secs,cpu_avg,cpu_max,mem_avg,mem_max,read_bytes,write_bytes,samples_count"]
+    csv_lines = [
+        "workers,segments,duration_secs,wall_time_reported_secs,cpu_avg,cpu_max,mem_avg,mem_max,read_bytes,write_bytes,samples_count"
+    ]
     for r in results:
         if "error" in r:
             continue

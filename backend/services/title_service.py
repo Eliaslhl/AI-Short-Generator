@@ -27,6 +27,7 @@ def _call_groq(prompt: str) -> str:
     if not settings.groq_api_key:
         raise ValueError("GROQ_API_KEY not set.")
     from groq import Groq
+
     client = Groq(api_key=settings.groq_api_key)
     response = client.chat.completions.create(
         model=settings.groq_model,

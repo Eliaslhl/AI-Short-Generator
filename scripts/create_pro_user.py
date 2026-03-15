@@ -22,9 +22,9 @@ from sqlalchemy import select
 from backend.database import create_tables, AsyncSessionLocal
 from backend.models.user import Plan, User
 
-DEFAULT_EMAIL    = "pro@test.com"
+DEFAULT_EMAIL = "pro@test.com"
 DEFAULT_PASSWORD = "prouser123"
-DEFAULT_NAME     = "Pro Tester"
+DEFAULT_NAME = "Pro Tester"
 
 
 def _hash(password: str) -> str:
@@ -71,9 +71,9 @@ async def seed(email: str, password: str, full_name: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Create/upgrade a Pro test user")
-    parser.add_argument("--email",    default=DEFAULT_EMAIL,    help="User email")
+    parser.add_argument("--email", default=DEFAULT_EMAIL, help="User email")
     parser.add_argument("--password", default=DEFAULT_PASSWORD, help="User password")
-    parser.add_argument("--name",     default=DEFAULT_NAME,     help="Display name")
+    parser.add_argument("--name", default=DEFAULT_NAME, help="Display name")
     args = parser.parse_args()
 
     asyncio.run(seed(args.email, args.password, args.name))

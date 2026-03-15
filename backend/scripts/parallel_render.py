@@ -27,9 +27,16 @@ if str(ROOT) not in sys.path:
 def make_segments(video_path: Path, n: int):
     """Découpe la vidéo en n segments égaux (temps) — retourne list of (start,end)."""
     import subprocess
+
     cmd = [
-        "ffprobe", "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1", str(video_path)
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(video_path),
     ]
     p = subprocess.run(cmd, capture_output=True, text=True)
     dur = float(p.stdout.strip()) if p.stdout and p.stdout.strip() else 0.0
@@ -49,15 +56,27 @@ def render_one(args):
     t0 = time.perf_counter()
     # import here to ensure sys.path is configured
     from backend.video import video_editor
-    ok = video_editor._render_with_ffmpeg(str(video_path), start, end, out_path, "", None, "default", None)
+
+    ok = video_editor._render_with_ffmpeg(
+        str(video_path), start, end, out_path, "", None, "default", None
+    )
     t1 = time.perf_counter()
     return (idx, ok, t1 - t0, str(out_path))
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--video", required=False, help="Path to video. If omitted, takes first video from settings.video_dir")
-    parser.add_argument("--workers", type=int, default=None, help="Number of parallel workers (overrides config)")
+    parser.add_argument(
+        "--video",
+        required=False,
+        help="Path to video. If omitted, takes first video from settings.video_dir",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of parallel workers (overrides config)",
+    )
     parser.add_argument("--segments", type=int, default=4)
     args = parser.parse_args()
 
@@ -66,8 +85,13 @@ def main():
     else:
         # pick first video in settings.video_dir
         from backend.config import settings
+
         vd = Path(settings.video_dir)
-        vids = [p for p in vd.rglob("*.*") if p.suffix.lower() in {".mp4", ".mkv", ".mov", ".webm", ".m4v"}]
+        vids = [
+            p
+            for p in vd.rglob("*.*")
+            if p.suffix.lower() in {".mp4", ".mkv", ".mov", ".webm", ".m4v"}
+        ]
         if not vids:
             print(f"Aucune vidéo trouvée dans {vd}")
             return
@@ -75,6 +99,7 @@ def main():
 
     print(f"Using video: {video}")
     from backend.config import settings, get_render_workers
+
     out_dir = Path(settings.clips_dir) / "parallel"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -106,5 +131,6 @@ def main():
         print(f" - clip {idx+1:02d}: ok={ok}, time={dt:.2f}s")
     print(f"Total wall time: {t_end - t_start:.2f}s")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

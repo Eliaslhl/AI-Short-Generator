@@ -21,23 +21,29 @@ def _uuid():
 
 
 class Plan(str, PyEnum):
-    FREE     = "free"
+    FREE = "free"
     STANDARD = "standard"
-    PRO      = "pro"
-    PROPLUS  = "proplus"
+    PRO = "pro"
+    PROPLUS = "proplus"
 
 
 class User(Base):
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
-    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)  # None for OAuth users
+    email: Mapped[str] = mapped_column(
+        String(255), unique=True, index=True, nullable=False
+    )
+    hashed_password: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )  # None for OAuth users
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     # OAuth
-    google_id: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
+    google_id: Mapped[str | None] = mapped_column(
+        String(255), unique=True, nullable=True
+    )
 
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -46,24 +52,32 @@ class User(Base):
     # Plan
     plan: Mapped[Plan] = mapped_column(Enum(Plan), default=Plan.FREE)
     generations_this_month: Mapped[int] = mapped_column(Integer, default=0)
-    plan_reset_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    plan_reset_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now
+    )
 
     # Stripe
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
 
     # Relationships
-    jobs: Mapped[list["Job"]] = relationship("Job", back_populates="user", cascade="all, delete-orphan")
+    jobs: Mapped[list["Job"]] = relationship(
+        "Job", back_populates="user", cascade="all, delete-orphan"
+    )
 
     # Monthly generation limits per plan
     PLAN_LIMITS: dict = {
-        Plan.FREE:     2,
+        Plan.FREE: 2,
         Plan.STANDARD: 20,
-        Plan.PRO:      50,
-        Plan.PROPLUS:  100,
+        Plan.PRO: 50,
+        Plan.PROPLUS: 100,
     }
 
     @property
@@ -83,20 +97,28 @@ class Job(Base):
     __tablename__ = "jobs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=False
+    )
 
     youtube_url: Mapped[str] = mapped_column(String(512), nullable=False)
     video_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
-    status: Mapped[str] = mapped_column(String(50), default="pending")  # pending, processing, done, error
+    status: Mapped[str] = mapped_column(
+        String(50), default="pending"
+    )  # pending, processing, done, error
     progress: Mapped[int] = mapped_column(Integer, default=0)
     message: Mapped[str | None] = mapped_column(String(255), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    clips_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array of clip metadata
+    clips_json: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )  # JSON array of clip metadata
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="jobs")
@@ -106,9 +128,15 @@ class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
-    token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=False
+    )
+    token: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     used: Mapped[bool] = mapped_column(Boolean, default=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

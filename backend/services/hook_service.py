@@ -37,7 +37,7 @@ def _call_ollama(prompt: str) -> str:
     """Call the local Ollama server. Raises on any error."""
     url = f"{settings.ollama_base_url}/api/generate"
     payload = {
-        "model":  settings.ollama_model,
+        "model": settings.ollama_model,
         "prompt": prompt,
         "stream": False,
         "options": {
@@ -138,7 +138,9 @@ def generate_hook(segment_text: str) -> str:
     except ValueError as exc:
         logger.info(str(exc))
     except Exception as exc:
-        logger.warning(f"Groq failed ({type(exc).__name__}: {exc}) — using rule-based fallback.")
+        logger.warning(
+            f"Groq failed ({type(exc).__name__}: {exc}) — using rule-based fallback."
+        )
 
     # ── Level 3: Rule-based ──────────────────────────────────────────────
     hook = _rule_based_hook(segment_text)

@@ -28,7 +28,9 @@ async def get_current_user(
     user = result.scalar_one_or_none()
 
     if user is None or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
+        )
 
     return user
 
@@ -53,10 +55,10 @@ async def require_can_generate(
 
     if not user.can_generate:
         plan_messages = {
-            "free":     "You've used your 2 free generations this month. Upgrade to Standard or Pro for more.",
+            "free": "You've used your 2 free generations this month. Upgrade to Standard or Pro for more.",
             "standard": "You've used all 20 of your Standard plan generations this month.",
-            "pro":      "You've used all 50 of your Pro plan generations this month.",
-            "proplus":  "You've used all 100 of your Pro+ plan generations this month.",
+            "pro": "You've used all 50 of your Pro plan generations this month.",
+            "proplus": "You've used all 100 of your Pro+ plan generations this month.",
         }
         message = plan_messages.get(
             user.plan.value,

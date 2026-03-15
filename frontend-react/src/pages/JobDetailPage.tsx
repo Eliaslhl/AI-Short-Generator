@@ -28,9 +28,14 @@ export default function JobDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10">
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6">
+        <Link
+          to="/dashboard"
+          className="inline-flex items-center gap-2 text-sm text-purple-300 bg-white/5 px-3 py-1.5 rounded-full hover:bg-white/10 transition mb-3"
+        >
+          ← Back
+        </Link>
         <h1 className="text-2xl font-bold">{videoTitle ?? `Job ${jobId}`}</h1>
-        <Link to="/dashboard" className="text-sm text-purple-300">Back</Link>
       </div>
 
       {loading ? (

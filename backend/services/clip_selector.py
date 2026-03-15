@@ -25,7 +25,7 @@ import logging
 from typing import List, Dict, Any
 
 from backend.config import settings
-from backend.ai.viral_scoring   import compute_viral_score
+from backend.ai.viral_scoring import compute_viral_score
 from backend.ai.keyword_extractor import extract_keywords
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,9 @@ logger = logging.getLogger(__name__)
 CLIP_PADDING_SECS = 0.3
 
 
-def _find_sentence_boundary(words: List[Dict], target_end: float, search_window: float = 3.0) -> float:
+def _find_sentence_boundary(
+    words: List[Dict], target_end: float, search_window: float = 3.0
+) -> float:
     """
     Given a list of word-level timestamps, find the end time of the last word
     that ends a sentence (followed by . ! ?) within `search_window` seconds
@@ -47,21 +49,27 @@ def _find_sentence_boundary(words: List[Dict], target_end: float, search_window:
 
     # Look for words ending a sentence within the search window
     candidates = [
-        w for w in words
-        if w["end"] <= target_end and w["end"] >= target_end - search_window
+        w
+        for w in words
+        if w["end"] <= target_end
+        and w["end"] >= target_end - search_window
         and re.search(r"[.!?]$", w["word"].strip())
     ]
 
     if candidates:
         # Pick the one closest to target_end
         best = max(candidates, key=lambda w: w["end"])
-        logger.debug(f"Snapped clip end from {target_end:.2f}s → {best['end']:.2f}s (sentence boundary)")
+        logger.debug(
+            f"Snapped clip end from {target_end:.2f}s → {best['end']:.2f}s (sentence boundary)"
+        )
         return best["end"]
 
     return target_end
 
 
-def _find_sentence_start(words: List[Dict], target_start: float, search_window: float = 2.0) -> float:
+def _find_sentence_start(
+    words: List[Dict], target_start: float, search_window: float = 2.0
+) -> float:
     """
     Find the start of the first complete sentence at or after `target_start`.
     Looks for a word that starts a new sentence (preceded by . ! ? or is the first word).
@@ -72,7 +80,11 @@ def _find_sentence_start(words: List[Dict], target_start: float, search_window: 
         return target_start
 
     # Find all words in the window after target_start
-    window_words = [w for w in words if w["start"] >= target_start and w["start"] <= target_start + search_window]
+    window_words = [
+        w
+        for w in words
+        if w["start"] >= target_start and w["start"] <= target_start + search_window
+    ]
 
     if not window_words:
         return target_start
@@ -115,11 +127,11 @@ def _merge_segments(
 
     for seg in segments[1:]:
         current_dur = current["end"] - current["start"]
-        next_dur    = seg["end"] - seg["start"]
+        next_dur = seg["end"] - seg["start"]
 
         if current_dur + next_dur <= max_dur:
             # Merge: extend the current chunk
-            current["end"]   = seg["end"]
+            current["end"] = seg["end"]
             current["text"] += " " + seg["text"]
             current["words"] = current["words"] + seg.get("words", [])
         else:
@@ -152,11 +164,13 @@ def _add_padding(
     """Extend start/end by `padding` seconds, clamped to video bounds."""
     seg = dict(segment)
     seg["start"] = max(0.0, seg["start"] - padding)
-    seg["end"]   = min(video_duration, seg["end"] + padding)
+    seg["end"] = min(video_duration, seg["end"] + padding)
     return seg
 
 
-def _deduplicate(segments: List[Dict[str, Any]], overlap_threshold: float = 0.5) -> List[Dict[str, Any]]:
+def _deduplicate(
+    segments: List[Dict[str, Any]], overlap_threshold: float = 0.5
+) -> List[Dict[str, Any]]:
     """
     Remove clips that overlap significantly with a higher-scoring clip.
     `overlap_threshold` = fraction of a clip's duration that must overlap to be removed.
@@ -211,8 +225,10 @@ def select_top_segments(
 
     # ── 2. Score each chunk ───────────────────────────────────────────────
     for chunk in chunks:
-        chunk["viral_score"] = compute_viral_score(chunk["text"], chunk["end"] - chunk["start"])
-        chunk["keywords"]    = extract_keywords(chunk["text"])
+        chunk["viral_score"] = compute_viral_score(
+            chunk["text"], chunk["end"] - chunk["start"]
+        )
+        chunk["keywords"] = extract_keywords(chunk["text"])
         first_sentence = re.split(r"[.!?]", chunk["text"])[0].strip()
         chunk["title"] = first_sentence[:80] if first_sentence else chunk["text"][:80]
 
@@ -229,6 +245,10 @@ def select_top_segments(
 
     logger.info(
         f"Selected {len(top)} segments (requested {n_clips}). "
-        + (f"Top score: {top[0]['viral_score']:.2f}" if top else "No segments selected.")
+        + (
+            f"Top score: {top[0]['viral_score']:.2f}"
+            if top
+            else "No segments selected."
+        )
     )
     return top

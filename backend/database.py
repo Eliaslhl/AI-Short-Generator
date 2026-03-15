@@ -33,8 +33,8 @@ elif _raw_url.startswith("postgresql://") and "+asyncpg" not in _raw_url:
 
 DATABASE_URL: str = _raw_url
 
-_is_sqlite    = DATABASE_URL.startswith("sqlite")
-_is_postgres  = DATABASE_URL.startswith("postgres")
+_is_sqlite = DATABASE_URL.startswith("sqlite")
+_is_postgres = DATABASE_URL.startswith("postgres")
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Engine
@@ -45,23 +45,23 @@ _connect_args: dict = {"check_same_thread": False} if _is_sqlite else {}
 
 _pool_kwargs: dict = (
     {
-        "poolclass":     NullPool,          # SQLite: no pool needed
+        "poolclass": NullPool,  # SQLite: no pool needed
     }
     if _is_sqlite
     else {
-        "poolclass":         AsyncAdaptedQueuePool,
-        "pool_size":         10,            # base connections always open
-        "max_overflow":      20,            # extra burst connections
-        "pool_timeout":      30,            # seconds to wait for a connection
-        "pool_recycle":      1800,          # recycle every 30 min (avoid stale)
-        "pool_pre_ping":     True,          # verify connection before use
+        "poolclass": AsyncAdaptedQueuePool,
+        "pool_size": 10,  # base connections always open
+        "max_overflow": 20,  # extra burst connections
+        "pool_timeout": 30,  # seconds to wait for a connection
+        "pool_recycle": 1800,  # recycle every 30 min (avoid stale)
+        "pool_pre_ping": True,  # verify connection before use
     }
 )
 
 engine: AsyncEngine = create_async_engine(
     DATABASE_URL,
     connect_args=_connect_args,
-    echo=False,      # set True only for query debugging
+    echo=False,  # set True only for query debugging
     **_pool_kwargs,
 )
 

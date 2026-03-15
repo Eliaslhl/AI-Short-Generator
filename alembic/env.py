@@ -18,8 +18,8 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
 # ── pull in all models so autogenerate can detect them ────────────────────────
-from backend.database import Base              # noqa: F401 — Base.metadata
-import backend.models.user                     # noqa: F401 — registers User, Job, etc.
+from backend.database import Base  # noqa: F401 — Base.metadata
+import backend.models.user  # noqa: F401 — registers User, Job, etc.
 
 # ── Alembic Config ────────────────────────────────────────────────────────────
 config = context.config
@@ -62,7 +62,7 @@ def do_run_migrations(connection: Connection) -> None:
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        compare_type=True,          # detect column type changes
+        compare_type=True,  # detect column type changes
         compare_server_default=True,
     )
     with context.begin_transaction():
@@ -73,7 +73,7 @@ async def run_async_migrations() -> None:
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
-        poolclass=pool.NullPool,    # use NullPool for migrations
+        poolclass=pool.NullPool,  # use NullPool for migrations
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

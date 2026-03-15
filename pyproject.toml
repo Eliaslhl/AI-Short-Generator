@@ -1,0 +1,32 @@
+[tool.ruff]
+line-length = 88
+# Quickly ignore E501 (line too long) to unblock CI/linting.
+# This is the fast option requested (mass suppression). We can tighten
+# this later and fix files individually.
+[tool.ruff.lint]
+extend-ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"backend/api/routes.py" = ["E501"]
+"backend/auth/dependencies.py" = ["E501"]
+"backend/auth/router.py" = ["E501"]
+"backend/config.py" = ["E501"]
+"backend/main.py" = ["E501"]
+"backend/scripts/bench_render.py" = ["E501"]
+"backend/scripts/run_e2e_test.py" = ["E501"]
+"backend/scripts/scale_bench.py" = ["E501"]
+"backend/scripts/two_pass_bench.py" = ["E501"]
+"backend/services/clip_selector.py" = ["E501"]
+"backend/services/email_service.py" = ["E501"]
+"backend/services/emoji_caption_service.py" = ["E501"]
+"backend/services/transcription_service.py" = ["E501"]
+"backend/services/youtube_service.py" = ["E501"]
+"backend/video/subtitle_renderer.py" = ["E501"]
+"backend/video/video_editor.py" = ["E501"]
+"scripts/run_e2e_test.py" = ["E501"]
+"scripts/seed_test_accounts.py" = ["E501"]
+"scripts/test_stripe_flow.py" = ["E501"]
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]

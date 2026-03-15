@@ -35,3 +35,8 @@ body,
   min-height: 100vh;
   overflow-x: hidden;
 }
+
+/* Make buttons show a pointer when enabled (preserve disabled styling elsewhere) */
+button:not(:disabled) {
+  cursor: pointer;
+}

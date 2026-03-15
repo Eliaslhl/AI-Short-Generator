@@ -50,9 +50,15 @@ OUT_DIR = Path(settings.clips_dir) / "bench"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # find candidate videos
-candidates = [p for p in VIDEO_DIR.rglob("*.*") if p.suffix.lower() in {".mp4", ".mkv", ".mov", ".webm", ".m4v"}]
+candidates = [
+    p
+    for p in VIDEO_DIR.rglob("*.*")
+    if p.suffix.lower() in {".mp4", ".mkv", ".mov", ".webm", ".m4v"}
+]
 if not candidates:
-    print(f"Aucune vidéo trouvée dans {VIDEO_DIR}. Placez des vidéos de test et relancez.")
+    print(
+        f"Aucune vidéo trouvée dans {VIDEO_DIR}. Placez des vidéos de test et relancez."
+    )
     sys.exit(1)
 
 videos = candidates[:3]
@@ -61,6 +67,7 @@ for v in videos:
     print(" -", v)
 
 SAMPLE_DURATION = 30.0  # seconds to render for each clip (adjustable)
+
 
 # CPU sampler thread
 class Sampler(threading.Thread):
@@ -85,16 +92,20 @@ class Sampler(threading.Thread):
     def mean(self):
         return mean(self.samples) if self.samples else 0.0
 
+
 # GPU util quick probe via nvidia-smi (optional)
 def gpu_util_probe():
     if shutil.which("nvidia-smi"):
         try:
-            out = os.popen("nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits").read()
+            out = os.popen(
+                "nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits"
+            ).read()
             vals = [int(x.strip()) for x in out.splitlines() if x.strip().isdigit()]
             return vals
         except Exception:
             return None
     return None
+
 
 results = []
 
@@ -103,7 +114,17 @@ for video in videos:
     try:
         # quick probe duration via ffprobe
         import subprocess
-        cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(video)]
+
+        cmd = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(video),
+        ]
         p = subprocess.run(cmd, capture_output=True, text=True)
         dur = float(p.stdout.strip()) if p.stdout.strip() else SAMPLE_DURATION
     except Exception:
@@ -113,7 +134,9 @@ for video in videos:
     end = min(dur, start + SAMPLE_DURATION)
     seg_dur = end - start
 
-    print(f"\n=== Benchmarking {video.name} (segment {start:.1f}-{end:.1f}s, duration {seg_dur:.1f}s) ===")
+    print(
+        f"\n=== Benchmarking {video.name} (segment {start:.1f}-{end:.1f}s, duration {seg_dur:.1f}s) ==="
+    )
 
     # Common metadata
     hook = "Test hook for benchmarking"
@@ -147,7 +170,9 @@ for video in videos:
         watcher = threading.Thread(target=watch_file, args=(out_ff, wrote_event))
         watcher.start()
 
-        ok = video_editor._render_with_ffmpeg(str(video), start, end, out_ff, hook, None, "default", None)
+        ok = video_editor._render_with_ffmpeg(
+            str(video), start, end, out_ff, hook, None, "default", None
+        )
         t1 = time.perf_counter()
         if wrote_event.is_set():
             start_write_time = None  # can't get precise without more instrumentation
@@ -162,11 +187,14 @@ for video in videos:
     ff_time = t1 - t0
     ff_cpu = sampler.mean() if psutil else None
     ff_gpu = gpu_util_probe()
-    print(f"ffmpeg: success={ok}, time={ff_time:.2f}s, cpu_avg={ff_cpu}, gpu_samples={ff_gpu}")
+    print(
+        f"ffmpeg: success={ok}, time={ff_time:.2f}s, cpu_avg={ff_cpu}, gpu_samples={ff_gpu}"
+    )
 
     # 2) MoviePy path: force fallback by monkeypatching _render_with_ffmpeg to return False
     # If moviepy is not installed, skip this step.
     import importlib.util
+
     have_moviepy = importlib.util.find_spec("moviepy") is not None
 
     if not have_moviepy:
@@ -190,7 +218,12 @@ for video in videos:
         sampler2.start()
         t0 = time.perf_counter()
         try:
-            meta = video_editor.render_clip(str(video), {"start": start, "end": end, "text": "bench", "captions": captions}, job_id="bench", clip_index=0)
+            meta = video_editor.render_clip(
+                str(video),
+                {"start": start, "end": end, "text": "bench", "captions": captions},
+                job_id="bench",
+                clip_index=0,
+            )
             ok2 = True
         except Exception as e:
             print("MoviePy render exception:", e)
@@ -202,28 +235,36 @@ for video in videos:
         mp_time = t1 - t0
         mp_cpu = sampler2.mean() if psutil else None
         mp_gpu = gpu_util_probe()
-        print(f"moviepy: success={ok2}, time={mp_time:.2f}s, cpu_avg={mp_cpu}, gpu_samples={mp_gpu}")
+        print(
+            f"moviepy: success={ok2}, time={mp_time:.2f}s, cpu_avg={mp_cpu}, gpu_samples={mp_gpu}"
+        )
 
         # restore
         if original is not None:
             setattr(video_editor, "_render_with_ffmpeg", original)
 
-    results.append({
-        "video": video.name,
-        "ffmpeg_time": ff_time,
-        "ffmpeg_cpu": ff_cpu,
-        "ffmpeg_gpu": ff_gpu,
-        "moviepy_time": mp_time,
-        "moviepy_cpu": mp_cpu,
-        "moviepy_gpu": mp_gpu,
-    })
+    results.append(
+        {
+            "video": video.name,
+            "ffmpeg_time": ff_time,
+            "ffmpeg_cpu": ff_cpu,
+            "ffmpeg_gpu": ff_gpu,
+            "moviepy_time": mp_time,
+            "moviepy_cpu": mp_cpu,
+            "moviepy_gpu": mp_gpu,
+        }
+    )
 
 # Print summary
 print("\n=== Summary ===")
 print(f"Output files in: {OUT_DIR}")
 for r in results:
     print(f"\nVideo: {r['video']}")
-    print(f" ffmpeg -> time: {r['ffmpeg_time']:.2f}s, cpu_avg: {r['ffmpeg_cpu']}, gpu_samples: {r['ffmpeg_gpu']}")
-    print(f" MoviePy -> time: {r['moviepy_time']:.2f}s, cpu_avg: {r['moviepy_cpu']}, gpu_samples: {r['moviepy_gpu']}")
+    print(
+        f" ffmpeg -> time: {r['ffmpeg_time']:.2f}s, cpu_avg: {r['ffmpeg_cpu']}, gpu_samples: {r['ffmpeg_gpu']}"
+    )
+    print(
+        f" MoviePy -> time: {r['moviepy_time']:.2f}s, cpu_avg: {r['moviepy_cpu']}, gpu_samples: {r['moviepy_gpu']}"
+    )
 
 print("\nBench finished.")

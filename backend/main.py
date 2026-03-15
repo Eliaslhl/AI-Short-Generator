@@ -11,19 +11,20 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
+
 load_dotenv()  # ← Must be called BEFORE any internal module import that reads os.getenv()
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import Response, JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
+from fastapi import FastAPI  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from fastapi.responses import Response, JSONResponse  # noqa: E402
+from slowapi import Limiter, _rate_limit_exceeded_handler  # noqa: E402
+from slowapi.util import get_remote_address  # noqa: E402
+from slowapi.errors import RateLimitExceeded  # noqa: E402
 
-from backend.api.routes import router
-from backend.auth.router import router as auth_router
-from backend.database import create_tables
+from backend.api.routes import router  # noqa: E402
+from backend.auth.router import router as auth_router  # noqa: E402
+from backend.database import create_tables  # noqa: E402
 
 # ──────────────────────────────────────────────
 #  Logging
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
+
 # ──────────────────────────────────────────────
 #  Lifespan  (replaces deprecated @app.on_event)
 # ──────────────────────────────────────────────
@@ -52,6 +54,7 @@ async def lifespan(app: FastAPI):
     yield
     # ── shutdown ──
     logger.info("Shutting down…")
+
 
 # ──────────────────────────────────────────────
 #  FastAPI app
@@ -70,8 +73,8 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # ty
 # Allow the frontend dev server and production origins to call the API.
 # NOTE: allow_credentials=True requires explicit origins (not "*").
 ALLOWED_ORIGINS = [
-    "http://localhost:5173",   # Vite dev server
-    "http://localhost:4173",   # Vite preview
+    "http://localhost:5173",  # Vite dev server
+    "http://localhost:4173",  # Vite preview
     "http://127.0.0.1:5173",
     "http://127.0.0.1:4173",
 ]

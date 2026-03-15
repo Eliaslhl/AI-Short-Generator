@@ -20,12 +20,13 @@ logger = logging.getLogger(__name__)
 #  SRT helpers
 # ──────────────────────────────────────────────
 
+
 def _srt_timestamp(seconds: float) -> str:
     """Convert float seconds to SRT timestamp format: HH:MM:SS,mmm"""
-    ms  = int((seconds % 1) * 1000)
-    s   = int(seconds) % 60
-    m   = int(seconds) // 60 % 60
-    h   = int(seconds) // 3600
+    ms = int((seconds % 1) * 1000)
+    s = int(seconds) % 60
+    m = int(seconds) // 60 % 60
+    h = int(seconds) // 3600
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
@@ -49,11 +50,9 @@ def captions_to_srt(
     lines = []
     for idx, cap in enumerate(captions, start=1):
         lines.append(str(idx))
-        lines.append(
-            f"{_srt_timestamp(cap['start'])} --> {_srt_timestamp(cap['end'])}"
-        )
+        lines.append(f"{_srt_timestamp(cap['start'])} --> {_srt_timestamp(cap['end'])}")
         lines.append(cap["text"])
-        lines.append("")   # blank line separator
+        lines.append("")  # blank line separator
 
     path.write_text("\n".join(lines), encoding="utf-8")
     logger.debug(f"SRT written: {path}")
@@ -82,10 +81,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 def _ass_timestamp(seconds: float) -> str:
     """Convert float seconds to ASS timestamp format: H:MM:SS.cc"""
-    cs  = int((seconds % 1) * 100)   # centiseconds
-    s   = int(seconds) % 60
-    m   = int(seconds) // 60 % 60
-    h   = int(seconds) // 3600
+    cs = int((seconds % 1) * 100)  # centiseconds
+    s = int(seconds) % 60
+    m = int(seconds) // 60 % 60
+    h = int(seconds) // 3600
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 

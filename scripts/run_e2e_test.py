@@ -5,12 +5,12 @@ Usage: python scripts/run_e2e_test.py <youtube_url>
 
 This script prints a short summary and the first few transcript segments.
 """
+
 import sys
 import uuid
 import logging
-from pathlib import Path
 
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 if len(sys.argv) < 2:

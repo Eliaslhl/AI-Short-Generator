@@ -12,6 +12,7 @@ Notes:
   - Run `stripe listen --forward-to localhost:8000/auth/stripe/webhook` in another terminal before paying.
   - Use Stripe test card 4242 4242 4242 4242 to complete payment in the browser.
 """
+
 import argparse
 import os
 import sys
@@ -64,7 +65,9 @@ def create_checkout(api_url, token, price_id):
         print(f"[ERR] Create checkout failed: {res.status_code} {res.text}")
         return None
     data = res.json()
-    checkout_url = data.get("checkout_url") or data.get("url") or data.get("session_url")
+    checkout_url = (
+        data.get("checkout_url") or data.get("url") or data.get("session_url")
+    )
     print(f"[OK] Checkout URL: {checkout_url}")
     return checkout_url
 
@@ -98,14 +101,16 @@ def poll_for_plan_change(api_url, token, current_plan, timeout=120, interval=3):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--api-url", default=os.getenv("API_URL", "http://localhost:8000"))
+    parser.add_argument(
+        "--api-url", default=os.getenv("API_URL", "http://localhost:8000")
+    )
     parser.add_argument("--email", required=True)
     parser.add_argument("--password", required=True)
     parser.add_argument("--price-id", required=True)
     parser.add_argument("--timeout", type=int, default=180)
     args = parser.parse_args()
 
-    api_url = args.api_url.rstrip('/')
+    api_url = args.api_url.rstrip("/")
     email = args.email
     password = args.password
     price_id = args.price_id
@@ -118,14 +123,16 @@ def main():
     me = get_me(api_url, token)
     current_plan = None
     if isinstance(me, dict):
-        current_plan = me.get('plan')
+        current_plan = me.get("plan")
     print(f"Current plan: {current_plan}")
 
     checkout_url = create_checkout(api_url, token, price_id)
     if not checkout_url:
         sys.exit(1)
 
-    print("Open the checkout URL in your browser and complete payment (test card 4242...)" )
+    print(
+        "Open the checkout URL in your browser and complete payment (test card 4242...)"
+    )
     print(checkout_url)
 
     result = poll_for_plan_change(api_url, token, current_plan, timeout=args.timeout)
@@ -136,5 +143,5 @@ def main():
         print("Failed to detect plan change — check stripe listen and backend logs.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

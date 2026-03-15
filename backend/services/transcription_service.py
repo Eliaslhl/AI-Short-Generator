@@ -39,20 +39,26 @@ def _get_model() -> WhisperModel:
         _model = WhisperModel(
             settings.whisper_model,
             device=settings.whisper_device,
-            compute_type="int8",         # fast & memory-efficient
+            compute_type="int8",  # fast & memory-efficient
         )
         logger.info("Whisper model loaded.")
     return _model
 
 
-def _get_model_by_name(name: str, device: str | None = None, compute_type: str = "int8") -> WhisperModel:
+def _get_model_by_name(
+    name: str, device: str | None = None, compute_type: str = "int8"
+) -> WhisperModel:
     """Load or reuse a WhisperModel for a specific model name."""
     global _models
     key = f"{name}@{device or settings.whisper_device}:{compute_type}"
     if key in _models:
         return _models[key]
-    logger.info(f"Loading Faster-Whisper model '{name}' on device '{device or settings.whisper_device}' (compute={compute_type})…")
-    m = WhisperModel(name, device=device or settings.whisper_device, compute_type=compute_type)
+    logger.info(
+        f"Loading Faster-Whisper model '{name}' on device '{device or settings.whisper_device}' (compute={compute_type})…"
+    )
+    m = WhisperModel(
+        name, device=device or settings.whisper_device, compute_type=compute_type
+    )
     _models[key] = m
     logger.info(f"Model {name} loaded.")
     return m
@@ -60,8 +66,18 @@ def _get_model_by_name(name: str, device: str | None = None, compute_type: str =
 
 def _ffprobe_duration(path: str) -> float:
     import subprocess
+
     try:
-        cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)]
+        cmd = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ]
         p = subprocess.run(cmd, capture_output=True, text=True)
         return float(p.stdout.strip()) if p.stdout and p.stdout.strip() else 0.0
     except Exception:
@@ -81,7 +97,11 @@ def _merge_windows(windows, gap=0.5):
     return [(float(a), float(b)) for a, b in merged]
 
 
-def transcribe_two_pass(video_path: str, language: str | None = None, job_max_refine_fraction: float | None = None) -> List[Dict[str, Any]]:
+def transcribe_two_pass(
+    video_path: str,
+    language: str | None = None,
+    job_max_refine_fraction: float | None = None,
+) -> List[Dict[str, Any]]:
     """Two-pass transcription:
 
     1) Fast pass with tiny model to get coarse segments + per-word probs
@@ -109,7 +129,10 @@ def transcribe_two_pass(video_path: str, language: str | None = None, job_max_re
 
     logger.info(f"Fast-pass ({fast_model_name}) transcribing {path.name}…")
     fast_iter, info = fast_model.transcribe(
-        str(path), language=lang, word_timestamps=True, vad_filter=True,
+        str(path),
+        language=lang,
+        word_timestamps=True,
+        vad_filter=True,
         vad_parameters=dict(min_silence_duration_ms=500),
     )
 
@@ -118,7 +141,15 @@ def transcribe_two_pass(video_path: str, language: str | None = None, job_max_re
     for seg in fast_iter:
         words = []
         if seg.words:
-            words = [{"word": w.word, "start": w.start, "end": w.end, "prob": getattr(w, 'probability', None)} for w in seg.words]
+            words = [
+                {
+                    "word": w.word,
+                    "start": w.start,
+                    "end": w.end,
+                    "prob": getattr(w, "probability", None),
+                }
+                for w in seg.words
+            ]
         avg_conf = None
         probs = [w["prob"] for w in words if w.get("prob") is not None]
         if probs:
@@ -126,7 +157,15 @@ def transcribe_two_pass(video_path: str, language: str | None = None, job_max_re
         else:
             avg_conf = 1.0
 
-        fast_segments.append({"start": seg.start, "end": seg.end, "text": seg.text.strip(), "words": words, "avg_conf": avg_conf})
+        fast_segments.append(
+            {
+                "start": seg.start,
+                "end": seg.end,
+                "text": seg.text.strip(),
+                "words": words,
+                "avg_conf": avg_conf,
+            }
+        )
 
         if avg_conf < settings.two_pass_conf_threshold:
             flagged_windows.append((seg.start, seg.end, avg_conf))
@@ -148,16 +187,24 @@ def transcribe_two_pass(video_path: str, language: str | None = None, job_max_re
     effective_frac = settings.two_pass_max_refine_fraction
     if job_max_refine_fraction is not None:
         # be conservative: don't allow job to raise the global fraction
-        effective_frac = min(settings.two_pass_max_refine_fraction, float(job_max_refine_fraction))
+        effective_frac = min(
+            settings.two_pass_max_refine_fraction, float(job_max_refine_fraction)
+        )
         if effective_frac != settings.two_pass_max_refine_fraction:
-            logger.info(f"Job-level refine cap applied: job_max_refine_fraction={job_max_refine_fraction} -> effective_frac={effective_frac}")
+            logger.info(
+                f"Job-level refine cap applied: job_max_refine_fraction={job_max_refine_fraction} -> effective_frac={effective_frac}"
+            )
     max_refine_secs = effective_frac * (total_dur or sum(e - s for s, e in padded))
     # compute importance by lowest avg_conf inside windows
     # Build window importance list
     win_infos = []
     for s, e in padded:
         # average avg_conf of contained fast_segments
-        seg_confs = [fs["avg_conf"] for fs in fast_segments if not (fs["end"] < s or fs["start"] > e)]
+        seg_confs = [
+            fs["avg_conf"]
+            for fs in fast_segments
+            if not (fs["end"] < s or fs["start"] > e)
+        ]
         avgc = mean(seg_confs) if seg_confs else 1.0
         win_infos.append({"start": s, "end": e, "avg_conf": avgc, "dur": e - s})
 
@@ -170,7 +217,9 @@ def transcribe_two_pass(video_path: str, language: str | None = None, job_max_re
             selected.append((w["start"], w["end"]))
             selected_secs += w["dur"]
 
-    logger.info(f"Selected {len(selected)} windows for refine (total {selected_secs:.2f}s) out of {total_dur:.2f}s")
+    logger.info(
+        f"Selected {len(selected)} windows for refine (total {selected_secs:.2f}s) out of {total_dur:.2f}s"
+    )
 
     refined_segments = []
     refine_time = 0.0
@@ -190,20 +239,40 @@ def transcribe_two_pass(video_path: str, language: str | None = None, job_max_re
                 tmp_path = tmp.name
             try:
                 extract_audio(str(path), tmp_path, start=s, duration=dur)
-                segs_iter, _ = refine_model.transcribe(tmp_path, language=lang, word_timestamps=True, vad_filter=False)
+                segs_iter, _ = refine_model.transcribe(
+                    tmp_path, language=lang, word_timestamps=True, vad_filter=False
+                )
                 out = []
                 for seg in segs_iter:
                     words = []
                     if seg.words:
-                        words = [{"word": w.word, "start": s + w.start, "end": s + w.end, "prob": getattr(w, 'probability', None)} for w in seg.words]
-                    out.append({"start": s + seg.start, "end": s + seg.end, "text": seg.text.strip(), "words": words})
+                        words = [
+                            {
+                                "word": w.word,
+                                "start": s + w.start,
+                                "end": s + w.end,
+                                "prob": getattr(w, "probability", None),
+                            }
+                            for w in seg.words
+                        ]
+                    out.append(
+                        {
+                            "start": s + seg.start,
+                            "end": s + seg.end,
+                            "text": seg.text.strip(),
+                            "words": words,
+                        }
+                    )
                 return out
             finally:
                 try:
                     os.unlink(tmp_path)
                 except Exception:
                     pass
-    cap_seconds = float(settings.two_pass_dynamic_cap_seconds)  # dynamic cap in seconds (abort refine if exceeded)
+
+    cap_seconds = float(
+        settings.two_pass_dynamic_cap_seconds
+    )  # dynamic cap in seconds (abort refine if exceeded)
     max_workers = max(1, int(settings.transcribe_workers))
     futures = []
     windows_submitted = 0
@@ -242,7 +311,9 @@ def transcribe_two_pass(video_path: str, language: str | None = None, job_max_re
                         pass
     refine_time = time.perf_counter() - refine_start
     if refine_cut:
-        logger.info(f"Refine cut short after {refine_time:.2f}s (windows submitted={windows_submitted}, processed={windows_processed})")
+        logger.info(
+            f"Refine cut short after {refine_time:.2f}s (windows submitted={windows_submitted}, processed={windows_processed})"
+        )
 
     # Build final segments: keep fast segments that do not overlap selected windows, and insert refined segments
     final = []
@@ -257,7 +328,14 @@ def transcribe_two_pass(video_path: str, language: str | None = None, job_max_re
     # add non-overlapping fast segments
     for fs in fast_segments:
         if not overlaps_any(fs["start"], fs["end"], sel_intervals):
-            final.append({"start": fs["start"], "end": fs["end"], "text": fs["text"], "words": fs["words"]})
+            final.append(
+                {
+                    "start": fs["start"],
+                    "end": fs["end"],
+                    "text": fs["text"],
+                    "words": fs["words"],
+                }
+            )
 
     # add refined segments
     for rs in refined_segments:
@@ -283,11 +361,15 @@ def transcribe_two_pass(video_path: str, language: str | None = None, job_max_re
         "total_time_secs": round(t_total, 2),
     }
     logger.info("two_pass_metrics: %s", json.dumps(metrics, ensure_ascii=False))
-    logger.info(f"Two-pass transcription complete: {len(final_sorted)} segments (took {t_total:.2f}s)")
+    logger.info(
+        f"Two-pass transcription complete: {len(final_sorted)} segments (took {t_total:.2f}s)"
+    )
     return final_sorted
 
 
-def transcribe_fast_full(video_path: str, language: str | None = None) -> List[Dict[str, Any]]:
+def transcribe_fast_full(
+    video_path: str, language: str | None = None
+) -> List[Dict[str, Any]]:
     """Fast single-pass transcription using the configured fast model.
 
     This is intended for the FAST job mode: run the small/fast model
@@ -302,21 +384,43 @@ def transcribe_fast_full(video_path: str, language: str | None = None) -> List[D
     fast_model = _get_model_by_name(fast_model_name, compute_type="int8")
 
     logger.info(f"Fast-full ({fast_model_name}) transcribing {path.name}…")
-    seg_iter, _ = fast_model.transcribe(str(path), language=lang, word_timestamps=True, vad_filter=True,
-                                        vad_parameters=dict(min_silence_duration_ms=500))
+    seg_iter, _ = fast_model.transcribe(
+        str(path),
+        language=lang,
+        word_timestamps=True,
+        vad_filter=True,
+        vad_parameters=dict(min_silence_duration_ms=500),
+    )
 
     segments: List[Dict[str, Any]] = []
     for seg in seg_iter:
         words = []
         if seg.words:
-            words = [{"word": w.word, "start": w.start, "end": w.end, "prob": getattr(w, 'probability', None)} for w in seg.words]
-        segments.append({"start": seg.start, "end": seg.end, "text": seg.text.strip(), "words": words})
+            words = [
+                {
+                    "word": w.word,
+                    "start": w.start,
+                    "end": w.end,
+                    "prob": getattr(w, "probability", None),
+                }
+                for w in seg.words
+            ]
+        segments.append(
+            {
+                "start": seg.start,
+                "end": seg.end,
+                "text": seg.text.strip(),
+                "words": words,
+            }
+        )
 
     logger.info(f"Fast-full transcription complete: {len(segments)} segments detected.")
     return segments
 
 
-def transcribe_for_job(video_path: str, transcription_mode: str | None = None, language: str | None = None) -> List[Dict[str, Any]]:
+def transcribe_for_job(
+    video_path: str, transcription_mode: str | None = None, language: str | None = None
+) -> List[Dict[str, Any]]:
     """Job-level transcription entrypoint with simple FAST/QUALITY modes.
 
     Modes:
@@ -340,7 +444,9 @@ def transcribe_for_job(video_path: str, transcription_mode: str | None = None, l
     return transcribe_fast_full(video_path, language=language)
 
 
-def transcribe_video(video_path: str, language: str | None = None) -> List[Dict[str, Any]]:
+def transcribe_video(
+    video_path: str, language: str | None = None
+) -> List[Dict[str, Any]]:
     """
     Transcribe the audio track of a video file.
 
@@ -370,7 +476,7 @@ def transcribe_video(video_path: str, language: str | None = None) -> List[Dict[
         str(path),
         language=lang,
         word_timestamps=True,
-        vad_filter=True,         # skip silent sections
+        vad_filter=True,  # skip silent sections
         vad_parameters=dict(
             min_silence_duration_ms=500,
         ),
@@ -387,8 +493,8 @@ def transcribe_video(video_path: str, language: str | None = None) -> List[Dict[
         segments.append(
             {
                 "start": seg.start,
-                "end":   seg.end,
-                "text":  seg.text.strip(),
+                "end": seg.end,
+                "text": seg.text.strip(),
                 "words": words,
             }
         )

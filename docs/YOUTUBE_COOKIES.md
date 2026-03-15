@@ -110,7 +110,7 @@ Depuis la racine du dépôt, testez le téléchargement (script de test embarqu�
 
 ```bash
 export PYTHONPATH="$(pwd)"
-export YOUTUBE_COOKIES_FILE="/chemin/vers/cookies.txt"   # ou YOUTUBE_COOKIES_B64=...
+export YOUTUBE_COOKIES_FILE="secrets/youtube_cookies.txt"   # ou YOUTUBE_COOKIES_B64=...
 python3 - <<'PY'
 from backend.services.youtube_service import download_video
 p,t = download_video("https://www.youtube.com/watch?v=_GKJcB91Hus","testjob", audio_only=False)

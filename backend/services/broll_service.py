@@ -20,19 +20,19 @@ logger = logging.getLogger(__name__)
 BROLL_KEYWORD_MAP = {
     # Tech
     "technology": ["tech", "computer", "code", "software"],
-    "ai":         ["ai", "robot", "artificial"],
+    "ai": ["ai", "robot", "artificial"],
     # Business
-    "money":      ["money", "cash", "finance", "invest"],
-    "business":   ["business", "office", "work"],
+    "money": ["money", "cash", "finance", "invest"],
+    "business": ["business", "office", "work"],
     # Science
-    "science":    ["science", "lab", "research"],
-    "space":      ["space", "nasa", "planet", "star"],
+    "science": ["science", "lab", "research"],
+    "space": ["space", "nasa", "planet", "star"],
     # Health
-    "health":     ["health", "fitness", "exercise", "gym"],
-    "food":       ["food", "eat", "cooking", "diet"],
+    "health": ["health", "fitness", "exercise", "gym"],
+    "food": ["food", "eat", "cooking", "diet"],
     # Nature
-    "nature":     ["nature", "forest", "mountain", "ocean"],
-    "city":       ["city", "urban", "street"],
+    "nature": ["nature", "forest", "mountain", "ocean"],
+    "city": ["city", "urban", "street"],
 }
 
 

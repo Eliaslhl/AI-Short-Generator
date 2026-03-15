@@ -6,6 +6,7 @@ Usage:
 
 Prints timing and a few segments from the two-pass transcriber.
 """
+
 import os
 import sys
 import argparse
@@ -34,7 +35,11 @@ def main():
         video = Path(args.video)
     else:
         vd = Path(settings.video_dir)
-        vids = [p for p in vd.rglob("*.*") if p.suffix.lower() in {".mp4", ".mkv", ".mov", ".webm", ".m4v"}]
+        vids = [
+            p
+            for p in vd.rglob("*.*")
+            if p.suffix.lower() in {".mp4", ".mkv", ".mov", ".webm", ".m4v"}
+        ]
         if not vids:
             print(f"No videos found in {vd}")
             return
@@ -49,5 +54,5 @@ def main():
         print(f"{s['start']:.2f}-{s['end']:.2f}: {s['text'][:120]!r}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

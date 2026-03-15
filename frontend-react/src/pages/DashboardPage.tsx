@@ -161,8 +161,9 @@ export default function DashboardPage() {
         ) : (
           <div className="space-y-3">
             {history.map((job) => (
-              <div
+              <Link
                 key={job.id}
+                to={`/jobs/${job.id}`}
                 className="flex items-center justify-between bg-white/5 border border-white/10 rounded-xl px-5 py-4 hover:border-white/20 transition"
               >
                 <div className="flex items-center gap-3 min-w-0">
@@ -186,7 +187,7 @@ export default function DashboardPage() {
                     job.status === 'error' ? 'text-red-400' : 'text-yellow-400'
                   }`}>{job.status}</p>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}

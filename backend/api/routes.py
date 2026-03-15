@@ -24,7 +24,6 @@ from backend.database import get_db
 from backend.models.user import User, Job
 from backend.auth.dependencies import get_current_user, require_can_generate
 from backend.services.youtube_service      import download_video
-from backend.services.transcription_service import transcribe_video
 from backend.services.clip_selector        import select_top_segments
 from backend.services.hook_service         import generate_hook
 from backend.services.emoji_caption_service import build_captions
@@ -45,6 +44,7 @@ class GenerateRequest(BaseModel):
     max_clips: int = 3           # FREE default; enforced server-side per plan
     language: str = ""           # "" = auto-detect; ISO-639-1 code for PRO (e.g. "fr")
     subtitle_style: str = "default"  # PRO: default | bold | outlined | neon | minimal
+    transcription_mode: str = ""    # optional: "FAST" (default) or "QUALITY" (Pro+ only)
 
 
 class GenerateResponse(BaseModel):
@@ -61,7 +61,7 @@ class StatusResponse(BaseModel):
 
 
 # ── Background pipeline ──────────────────────────────────────────────────────
-async def run_pipeline(job_id: str, youtube_url: str, user_id: str, max_clips: int = 3, language: str = "", subtitle_style: str = "default", is_proplus: bool = False):
+async def run_pipeline(job_id: str, youtube_url: str, user_id: str, max_clips: int = 3, language: str = "", subtitle_style: str = "default", is_proplus: bool = False, transcription_mode: str | None = None):
     """Full async pipeline: download → transcribe → score → render."""
 
     def update(progress: int, step: str):
@@ -77,7 +77,19 @@ async def run_pipeline(job_id: str, youtube_url: str, user_id: str, max_clips: i
         jobs[job_id]["video_title"] = video_title
 
         update(20, "Transcribing audio with Faster-Whisper…")
-        segments = await asyncio.to_thread(transcribe_video, str(video_path), language or None)
+        # Determine transcription mode: default FAST. Only allow QUALITY for pro/proplus users.
+        mode = (transcription_mode or "").upper() if transcription_mode else ""
+        if mode == "QUALITY":
+            # only allow QUALITY for pro or proplus; is_proplus covers proplus, check DB for pro below
+            # We'll conservatively allow QUALITY only if is_proplus is True; otherwise fallback to FAST.
+            if not is_proplus:
+                logger.info(f"Job {job_id}: QUALITY mode requested but not allowed for this plan; falling back to FAST.")
+                mode = "FAST"
+        if mode not in ("QUALITY", "FAST"):
+            mode = "FAST"
+
+        from backend.services.transcription_service import transcribe_for_job
+        segments = await asyncio.to_thread(transcribe_for_job, str(video_path), mode, language or None)
 
         # Get video duration for precise padding/clamping
         import subprocess
@@ -269,34 +281,48 @@ async def get_status(job_id: str, user: User = Depends(get_current_user), db: As
 async def get_clips(job_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     import json
     if job_id in jobs:
-        return JSONResponse({"clips": jobs[job_id].get("clips", [])})
+        return JSONResponse({
+            "clips": jobs[job_id].get("clips", []),
+            "video_title": jobs[job_id].get("video_title"),
+            "status": jobs[job_id].get("status"),
+        })
     # Fallback to DB
     result = await db.execute(select(Job).where(Job.id == job_id, Job.user_id == user.id))
     job_record = result.scalar_one_or_none()
     if not job_record:
         raise HTTPException(status_code=404, detail="Job not found")
     clips = json.loads(job_record.clips_json) if job_record.clips_json else []
-    return JSONResponse({"clips": clips})
+    return JSONResponse({"clips": clips, "video_title": job_record.video_title, "status": job_record.status})
 
 
 @router.get("/history")
 async def get_history(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Return all past jobs for the current user."""
     import json
+    from datetime import datetime, timezone, timedelta
+
+    # Only show jobs created within the last 1 hour (ephemeral storage policy)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
     result = await db.execute(
-        select(Job).where(Job.user_id == user.id).order_by(Job.created_at.desc())
+        select(Job).where(Job.user_id == user.id, Job.created_at >= cutoff).order_by(Job.created_at.desc())
     )
     job_records = result.scalars().all()
-    history = [
-        {
-            "id": j.id,
-            "youtube_url": j.youtube_url,
-            "video_title": j.video_title,
-            "status": j.status,
-            "clips_count": len(json.loads(j.clips_json)) if j.clips_json else 0,
-            "created_at": j.created_at.isoformat(),
-        }
-        for j in job_records
-    ]
+    history = []
+    for j in job_records:
+        clips_count = len(json.loads(j.clips_json)) if j.clips_json else 0
+        expires_at = (j.created_at + timedelta(hours=1)).astimezone(timezone.utc).isoformat()
+        history.append(
+            {
+                "id": j.id,
+                "youtube_url": j.youtube_url,
+                "video_title": j.video_title,
+                "status": j.status,
+                "clips_count": clips_count,
+                "created_at": j.created_at.isoformat(),
+                "expires_at": expires_at,
+                "clips_url": f"/clips/{j.id}",
+            }
+        )
+
     return JSONResponse({"history": history})
 

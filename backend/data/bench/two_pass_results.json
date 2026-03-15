@@ -1,0 +1,38 @@
+[
+  {
+    "video": "MISTER V - LES 11 RAPPEURS À NE PAS SUIVRE 2.mp4",
+    "sample_start": 10.0,
+    "sample_dur": 30.0,
+    "single_time": 2.629634583980078,
+    "single_n_segments": 6,
+    "two_pass_time": 4.3422616249881685,
+    "two_n_segments": 9,
+    "sample_single_excerpt": "On les déteste, décharge, découvrer les 11 rappeurs à neufs surtout pas suivre, de ses l'édition.\nIl a été la première partie du tout premier concert de NTM.\nIl a su traverser les époques sans jamais vraiment les marquer.\nIl dit de lui qu'il est le meilleur de sa génération, celle-ci s'étirant sur quatre décennies.\nIl revient avec son 21ème projet, J'arrive, découvrir Jones.\nJe suis un montraîste, je suis trop boussté, ils sont se battent bien !",
+    "sample_two_excerpt": "On les déteste, décharge, découvrez les 11 rappeurs à neuf, surtout pas suivre, de celles éditions.\nIl a été la première partie du tout premier concert de NTM.\nIl a...\nIl dit de lui qu'il est le meilleur de sa génération.\nC'est le si c'est tirant sur quatre décennies.\nIl revient avec son soin d'une emprojet, j'arrive.\nD'écoverrez, Jones.\nPeut-ce qu'une aura?\nJe suis à mon crêche, je suis trop boussté, ils sont en fait bar de bé-",
+    "excerpt_similarity": 0.2905788876276958
+  },
+  {
+    "video": "J’ai fait croire à cette STREAMEUSE que j’étais un CHANTEUR.mp4",
+    "sample_start": 10.0,
+    "sample_dur": 30.0,
+    "single_time": 4.2912783329957165,
+    "single_n_segments": 12,
+    "two_pass_time": 4.178065292013343,
+    "two_n_segments": 21,
+    "sample_single_excerpt": "Il nous a manqué ma biche, incroyable les fringues.\nBon, on est dans Disney Channel, et moi je te dis...\nMerci ma belle, c'est toi la bubelle, eh je n'en ai rien à brûler.\nY'a pas de traitement pas peur, c'est pas parce que t'as 2, 3 euros que je vais déjà être gentil avec toi.\nOk, puis longtemps, c'est pas vu, hein.\nÇa m'a manqué les mecs, je suis content, je suis un peu fatigué, je ne vous m'en parle pas.\nJe suis encore cas où, mais je suis content, je suis content d'être là, les gars.\nT'as gagné ? Ouais, un million, mais comme j'en ai déjà 5, on...\nNon, mais les mecs, vraiment.\nAvant de genre, on a plein de trucs à dire, c'est pas c'est trop de choses.",
+    "sample_two_excerpt": "nous a manqué ma biche, incroyable les fringues.\nBon, on est dans Disney Channel et moi je vais dire merci.\nEh j'en avoue la bombelle.\nIl n'y a pas de traitement de pas d'heures.\nC'est pas parce que t'as deux et trois euros que je vais te déjette j'en sais quoi.\nOk, c'est longtemps, c'est pas vu hein.\nÇa m'a manqué les mecs.\nJe suis content.\nJe suis un peu fatigué, je vous m'en pense.\nJe suis encore cas au mecs.",
+    "excerpt_similarity": 0.46382189239332094
+  },
+  {
+    "video": "TU RIS, T'ES PROJETÉ ! (Essayez de ne pas rire avec Anyme, Nico et Hctuan).mp4",
+    "sample_start": 10.0,
+    "sample_dur": 30.0,
+    "single_time": 10.607337458000984,
+    "single_n_segments": 15,
+    "two_pass_time": 12.258986208005808,
+    "two_n_segments": 15,
+    "sample_single_excerpt": "Ce mec-là là, c'est moi.\nEt avant d'en arriver là, il s'est passé pas mal de choses.\nEt là, Flashbox, BAM, BAM, BAM, BAM, BAM, BAM, BAM, BAM...\nLes images et des filoies.\nOn est dans une série ou quoi ?\nMonsieur Damien, bienvenu à tous sur ce nouveau format.\nPremière épisode, je suis pas tout seul, je suis un très belle compagnie,\nje suis avec Anime,\nActuan, Nico.\nJ'ai une cas.",
+    "sample_two_excerpt": "Ce mec là-là, c'est moi.\nEt avant d'en arriver là, il s'est passé par Mal de choses.\nEt là, flashback, maman maman maman maman maman maman maman\nL'esima je suis défileux.\nLà on a dans une série au quoi.\nS'il y en a bien tous sur ce nouveau format.\nRommir épisode, je ne suis pas tout seul.\nJe suis en très belle compagnie.\nJe suis avec Ani,\nりこ",
+    "excerpt_similarity": 0.2572614107883817
+  }
+]

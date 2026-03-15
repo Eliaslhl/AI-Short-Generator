@@ -46,12 +46,39 @@ def _write_cookies_file() -> str | None:
         return None
 
 
+def _get_cookies_file() -> tuple[str | None, bool]:
+    """
+    Determine cookies file to use.
+
+    Returns a tuple (path_or_none, is_temp). If the caller set
+    YOUTUBE_COOKIES_FILE and the path exists, it will be returned with
+    is_temp=False. Otherwise fall back to decoding YOUTUBE_COOKIES_B64 and
+    return a temp file path with is_temp=True. If no cookies configured,
+    returns (None, False).
+    """
+    # 1) explicit file path (preferred)
+    path = os.environ.get("YOUTUBE_COOKIES_FILE", "").strip()
+    if path:
+        if os.path.exists(path):
+            logger.info(f"Using user-provided YouTube cookies file: {path}")
+            return path, False
+        else:
+            logger.warning(f"YOUTUBE_COOKIES_FILE set but file not found: {path}")
+
+    # 2) base64-encoded cookies in env var
+    tmp = _write_cookies_file()
+    if tmp:
+        return tmp, True
+
+    return None, False
+
+
 def _sanitize_filename(name: str) -> str:
     """Remove characters that are unsafe in file names."""
     return re.sub(r'[\\/*?:"<>|]', "_", name).strip()
 
 
-def download_video(youtube_url: str, job_id: str) -> tuple[Path, str]:
+def download_video(youtube_url: str, job_id: str, audio_only: bool = False) -> tuple[Path, str]:
     """
     Download a YouTube video to data/videos/<job_id>/.
 
@@ -71,41 +98,202 @@ def download_video(youtube_url: str, job_id: str) -> tuple[Path, str]:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # ── yt-dlp options ──────────────────────────────────────────────────────
-    # We ask for the best combined mp4 up to 1080p to keep file sizes sane.
+    # By default download a smaller "processing" copy (e.g. 480p) to
+    # speed up decoding/transcription. Consumers that only need audio can
+    # request audio_only=True to download the audio stream instead.
     output_template = str(out_dir / "%(title)s.%(ext)s")
+
+    if audio_only:
+        fmt = "bestaudio"
+    else:
+        fmt = f"bestvideo[height<={settings.processing_max_height}]+bestaudio/best"
 
     cmd = [
         str(_YTDLP_BIN),
-        # Accept any format — yt-dlp picks the best available and converts to mp4
-        "--format", "bestvideo+bestaudio/best",
+        "--format", fmt,
         "--merge-output-format", "mp4",
-        "--output",   output_template,
+        "--output", output_template,
         "--no-playlist",
         "--no-warnings",
         "--print", "after_move:filepath",
         youtube_url,
     ]
 
-    # Inject YouTube cookies if available (required for datacenter IPs)
-    cookies_file = _write_cookies_file()
+    # Inject YouTube cookies if available (required for datacenter IPs).
+    # Support two methods:
+    #  - YOUTUBE_COOKIES_FILE: path to a cookies.txt file (preferred)
+    #  - YOUTUBE_COOKIES_B64: base64-encoded cookies file contents (legacy)
+    cookies_file, cookies_is_temp = _get_cookies_file()
     if cookies_file:
         cmd.extend(["--cookies", cookies_file])
-        logger.info("Using YouTube cookies for download")
+        logger.info(f"Using YouTube cookies for download (file={cookies_file}, temp={cookies_is_temp})")
+
+    # Decide whether to pass JS runtime / remote-components flags based on
+    # configuration policy. This allows conservative behaviour in prod.
+    js_runtimes = getattr(settings, "ytdlp_js_runtimes", "").strip()
+    remote_components = getattr(settings, "ytdlp_remote_components", "").strip()
+    enable_policy = getattr(settings, "ytdlp_enable_js", "when_cookies").strip().lower()
+
+    def _with_js_flags(base_cmd):
+        c = list(base_cmd)
+        if js_runtimes:
+            c.extend(["--js-runtimes", js_runtimes])
+        if remote_components:
+            c.extend(["--remote-components", remote_components])
+        return c
+
+    # If policy says always, enable flags now. If when_cookies, enable only if
+    # a cookies file is present. If on_error, we will attempt first without
+    # flags and only retry with flags if we detect a JS-challenge related error.
+    should_pass_js_now = False
+    if enable_policy == "always":
+        should_pass_js_now = True
+    elif enable_policy == "when_cookies":
+        should_pass_js_now = bool(cookies_file)
+    elif enable_policy == "on_error":
+        should_pass_js_now = False
+    else:
+        # Unknown policy -> default to when_cookies
+        should_pass_js_now = bool(cookies_file)
+
+    base_cmd = list(cmd)
+    if should_pass_js_now:
+        cmd = _with_js_flags(base_cmd)
 
     logger.info(f"Running yt-dlp for job {job_id}: {youtube_url}")
+
+    def _run_cmd(cmd_list):
+        return subprocess.run(cmd_list, capture_output=True, text=True, check=True)
+
+    result = None
+    tried_impersonate = False
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    except subprocess.CalledProcessError as e:
-        logger.error(f"yt-dlp stderr: {e.stderr}")
-        logger.error(f"yt-dlp stdout: {e.stdout}")
-        raise RuntimeError(f"yt-dlp failed (exit {e.returncode}): {e.stderr.strip() or e.stdout.strip()}")
+        try:
+            # If policy is "on_error" and we didn't pre-enable JS flags, attempt
+            # the base command first and only retry with JS flags on EJS-related
+            # errors.
+            if enable_policy == "on_error" and not should_pass_js_now:
+                try:
+                    result = _run_cmd(base_cmd)
+                except subprocess.CalledProcessError as e:
+                    stderr = (e.stderr or "").lower()
+                    stdout = (e.stdout or "").lower()
+                    logger.error(f"yt-dlp stderr: {e.stderr}")
+                    logger.error(f"yt-dlp stdout: {e.stdout}")
+
+                    # Detect EJS / JS-challenge related messages
+                    ejs_msgs = [
+                        "challenge solving failed",
+                        "some formats may be missing",
+                        "ensure you have a supported javascript",
+                        "challenge",
+                    ]
+                    if any(m in stderr or m in stdout for m in ejs_msgs):
+                        # Retry once with JS flags enabled
+                        if js_runtimes or remote_components:
+                            logger.info("Retrying yt-dlp with JS runtimes / remote-components to solve JS challenges")
+                            try:
+                                result = _run_cmd(_with_js_flags(base_cmd))
+                            except subprocess.CalledProcessError as e2:
+                                logger.error(f"yt-dlp retry stderr: {e2.stderr}")
+                                logger.error(f"yt-dlp retry stdout: {e2.stdout}")
+                                raise RuntimeError(f"yt-dlp failed (exit {e2.returncode}): {e2.stderr.strip() or e2.stdout.strip()}")
+                        else:
+                            raise RuntimeError(f"yt-dlp failed (exit {e.returncode}): {e.stderr.strip() or e.stdout.strip()}")
+                    else:
+                        # Not an EJS-related error; reuse existing impersonation retry
+                        bot_block_msgs = [
+                            "sign in to confirm",
+                            "confirm you",
+                            "use --cookies",
+                            "cookies",
+                        ]
+                        if any(m in stderr or m in stdout for m in bot_block_msgs):
+                            help_msg = (
+                                "yt-dlp a renvoyé une erreur indiquant que YouTube demande une vérification ("
+                                "'Sign in to confirm you\'re not a bot'). Cela arrive souvent depuis des IP de datacenter ou "
+                                "lorsque YouTube exige une session authentifiée."
+                            )
+                            suggestions = (
+                                "Options pour résoudre le problème:\n"
+                                "  1) Fournir des cookies YouTube exportés depuis votre navigateur via la variable d'environnement \"YOUTUBE_COOKIES_B64\".\n"
+                                "     - Exportez (ex: via l'extension 'EditThisCookie' ou 'cookies.txt') puis encodez en base64: \n"
+                                "         cat cookies.txt | base64 | pbcopy  # macOS (copie dans le presse-papier)\n"
+                                "       Puis définissez la variable d'environnement avant de démarrer le service:\n"
+                                "         export YOUTUBE_COOKIES_B64=\"<contenu_base64>\"\n"
+                                "  2) (Temporaire) Réessayer avec une impersonation de navigateur. Le serveur va tenter ceci automatiquement une fois.\n"
+                                "  3) Voir la doc yt-dlp pour passer des cookies: https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp\n"
+                            )
+                            raise RuntimeError(f"yt-dlp failed (exit {e.returncode}): {help_msg}\n\n{suggestions}")
+                        if not cookies_file and not tried_impersonate:
+                            tried_impersonate = True
+                            logger.info("Retrying yt-dlp once with --impersonate chrome to bypass simple bot checks")
+                            try:
+                                retry_cmd = base_cmd + ["--impersonate", "chrome"]
+                                result = _run_cmd(retry_cmd)
+                            except subprocess.CalledProcessError as e2:
+                                logger.error(f"yt-dlp retry stderr: {e2.stderr}")
+                                logger.error(f"yt-dlp retry stdout: {e2.stdout}")
+                                raise RuntimeError(f"yt-dlp failed (exit {e2.returncode}): {e2.stderr.strip() or e2.stdout.strip()}")
+                        else:
+                            raise RuntimeError(f"yt-dlp failed (exit {e.returncode}): {e.stderr.strip() or e.stdout.strip()}")
+            else:
+                # Normal path: command already has flags if should_pass_js_now
+                result = _run_cmd(cmd)
+        except subprocess.CalledProcessError as e:
+            # Capture output for analysis (when not handled above)
+            stderr = (e.stderr or "").lower()
+            stdout = (e.stdout or "").lower()
+            logger.error(f"yt-dlp stderr: {e.stderr}")
+            logger.error(f"yt-dlp stdout: {e.stdout}")
+
+            bot_block_msgs = [
+                "sign in to confirm",
+                "confirm you",
+                "use --cookies",
+                "cookies",
+            ]
+            if any(m in stderr or m in stdout for m in bot_block_msgs):
+                help_msg = (
+                    "yt-dlp a renvoyé une erreur indiquant que YouTube demande une vérification ("
+                    "'Sign in to confirm you\'re not a bot'). Cela arrive souvent depuis des IP de datacenter ou "
+                    "lorsque YouTube exige une session authentifiée."
+                )
+                suggestions = (
+                    "Options pour résoudre le problème:\n"
+                    "  1) Fournir des cookies YouTube exportés depuis votre navigateur via la variable d'environnement \"YOUTUBE_COOKIES_B64\".\n"
+                    "     - Exportez (ex: via l'extension 'EditThisCookie' ou 'cookies.txt') puis encodez en base64: \n"
+                    "         cat cookies.txt | base64 | pbcopy  # macOS (copie dans le presse-papier)\n"
+                    "       Puis définissez la variable d'environnement avant de démarrer le service:\n"
+                    "         export YOUTUBE_COOKIES_B64=\"<contenu_base64>\"\n"
+                    "  2) (Temporaire) Réessayer avec une impersonation de navigateur. Le serveur va tenter ceci automatiquement une fois.\n"
+                    "  3) Voir la doc yt-dlp pour passer des cookies: https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp\n"
+                )
+                raise RuntimeError(f"yt-dlp failed (exit {e.returncode}): {help_msg}\n\n{suggestions}")
+
+            # Otherwise attempt a single retry with impersonation which can help
+            # for some extractor blocks. Don't do this if user provided cookies
+            # (they should be preferred).
+            if not cookies_file and not tried_impersonate:
+                tried_impersonate = True
+                logger.info("Retrying yt-dlp once with --impersonate chrome to bypass simple bot checks")
+                try:
+                    retry_cmd = cmd + ["--impersonate", "chrome"]
+                    result = _run_cmd(retry_cmd)
+                except subprocess.CalledProcessError as e2:
+                    logger.error(f"yt-dlp retry stderr: {e2.stderr}")
+                    logger.error(f"yt-dlp retry stdout: {e2.stdout}")
+                    raise RuntimeError(f"yt-dlp failed (exit {e2.returncode}): {e2.stderr.strip() or e2.stdout.strip()}")
+            else:
+                # Not a bot/blocking message we recognized and no retry available
+                raise RuntimeError(f"yt-dlp failed (exit {e.returncode}): {e.stderr.strip() or e.stdout.strip()}")
     finally:
-        # Clean up temp cookie file
-        if cookies_file:
-            try:
+        # Clean up temp cookie file only if we created it
+        try:
+            if cookies_file and locals().get("cookies_is_temp"):
                 os.unlink(cookies_file)
-            except Exception:
-                pass
+        except Exception:
+            pass
 
     # The last non-empty line is the final file path (from --print after_move:filepath)
     lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
@@ -124,3 +312,48 @@ def download_video(youtube_url: str, job_id: str) -> tuple[Path, str]:
     video_title = video_path.stem
     logger.info(f"Download complete: {video_path}")
     return video_path, video_title
+
+
+def extract_audio(
+    video_path: str | Path,
+    out_wav: str | Path,
+    start: float | None = None,
+    duration: float | None = None,
+) -> Path:
+    """
+    Extract a mono 16 kHz WAV suitable for ASR using ffmpeg.
+
+    Parameters
+    ----------
+    video_path: path to source video file
+    out_wav: output WAV path
+    start: optional start time in seconds
+    duration: optional duration in seconds
+
+    Returns
+    -------
+    Path to the generated WAV file (raises on ffmpeg errors)
+    """
+    from subprocess import run, CalledProcessError
+
+    video_path = str(video_path)
+    out_wav = str(out_wav)
+    cmd = ["ffmpeg", "-y"]
+    if start is not None:
+        # -ss before -i seeks faster (input seeking)
+        cmd += ["-ss", str(start)]
+    cmd += ["-i", video_path]
+    if duration is not None:
+        cmd += ["-t", str(duration)]
+    # audio-only, mono, 16kHz WAV (widely supported for ASR)
+    cmd += ["-vn", "-ac", "1", "-ar", "16000", "-f", "wav", out_wav]
+
+    logger.info(f"Extracting audio: {' '.join(cmd)}")
+    try:
+        run(cmd, capture_output=True, text=True, check=True)
+    except CalledProcessError as e:
+        logger.error(f"ffmpeg stderr: {e.stderr}")
+        logger.error(f"ffmpeg stdout: {e.stdout}")
+        raise RuntimeError(f"ffmpeg failed: {e.stderr.strip() or e.stdout.strip()}")
+
+    return Path(out_wav)

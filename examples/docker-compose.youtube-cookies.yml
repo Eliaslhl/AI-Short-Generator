@@ -1,0 +1,11 @@
+version: '3.7'
+services:
+  app:
+    image: your-image:latest
+    environment:
+      - YOUTUBE_COOKIES_FILE=/run/secrets/youtube_cookies.txt
+    secrets:
+      - youtube_cookies
+secrets:
+  youtube_cookies:
+    file: ./secrets/youtube_cookies.txt

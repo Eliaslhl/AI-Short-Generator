@@ -1,0 +1,58 @@
+[
+  {
+    "workers": 1,
+    "segments": 4,
+    "duration_secs": 6.763122081756592,
+    "wall_time_reported_secs": 6.52,
+    "timestamp": 1773533429.285868,
+    "samples_count": 33,
+    "cpu_avg": 25.887878787878787,
+    "cpu_max": 58.3,
+    "mem_avg": 70.5030303030303,
+    "mem_max": 71.0,
+    "read_bytes": 40189952,
+    "write_bytes": 146124800
+  },
+  {
+    "workers": 2,
+    "segments": 4,
+    "duration_secs": 3.4777169227600098,
+    "wall_time_reported_secs": 3.36,
+    "timestamp": 1773533436.0491421,
+    "samples_count": 17,
+    "cpu_avg": 31.247058823529414,
+    "cpu_max": 63.2,
+    "mem_avg": 70.49411764705881,
+    "mem_max": 70.7,
+    "read_bytes": 5861376,
+    "write_bytes": 55623680
+  },
+  {
+    "workers": 4,
+    "segments": 4,
+    "duration_secs": 2.0459258556365967,
+    "wall_time_reported_secs": 1.79,
+    "timestamp": 1773533439.527013,
+    "samples_count": 10,
+    "cpu_avg": 53.42,
+    "cpu_max": 69.5,
+    "mem_avg": 70.57000000000001,
+    "mem_max": 70.8,
+    "read_bytes": 3133440,
+    "write_bytes": 29937664
+  },
+  {
+    "workers": 8,
+    "segments": 4,
+    "duration_secs": 2.2420449256896973,
+    "wall_time_reported_secs": 1.96,
+    "timestamp": 1773533441.573097,
+    "samples_count": 11,
+    "cpu_avg": 58.89090909090908,
+    "cpu_max": 79.0,
+    "mem_avg": 70.68181818181819,
+    "mem_max": 70.8,
+    "read_bytes": 1142784,
+    "write_bytes": 26214400
+  }
+]

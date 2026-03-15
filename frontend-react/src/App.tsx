@@ -20,6 +20,7 @@ import YoutubeShortsGeneratorSEO from './pages/seo/YoutubeShortsGeneratorSEO'
 import ConvertYoutubeToShortsSEO from './pages/seo/ConvertYoutubeToShortsSEO'
 import CookieConsent from './components/CookieConsent'
 import PrivacyPolicy from './pages/PrivacyPolicy'
+import JobDetailPage from './pages/JobDetailPage'
 
 export default function App() {
   // Scroll to hash on navigation (e.g. /#pricing) to support SPA anchor links
@@ -76,6 +77,9 @@ export default function App() {
               } />
               <Route path="/dashboard" element={
                 <ProtectedRoute><DashboardPage /></ProtectedRoute>
+              } />
+              <Route path="/jobs/:jobId" element={
+                <ProtectedRoute><JobDetailPage /></ProtectedRoute>
               } />
 
               {/* Fallback */}

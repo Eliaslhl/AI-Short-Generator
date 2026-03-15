@@ -14,13 +14,14 @@ export interface User {
 
 export interface Clip {
   file: string
+  poster?: string
   duration: number
   viral_score: number
-  hook: string | null
-  title: string | null
-  hashtags: string[] | null
-  start_time: number
-  end_time: number
+  hook?: string | null
+  title?: string | null
+  hashtags?: string[] | null
+  start?: number
+  end?: number
 }
 
 export type JobStatus = 'pending' | 'processing' | 'done' | 'error'
@@ -55,6 +56,12 @@ export interface StatusResponse {
   progress: number
   step: string
   clips: Clip[]
+}
+
+export interface ClipsResponse {
+  clips: Clip[]
+  video_title?: string | null
+  status?: JobStatus
 }
 
 export interface HistoryResponse {

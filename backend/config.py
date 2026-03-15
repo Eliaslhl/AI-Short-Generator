@@ -7,6 +7,13 @@ multiple files to change a path, model name, or threshold.
 
 from pathlib import Path
 from pydantic_settings import BaseSettings
+from typing import Optional
+import math
+import os
+try:
+    import psutil  # type: ignore
+except Exception:
+    psutil = None
 
 
 # ──────────────────────────────────────────────
@@ -44,6 +51,51 @@ class Settings(BaseSettings):
     whisper_device: str  = "cpu"             # cpu | cuda
     whisper_language: str = ""               # "" = auto-detect (recommended); set "en", "fr"… to force a language
 
+    # ---------- Processing / performance tuning ----------
+    # When processing a video we download a low-res "processing" copy
+    # (height in pixels). This speeds decoding and reduces I/O. Keep
+    # the original for final exports if you need full quality.
+    processing_max_height: int = 480
+
+    # Two-pass transcription: small/faster model for coarse pass, then
+    # a larger model (or same) for refined word-timestamps on candidates.
+    whisper_fast_model: str = "tiny"
+    whisper_refine_model: str = "base"
+    # Two-pass transcription tuning
+    two_pass_window_size: float = 15.0     # seconds per analysis window
+    two_pass_window_overlap: float = 1.0   # seconds overlap between windows
+    two_pass_conf_threshold: float = 0.70  # below this avg word prob we refine (higher -> more refine)
+    two_pass_pad: float = 0.5              # pad seconds around flagged windows
+    two_pass_max_refine_fraction: float = 0.15  # max fraction of audio seconds to refine (0.15 = 15%)
+    # Dynamic cap (seconds) for the refine phase — if the refine phase runs
+    # longer than this, we abort submitting new windows. Helps bound latency.
+    two_pass_dynamic_cap_seconds: float = 8.0
+
+    # Degree of parallelism for transcription/scoring on CPU-bound workers
+    transcribe_workers: int = 4
+
+    # Preferred ffmpeg hardware accel / encoder. Empty = software libx264.
+    # Examples: "videotoolbox" (macOS), "nvenc" (NVIDIA). This is used
+    # by ffmpeg wrapper calls where available.
+    ffmpeg_hwaccel: str = ""
+
+    # ---------- yt-dlp JavaScript challenge solver (EJS) ----------
+    # If your environment needs to solve JS challenges (YouTube pages that
+    # require a JS runtime), you can configure the preferred runtime and
+    # remote component source. Set these via .env in production if needed.
+    # Examples:
+    #   YTDLP_JS_RUNTIMES=node
+    #   YTDLP_REMOTE_COMPONENTS=ejs:npm
+    # Leave empty to skip passing these options to yt-dlp.
+    ytdlp_js_runtimes: str = "node"
+    ytdlp_remote_components: str = "ejs:npm"
+    # How to enable yt-dlp JS solver flags. One of:
+    #   - "always"       : always pass --js-runtimes / --remote-components
+    #   - "when_cookies" : only pass flags when cookies are provided (default)
+    #   - "on_error"     : try without flags first, then retry with flags if a
+    #                       JS-challenge-related error is detected
+    ytdlp_enable_js: str = "when_cookies"
+
     # ---------- Clip selection ----------
     max_clips: int       = 10
     min_clip_duration: int = 20              # seconds — min to have enough content
@@ -54,6 +106,11 @@ class Settings(BaseSettings):
     output_height: int   = 1920             # 9:16 portrait
     output_fps: int      = 30
     output_bitrate: str  = "4000k"
+
+    # ---------- Rendering / parallelism ----------
+    # If None, compute a sane default based on CPU cores: min(4, floor(0.75 * logical_cpus)).
+    # This prevents overloading small machines while giving good throughput on larger hosts.
+    render_workers: Optional[int] = None
 
     # ---------- spaCy ----------
     spacy_model: str     = "en_core_web_sm"
@@ -82,3 +139,27 @@ class Settings(BaseSettings):
 
 # Single shared instance
 settings = Settings()
+
+
+def get_render_workers() -> int:
+    """Return the effective number of render workers.
+
+    Uses settings.render_workers if set, otherwise computes a sensible default.
+    """
+    if settings.render_workers is not None:
+        return max(1, int(settings.render_workers))
+
+    # try psutil first (more reliable in virtual envs), fallback to os.cpu_count()
+    cores = None
+    try:
+        if psutil is not None:
+            cores = psutil.cpu_count(logical=True)
+    except Exception:
+        cores = None
+
+    if not cores:
+        cores = os.cpu_count() or 4
+
+    # compute 75% of logical cores, min 1, cap at 4 for conservative default
+    val = max(1, min(4, math.floor(0.75 * cores)))
+    return int(val)

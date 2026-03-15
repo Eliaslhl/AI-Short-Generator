@@ -3,6 +3,7 @@ import type {
   AuthResponse,
   GenerateResponse,
   StatusResponse,
+  ClipsResponse,
   HistoryResponse,
   CheckoutResponse,
 } from '../types'
@@ -36,7 +37,7 @@ export const generatorApi = {
   status: (jobId: string): Promise<AxiosResponse<StatusResponse>> =>
     client.get(`/api/status/${jobId}`),
 
-  clips: (jobId: string): Promise<AxiosResponse<StatusResponse>> =>
+  clips: (jobId: string): Promise<AxiosResponse<ClipsResponse>> =>
     client.get(`/api/clips/${jobId}`),
 
   history: (): Promise<AxiosResponse<HistoryResponse>> =>

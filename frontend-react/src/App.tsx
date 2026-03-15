@@ -20,7 +20,13 @@ import YoutubeShortsGeneratorSEO from './pages/seo/YoutubeShortsGeneratorSEO'
 import ConvertYoutubeToShortsSEO from './pages/seo/ConvertYoutubeToShortsSEO'
 import CookieConsent from './components/CookieConsent'
 import PrivacyPolicy from './pages/PrivacyPolicy'
+import MentionsLegales from './pages/MentionsLegales'
+import CGU from './pages/CGU'
+import CookiesPolicy from './pages/CookiesPolicy'
+import SitemapPage from './pages/SitemapPage'
 import JobDetailPage from './pages/JobDetailPage'
+import Footer from './components/Footer'
+import LegalHub from './pages/LegalHub'
 
 export default function App() {
   // Scroll to hash on navigation (e.g. /#pricing) to support SPA anchor links
@@ -28,20 +34,28 @@ export default function App() {
     const { hash, pathname } = useLocation()
     useEffect(() => {
       if (!hash) return
-      // small timeout to allow route renders
+      // small timeout to allow route renders, then retry via RAF until element is mounted
       const id = hash.replace('#', '')
-      setTimeout(() => {
+      let mounted = true
+
+      const tryScroll = () => {
         try {
           const el = document.getElementById(id)
           if (el && typeof (el as Element).scrollIntoView === 'function') {
-            (el as Element).scrollIntoView({ behavior: 'smooth', block: 'start' })
+            ;(el as Element).scrollIntoView({ behavior: 'smooth', block: 'start' })
+            return
           }
         } catch (e) {
-          // defensive: if any unexpected error occurs, ignore to avoid breaking the page
-          // (some environments / SSR might not have full DOM APIs)
-          // console.debug('ScrollToHash error', e)
+          // ignore any DOM errors
         }
-      }, 50)
+        if (mounted) requestAnimationFrame(tryScroll)
+      }
+
+      const t = setTimeout(tryScroll, 50)
+      return () => {
+        mounted = false
+        clearTimeout(t)
+      }
     }, [hash, pathname])
     return null
   }
@@ -72,26 +86,32 @@ export default function App() {
               <Route path="/seo/convert-youtube-to-shorts" element={<ConvertYoutubeToShortsSEO />} />
 
               {/* Protected */}
-              <Route path="/generate" element={
-                <ProtectedRoute><GeneratorPage /></ProtectedRoute>
-              } />
-              <Route path="/dashboard" element={
-                <ProtectedRoute><DashboardPage /></ProtectedRoute>
-              } />
-              <Route path="/jobs/:jobId" element={
-                <ProtectedRoute><JobDetailPage /></ProtectedRoute>
-              } />
+              <Route path="/generate" element={<ProtectedRoute><GeneratorPage /></ProtectedRoute>} />
+              <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+              <Route path="/jobs/:jobId" element={<ProtectedRoute><JobDetailPage /></ProtectedRoute>} />
+
+              {/* Individual legal pages (each has its own URL) */}
+              <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route path="/sitemap" element={<SitemapPage />} />
+
+              <Route path="/legal/mentions" element={<MentionsLegales />} />
+              <Route path="/legal/cgu" element={<CGU />} />
+              <Route path="/legal/privacy" element={<PrivacyPolicy />} />
+              <Route path="/legal/cookies" element={<CookiesPolicy />} />
+              <Route path="/legal/sitemap" element={<SitemapPage />} />
+
+              {/* Legal hub routes: renders the navigation + content */}
+              <Route path="/legal" element={<LegalHub />} />
+              <Route path="/legal/:page" element={<LegalHub />} />
 
               {/* Fallback */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
-            <Routes>
-              <Route path="/privacy" element={<PrivacyPolicy />} />
-            </Routes>
-          </div>
-        </AuthProvider>
-      </ToastProvider>
-    </BrowserRouter>
-  )
-}
+            <Footer />
+           </div>
+         </AuthProvider>
+       </ToastProvider>
+     </BrowserRouter>
+   )
+ }
 

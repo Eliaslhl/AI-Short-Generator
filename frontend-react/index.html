@@ -53,14 +53,25 @@
 
         // Also trigger on first interaction only when consent exists
         ['click','keydown','touchstart','scroll'].forEach(function(evt) {
-          window.addEventListener(evt, function onFirst() {
+          try {
+            // define the handler in the outer scope so removeEventListener can
+            // reference the exact same function object when called.
+            var handler = function() {
+              try {
+                if (localStorage.getItem('cookie_consent') === 'true') {
+                  scheduleInit();
+                  try { window.removeEventListener(evt, handler); } catch (e) {}
+                }
+              } catch (e) {}
+            };
+
+            // Some older browsers may throw when passing an options object.
             try {
-              if (localStorage.getItem('cookie_consent') === 'true') {
-                scheduleInit();
-                window.removeEventListener(evt, onFirst);
-              }
-            } catch (e) {}
-          }, {passive: true});
+              window.addEventListener(evt, handler, {passive: true});
+            } catch (e) {
+              window.addEventListener(evt, handler);
+            }
+          } catch (e) {}
         });
       })();
     </script>

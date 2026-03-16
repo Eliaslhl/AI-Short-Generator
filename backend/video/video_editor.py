@@ -326,13 +326,9 @@ def render_clip(
 
     # First try an ffmpeg-based fast path (hardware encoder if available).
     try:
-        # pass overlay_hook (None) to avoid burning a title/hook at the top
-        # Decide target dimensions from profile (portrait orientation)
-        profile = (
-            render_profile or settings.render_quality
-            if hasattr(settings, "render_quality")
-            else None
-        )
+        # FORCE HQ profile for best quality (CRF 18 / preset slow or high bitrate for hw encoders)
+        # We ignore render_profile passed by callers and always use hq1080 for exports.
+        profile = "hq1080"
         if profile == "hq4k":
             target_w, target_h = 2160, 3840
         else:
@@ -386,12 +382,18 @@ def render_clip(
             clip = _add_broll_overlay(clip, broll)
 
         # ── Export ────────────────────────────────────────────────────────
+        eff_profile = render_profile or getattr(settings, "render_quality", "default")
+        mp_bitrate = (
+            settings.hq1080_bitrate if eff_profile == "hq1080" else settings.output_bitrate
+        )
         clip.write_videofile(  # type: ignore[union-attr]
             str(output_path),
             fps=settings.output_fps,
             codec="libx264",
             audio_codec="aac",
-            bitrate=settings.output_bitrate,
+            bitrate=mp_bitrate,
+            audio_bitrate=settings.output_audio_bitrate,
+            ffmpeg_params=["-ar", str(settings.output_audio_samplerate)],
             threads=4,
             logger=None,  # suppress MoviePy's verbose progress bar
         )
@@ -630,7 +632,8 @@ def _render_with_ffmpeg(
             # overlay near top center (x=(W-w)/2, y=80)
             # we'll label intermediate outputs and produce a final labeled video [vout]
             # base chain: scale/pad -> [v0]; overlay -> [v1]
-            base_chain = f"[0:v]{vf_main}[v0];[v0][1:v]overlay=(W-w)/2:80[v1]"
+            # Label final filtered video as [vout] so we can map it later
+            base_chain = f"[0:v]{vf_main}[v0];[v0][1:v]overlay=(W-w)/2:80[vout]"
             filter_complex = base_chain
 
         # Subtitles: if present, do a safe two-pass approach to burn them in.
@@ -656,11 +659,13 @@ def _render_with_ffmpeg(
                 "-c:v",
                 "libx264",
                 "-preset",
-                "veryfast",
+                settings.hq_preset,
                 "-c:a",
                 "aac",
                 "-b:a",
-                "128k",
+                settings.output_audio_bitrate,
+                "-ar",
+                str(settings.output_audio_samplerate),
                 str(subbed_tmp),
             ]
             run(cmd_sub, capture_output=True, check=True)
@@ -681,6 +686,10 @@ def _render_with_ffmpeg(
                     "0:a?",
                     "-c:a",
                     "aac",
+                    "-b:a",
+                    settings.output_audio_bitrate,
+                    "-ar",
+                    str(settings.output_audio_samplerate),
                 ]
                 # choose encoder settings for the final output
                 if (settings.ffmpeg_hwaccel or "").lower() in ("videotoolbox", "nvenc"):
@@ -704,9 +713,11 @@ def _render_with_ffmpeg(
                         "-c:v",
                         "libx264",
                         "-preset",
-                        "veryfast",
+                        settings.hq_preset,
                         "-b:v",
                         settings.output_bitrate,
+                        "-pix_fmt",
+                        "yuv420p",
                     ]
 
                 cmd_overlay += [str(output_path)]
@@ -728,8 +739,8 @@ def _render_with_ffmpeg(
             # simple scale/pad via -vf
             cmd += ["-vf", vf_main]
 
-        # Map audio if present
-        cmd += ["-map", "0:a?", "-c:a", "aac"]
+        # Map audio if present and set target audio codec/bitrate/samplerate
+        cmd += ["-map", "0:a?", "-c:a", "aac", "-b:a", settings.output_audio_bitrate, "-ar", str(settings.output_audio_samplerate)]
 
         # Choose encoder and quality settings
         hw = (settings.ffmpeg_hwaccel or "").lower()

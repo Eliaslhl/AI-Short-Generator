@@ -124,14 +124,22 @@ class Settings(BaseSettings):
     output_width: int = 1080
     output_height: int = 1920  # 9:16 portrait
     output_fps: int = 30
-    output_bitrate: str = "4000k"
+    # Video bitrate for default/fast exports. Set to 10000k (≈10 Mbps) which
+    # is a good target for Instagram Reels / TikTok uploads — export slightly
+    # above the platform compression.
+    output_bitrate: str = "10000k"
     # Render quality presets: "default", "hq1080", "hq4k"
     render_quality: str = "hq1080"
     # High quality presets (tunable)
-    hq1080_bitrate: str = "8000k"
+    # High-quality 1080p target bitrate (used for HQ profile and hardware encoders)
+    hq1080_bitrate: str = "10000k"
     hq4k_bitrate: str = "20000k"
     hq_crf: int = 18
     hq_preset: str = "slow"
+
+    # Audio export preferences
+    output_audio_bitrate: str = "320k"
+    output_audio_samplerate: int = 44100
 
     # ---------- Rendering / parallelism ----------
     # If None, compute a sane default based on CPU cores: min(4, floor(0.75 * logical_cpus)).

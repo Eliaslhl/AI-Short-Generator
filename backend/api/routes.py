@@ -385,7 +385,23 @@ async def get_history(
     job_records = result.scalars().all()
     history = []
     for j in job_records:
-        clips_count = len(json.loads(j.clips_json)) if j.clips_json else 0
+        clips = json.loads(j.clips_json) if j.clips_json else []
+        clips_count = len(clips)
+        # Aggregate hashtags from clips (preserve order, unique) and limit to 5
+        seen = set()
+        hashtags = []
+        for c in clips:
+            hs = c.get("hashtags") if isinstance(c, dict) else None
+            if not hs:
+                continue
+            for tag in hs:
+                if tag and tag not in seen:
+                    seen.add(tag)
+                    hashtags.append(tag)
+                    if len(hashtags) >= 5:
+                        break
+            if len(hashtags) >= 5:
+                break
         expires_at = (
             (j.created_at + timedelta(hours=1)).astimezone(timezone.utc).isoformat()
         )
@@ -399,6 +415,7 @@ async def get_history(
                 "created_at": j.created_at.isoformat(),
                 "expires_at": expires_at,
                 "clips_url": f"/clips/{j.id}",
+                "hashtags": hashtags,
             }
         )
 

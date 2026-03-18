@@ -36,6 +36,7 @@ export interface Job {
   clips: Clip[]
   clips_count: number
   created_at: string
+  hashtags?: string[] | null
 }
 
 // ─── API response shapes ───────────────────────────────────────────────────────

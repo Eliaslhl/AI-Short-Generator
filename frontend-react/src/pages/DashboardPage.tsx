@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { generatorApi, authApi } from '../api'
 import type { Job, JobStatus } from '../types'
@@ -22,6 +22,7 @@ export default function DashboardPage() {
   const { user, refreshUser } = useAuth()
   const [history, setHistory] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedTag, setSelectedTag] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState(false)
   const [cancelConfirm, setCancelConfirm] = useState(false)
 
@@ -32,6 +33,16 @@ export default function DashboardPage() {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
+
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  // Initialize filter from ?tag= in URL
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const q = params.get('tag')
+    setSelectedTag(q)
+  }, [location.search])
 
   const handleUpgrade = async (): Promise<void> => {
     window.location.href = '/#pricing'
@@ -160,7 +171,22 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {history.map((job) => (
+            {selectedTag && (
+              <div className="mb-2">
+                <span className="inline-flex items-center gap-3 text-xs bg-white/5 px-3 py-1 rounded-full text-gray-300">
+                  Filtré par <span className="text-white font-semibold">{selectedTag}</span>
+                  <button
+                    onClick={() => { setSelectedTag(null); navigate('/') }}
+                    className="ml-2 text-gray-400 hover:text-white text-sm"
+                    aria-label="Clear tag filter"
+                  >
+                    ✕
+                  </button>
+                </span>
+              </div>
+            )}
+
+            {(selectedTag ? history.filter((j) => (j.hashtags ?? []).includes(selectedTag)) : history).map((job) => (
               <Link
                 key={job.id}
                 to={`/jobs/${job.id}`}
@@ -172,6 +198,20 @@ export default function DashboardPage() {
                     <p className="text-white text-sm font-medium truncate">
                       {job.video_title ?? job.youtube_url}
                     </p>
+                    {job.hashtags && job.hashtags.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {job.hashtags.map((tag) => (
+                          <button
+                            key={tag}
+                            onClick={(e) => { e.preventDefault(); setSelectedTag(tag); navigate(`/?tag=${encodeURIComponent(tag)}`) }}
+                            className="text-xs bg-white/5 text-gray-300 px-2 py-0.5 rounded-full hover:bg-white/7 transition cursor-pointer"
+                            aria-label={`Filter by ${tag}`}
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <p className="text-gray-500 text-xs mt-0.5">
                       {new Date(job.created_at).toLocaleDateString('en-GB', {
                         day: '2-digit', month: 'short', year: 'numeric',

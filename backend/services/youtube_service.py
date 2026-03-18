@@ -28,7 +28,28 @@ def _write_cookies_file() -> str | None:
     Decode the YOUTUBE_COOKIES_B64 env var and write to a temp file.
     Returns the path to the cookie file, or None if not configured.
     """
+    # Primary single-variable form (preferred)
     b64 = os.environ.get("YOUTUBE_COOKIES_B64", "").strip()
+
+    # Support Rails-like platforms that limit env var size by allowing the
+    # cookie file to be split across multiple smaller env vars named
+    # YOUTUBE_COOKIES_B64_PART_1, YOUTUBE_COOKIES_B64_PART_2, ...
+    if not b64:
+        parts = []
+        for k, v in os.environ.items():
+            if k.startswith("YOUTUBE_COOKIES_B64_PART_"):
+                # capture numeric suffix for ordering; fallback to key order
+                try:
+                    idx = int(k.rsplit("_", 1)[1])
+                except Exception:
+                    idx = None
+                parts.append((idx, k, v))
+
+        if parts:
+            # sort by numeric suffix when available, then by key name
+            parts.sort(key=lambda t: (t[0] is None, t[0] if t[0] is not None else t[1]))
+            b64 = "".join(p[2].strip() for p in parts)
+
     if not b64:
         return None
     try:

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { generatorApi } from '../api'
 import { type AxiosError } from 'axios'
@@ -49,6 +50,7 @@ function stepIndex(progress: number): number {
 interface ClipCardProps { clip: Clip; index: number; onExpand: (clip: Clip, index: number) => void }
 
 function ClipCard({ clip, index, onExpand }: ClipCardProps) {
+  const navigate = useNavigate()
   return (
     <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden hover:border-purple-500/50 transition group">
       <div className="relative" style={{ paddingBottom: '177.78%' }}>
@@ -85,9 +87,14 @@ function ClipCard({ clip, index, onExpand }: ClipCardProps) {
         {clip.hashtags && clip.hashtags.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-2">
             {clip.hashtags.map((tag) => (
-              <span key={tag} className="text-[10px] text-pink-400 bg-pink-500/10 px-1.5 py-0.5 rounded-full">
+              <button
+                key={tag}
+                onClick={() => navigate(`/?tag=${encodeURIComponent(tag)}`)}
+                className="text-[10px] text-pink-400 bg-pink-500/10 px-1.5 py-0.5 rounded-full hover:bg-pink-500/15 transition cursor-pointer"
+                aria-label={`Filter by ${tag}`}
+              >
                 {tag}
-              </span>
+              </button>
             ))}
           </div>
         )}
@@ -114,6 +121,7 @@ interface VideoModalProps {
 
 function VideoModal({ clip, index, total, onClose, onPrev, onNext }: VideoModalProps) {
   // Close on Escape, navigate with arrow keys
+  const navigate = useNavigate()
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -181,9 +189,14 @@ function VideoModal({ clip, index, total, onClose, onPrev, onNext }: VideoModalP
         {clip.hashtags && clip.hashtags.length > 0 && (
           <div className="flex flex-wrap justify-center gap-1.5 mt-2 max-w-sm">
             {clip.hashtags.map((tag) => (
-              <span key={tag} className="text-xs text-pink-400 bg-pink-500/10 border border-pink-500/20 px-2 py-0.5 rounded-full">
+              <button
+                key={tag}
+                onClick={() => navigate(`/?tag=${encodeURIComponent(tag)}`)}
+                className="text-xs text-pink-400 bg-pink-500/10 border border-pink-500/20 px-2 py-0.5 rounded-full hover:bg-pink-500/15 transition cursor-pointer"
+                aria-label={`Filter by ${tag}`}
+              >
                 {tag}
-              </span>
+              </button>
             ))}
           </div>
         )}
@@ -605,10 +618,26 @@ export default function GeneratorPage() {
               {status.clips.length} short{status.clips.length > 1 ? 's' : ''} generated
             </h2>
             <button
-              onClick={() => {
-                // Create, append and click anchors to trigger downloads without navigating
-                status.clips.forEach((c, i) => {
-                  setTimeout(() => {
+              onClick={async () => {
+                // Fetch each clip as a blob and trigger download via object URL.
+                // This avoids navigation when download attribute isn't honored (cross-origin or browser quirks).
+                for (let i = 0; i < status.clips.length; i++) {
+                  const c = status.clips[i]
+                  try {
+                    const res = await fetch(`${API_BASE}${c.file}`, { credentials: 'include' })
+                    if (!res.ok) throw new Error(`Fetch failed: ${res.status}`)
+                    const blob = await res.blob()
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.setAttribute('download', `short_${i + 1}.mp4`)
+                    a.style.display = 'none'
+                    document.body.appendChild(a)
+                    a.click()
+                    document.body.removeChild(a)
+                    URL.revokeObjectURL(url)
+                  } catch (err) {
+                    // Fallback: try simple anchor navigation (may open in new tab)
                     const a = document.createElement('a')
                     a.href = `${API_BASE}${c.file}`
                     a.setAttribute('download', `short_${i + 1}.mp4`)
@@ -616,8 +645,10 @@ export default function GeneratorPage() {
                     document.body.appendChild(a)
                     a.click()
                     document.body.removeChild(a)
-                  }, i * 400)
-                })
+                  }
+                  // slight pause to avoid overwhelming browser/network
+                  await new Promise((r) => setTimeout(r, 300))
+                }
               }}
               className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-lg transition"
             >

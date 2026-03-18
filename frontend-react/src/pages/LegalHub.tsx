@@ -6,11 +6,11 @@ import CookiesPolicy from './CookiesPolicy'
 import SitemapPage from './SitemapPage'
 
 const sections: { key: string; title: string; path: string }[] = [
-  { key: 'mentions', title: 'Mentions légales', path: '/legal/mentions' },
-  { key: 'cgu', title: 'CGU', path: '/legal/cgu' },
-  { key: 'privacy', title: 'Politique de confidentialité', path: '/legal/privacy' },
+  { key: 'mentions', title: 'Legal Notice', path: '/legal/mentions' },
+  { key: 'cgu', title: 'Terms of Use', path: '/legal/cgu' },
+  { key: 'privacy', title: 'Privacy Policy', path: '/legal/privacy' },
   { key: 'cookies', title: 'Cookies', path: '/legal/cookies' },
-  { key: 'sitemap', title: 'Plan du site', path: '/legal/sitemap' },
+  { key: 'sitemap', title: 'Sitemap', path: '/legal/sitemap' },
 ]
 
 function renderSection(key?: string) {
@@ -36,7 +36,7 @@ export default function LegalHub() {
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-12">
-      <h1 className="text-3xl font-bold mb-6">Informations légales et politiques</h1>
+      <h1 className="text-3xl font-bold mb-6">Legal and policy information</h1>
       <div className="flex gap-8">
         <aside className="w-64 shrink-0">
           <nav className="flex flex-col gap-2">

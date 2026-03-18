@@ -29,8 +29,8 @@ export default function LoginPage() {
       localStorage.removeItem('login_error')
       navigate('/generate')
     } catch (err) {
-      const axiosErr = err as AxiosError<{ detail: string }>
-      const msg = axiosErr.response?.data?.detail ?? 'Email ou mot de passe incorrect.'
+  const axiosErr = err as AxiosError<{ detail: string }>
+  const msg = axiosErr.response?.data?.detail ?? 'Email or password incorrect.'
       setError(msg)
       try { localStorage.setItem('login_error', msg) } catch {}
     } finally {
@@ -43,12 +43,12 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-purple-600/20 mb-4">
-            <Film className="w-7 h-7 text-purple-400" />
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-purple-600/20 mb-4">
+              <Film className="w-7 h-7 text-purple-400" />
+            </div>
+            <h1 className="text-2xl font-bold text-white">Welcome back 👋</h1>
+            <p className="text-gray-400 mt-1">Sign in to generate your shorts</p>
           </div>
-          <h1 className="text-2xl font-bold text-white">Bon retour 👋</h1>
-          <p className="text-gray-400 mt-1">Connecte-toi pour générer tes shorts</p>
-        </div>
 
         {/* Card */}
         <div className="bg-white/5 border border-white/10 rounded-2xl p-8 space-y-4">
@@ -78,12 +78,12 @@ export default function LoginPage() {
             className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-white/20 rounded-lg text-white hover:bg-white/10 transition text-sm font-medium"
           >
             <Chrome className="w-4 h-4" />
-            Continuer avec Google
+            Continue with Google
           </button>
 
           <div className="flex items-center gap-3">
             <div className="flex-1 h-px bg-white/10" />
-            <span className="text-gray-500 text-xs">ou</span>
+            <span className="text-gray-500 text-xs">or</span>
             <div className="flex-1 h-px bg-white/10" />
           </div>
 
@@ -96,7 +96,7 @@ export default function LoginPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="jean@exemple.com"
+                  placeholder="john@example.com"
                   required
                   className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition text-sm"
                 />
@@ -105,7 +105,7 @@ export default function LoginPage() {
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-sm text-gray-400">Mot de passe</label>
+                <label className="block text-sm text-gray-400">Password</label>
                 <Link
                   to="/forgot-password"
                   className="text-xs text-purple-400 hover:text-purple-300 transition"
@@ -131,14 +131,14 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition text-sm"
             >
-              {loading ? 'Connexion...' : 'Se connecter'}
+              {loading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
 
           <p className="text-center text-sm text-gray-400">
-            Pas encore de compte ?{' '}
+            Don't have an account?{' '}
             <Link to="/register" className="text-purple-400 hover:text-purple-300 transition">
-              S'inscrire gratuitement
+              Sign up for free
             </Link>
           </p>
         </div>

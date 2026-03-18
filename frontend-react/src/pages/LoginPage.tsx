@@ -43,8 +43,15 @@ export default function LoginPage() {
         {/* Card */}
         <div className="bg-white/5 border border-white/10 rounded-2xl p-8 space-y-4">
           {error && (
-            <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg px-4 py-3 text-sm">
-              {error}
+            <div className="relative bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg px-4 py-3 text-sm">
+              <button
+                aria-label="Dismiss error"
+                onClick={() => setError('')}
+                className="absolute top-2 right-2 text-red-300 hover:text-red-100 text-xs"
+              >
+                ✕
+              </button>
+              <div>{error}</div>
             </div>
           )}
 

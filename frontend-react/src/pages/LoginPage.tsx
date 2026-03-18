@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useState, useEffect, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { authApi } from '../api'
@@ -13,16 +13,26 @@ export default function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
 
+  // Persist login error to survive odd re-renders/unmounts
+  useEffect(() => {
+    const saved = localStorage.getItem('login_error')
+    if (saved) setError(saved)
+  }, [])
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault()
     setError('')
     setLoading(true)
     try {
       await login(email, password)
+      // clear persisted error on success
+      localStorage.removeItem('login_error')
       navigate('/generate')
     } catch (err) {
       const axiosErr = err as AxiosError<{ detail: string }>
-      setError(axiosErr.response?.data?.detail ?? 'Email ou mot de passe incorrect.')
+      const msg = axiosErr.response?.data?.detail ?? 'Email ou mot de passe incorrect.'
+      setError(msg)
+      try { localStorage.setItem('login_error', msg) } catch {}
     } finally {
       setLoading(false)
     }
@@ -46,16 +56,16 @@ export default function LoginPage() {
             <div
               role="alert"
               aria-live="assertive"
-              className="relative bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg px-4 py-3 text-sm"
+              className="relative bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg pl-5 pr-4 py-3 text-sm"
             >
               <button
                 aria-label="Dismiss error"
                 onClick={() => setError('')}
-                className="absolute top-2 right-2 text-red-300 hover:text-red-100 text-xs"
+                className="absolute top-2 right-3 text-red-300 hover:text-red-100 text-xs"
               >
                 ✕
               </button>
-              <div className="flex items-start gap-2">
+              <div className="flex items-center gap-2">
                 <AlertTriangle className="w-5 h-5 text-red-400 animate-pulse shrink-0 mt-0.5" />
                 <div className="leading-tight">{error}</div>
               </div>

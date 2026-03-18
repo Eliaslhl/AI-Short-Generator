@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { authApi } from '../api'
 import { type AxiosError } from 'axios'
-import { Film, Mail, Lock, Chrome } from 'lucide-react'
+import { Film, Mail, Lock, Chrome, AlertTriangle } from 'lucide-react'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -43,7 +43,11 @@ export default function LoginPage() {
         {/* Card */}
         <div className="bg-white/5 border border-white/10 rounded-2xl p-8 space-y-4">
           {error && (
-            <div className="relative bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg px-4 py-3 text-sm">
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="relative bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg px-4 py-3 text-sm"
+            >
               <button
                 aria-label="Dismiss error"
                 onClick={() => setError('')}
@@ -51,7 +55,10 @@ export default function LoginPage() {
               >
                 ✕
               </button>
-              <div>{error}</div>
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-5 h-5 text-red-400 animate-pulse shrink-0 mt-0.5" />
+                <div className="leading-tight">{error}</div>
+              </div>
             </div>
           )}
 

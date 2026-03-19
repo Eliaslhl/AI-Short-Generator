@@ -8,6 +8,7 @@ import base64
 import logging
 import os
 import re
+import hashlib
 import subprocess
 import sys
 import tempfile
@@ -48,7 +49,28 @@ def _write_cookies_file() -> str | None:
         if parts:
             # sort by numeric suffix when available, then by key name
             parts.sort(key=lambda t: (t[0] is None, t[0] if t[0] is not None else t[1]))
-            b64 = "".join(p[2].strip() for p in parts)
+            # Sanitize parts: remove accidental surrounding quotes and whitespace
+            sanitized_parts = []
+            for _, key, val in parts:
+                v = val.strip()
+                if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+                    v = v[1:-1]
+                # remove common prefixes (in case someone pasted "base64:" prefix)
+                if v.lower().startswith("base64:"):
+                    v = v.split("base64:", 1)[1]
+                sanitized_parts.append(v)
+
+            b64 = "".join(sanitized_parts)
+
+            # Detect likely-mistake: storing hex hashes instead of raw base64 parts
+            # If the concatenated value contains only hex chars and is reasonably long,
+            # it's very likely the user pasted SHA256 parts (wrong). Fail early with a clear log.
+            if re.fullmatch(r"[0-9a-fA-F]+", b64) and len(b64) >= 64:
+                logger.warning(
+                    "YOUTUBE_COOKIES_B64_PART_* appear to contain hex hashes rather than base64 data. "
+                    "Ensure you paste the raw base64-encoded cookies (not SHA256 of the parts)."
+                )
+                return None
 
     if not b64:
         return None
@@ -61,6 +83,17 @@ def _write_cookies_file() -> str | None:
         tmp.flush()
         tmp.close()
         logger.info(f"YouTube cookies written to {tmp.name}")
+        # Optional debug: log size and sha256 of the reconstructed cookies file
+        # without revealing the contents. Enable by setting YOUTUBE_COOKIES_DEBUG=true
+        try:
+            if os.environ.get("YOUTUBE_COOKIES_DEBUG", "").lower() in ("1", "true", "yes"):
+                size = os.path.getsize(tmp.name)
+                with open(tmp.name, "rb") as fh:
+                    sha = hashlib.sha256(fh.read()).hexdigest()
+                logger.info(f"[YTC DEBUG] cookies file size={size} sha256={sha}")
+        except Exception:
+            # Do not fail cookie writing for debug logging failures
+            pass
         return tmp.name
     except Exception as exc:
         logger.warning(f"Could not decode YOUTUBE_COOKIES_B64: {exc}")

@@ -13,6 +13,8 @@ import uuid
 import asyncio
 import logging
 from typing import Dict, Any
+import os
+import hashlib
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
 from fastapi.responses import JSONResponse
@@ -23,7 +25,7 @@ from sqlalchemy import select
 from backend.database import get_db
 from backend.models.user import User, Job
 from backend.auth.dependencies import get_current_user, require_can_generate
-from backend.services.youtube_service import download_video
+from backend.services.youtube_service import download_video, _get_cookies_file
 from backend.services.clip_selector import select_top_segments
 from backend.services.hook_service import generate_hook
 from backend.services.emoji_caption_service import build_captions
@@ -214,6 +216,33 @@ async def run_pipeline(
                         f"Refunded generation credit for user {user_id} (job {job_id} failed)"
                     )
                 await db.commit()
+
+
+        # Debug endpoint: return size and sha256 of reconstructed YouTube cookies file
+        # Only available when YOUTUBE_COOKIES_DEBUG is enabled to avoid leaking secrets.
+        @router.get("/debug/youtube-cookies")
+        async def debug_youtube_cookies():
+            if os.environ.get("YOUTUBE_COOKIES_DEBUG", "").lower() not in ("1", "true", "yes"):
+                # Hide endpoint when not enabled
+                raise HTTPException(status_code=404, detail="Not found")
+
+            cookies_file, cookies_is_temp = _get_cookies_file()
+            if not cookies_file:
+                return JSONResponse({"found": False})
+
+            try:
+                size = os.path.getsize(cookies_file)
+                with open(cookies_file, "rb") as fh:
+                    sha = hashlib.sha256(fh.read()).hexdigest()
+            finally:
+                # cleanup only if we created a temp file
+                try:
+                    if cookies_file and cookies_is_temp:
+                        os.unlink(cookies_file)
+                except Exception:
+                    pass
+
+            return JSONResponse({"found": True, "size": size, "sha256": sha})
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────

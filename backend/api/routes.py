@@ -449,3 +449,113 @@ async def get_history(
         )
 
     return JSONResponse({"history": history})
+
+
+# ── Debug / Diagnostic endpoints ────────────────────────────────────────────
+@router.post("/debug/refresh-cookies")
+async def debug_refresh_cookies():
+    """
+    [DEBUG ONLY] Manually trigger a YouTube cookies refresh for testing.
+
+    This endpoint attempts to run the Playwright refresher script and returns
+    safe diagnostic information (size + sha256, not the cookie contents).
+
+    Useful for testing the auto-refresh mechanism without waiting for real
+    cookie expiration.
+
+    Returns
+    -------
+    {
+        "status": "success" | "failed",
+        "diagnostic": "WROTE ... size=... sha256=...",
+        "profile_dir": "<path>",
+        "output_path": "<path>",
+        "message": "<error detail if failed>"
+    }
+    """
+    try:
+        import subprocess
+        import sys
+        import os
+        from pathlib import Path
+        import re as regex_module
+
+        # Locate the refresher script
+        proj_root = Path(__file__).resolve().parents[2]
+        script_path = proj_root / "scripts" / "refresh_youtube_cookies.py"
+
+        if not script_path.exists():
+            return JSONResponse(
+                {
+                    "status": "failed",
+                    "message": f"Refresher script not found: {script_path}",
+                },
+                status_code=500,
+            )
+
+        # Build the refresh command
+        out_path = os.environ.get("YOUTUBE_AUTO_REFRESH_OUT", "/tmp/yt_cookies_debug.txt")
+        cmd = [sys.executable, str(script_path), "--out", out_path]
+
+        profile = os.environ.get("YOUTUBE_BROWSER_PROFILE_DIR")
+        if profile:
+            cmd.extend(["--profile", profile])
+
+        if os.environ.get("YOUTUBE_AUTO_REFRESH_HEADLESS", "1").lower() in ("1", "true", "yes"):
+            cmd.append("--headless")
+
+        logger.info(f"[DEBUG] Running refresher: {script_path}")
+
+        # Run the refresher with a timeout
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+
+        if proc.returncode != 0:
+            logger.error(f"[DEBUG] Refresher failed: {proc.stderr}")
+            return JSONResponse(
+                {
+                    "status": "failed",
+                    "profile_dir": profile,
+                    "output_path": out_path,
+                    "message": f"Refresher exited with code {proc.returncode}",
+                    "stderr": proc.stderr[:500],  # truncate long errors
+                },
+                status_code=500,
+            )
+
+        # Parse the safe diagnostic line
+        diagnostic_line = ""
+        m = regex_module.search(r"WROTE\s+(\S+)\s+size=\s*(\d+)\s+sha256=([0-9a-fA-F]+)", proc.stdout)
+        if m:
+            refreshed_path = m.group(1)
+            size = int(m.group(2))
+            sha = m.group(3)
+            diagnostic_line = f"WROTE {refreshed_path} size={size} sha256={sha}"
+            logger.info(f"[DEBUG] {diagnostic_line}")
+
+        return JSONResponse(
+            {
+                "status": "success",
+                "diagnostic": diagnostic_line,
+                "profile_dir": profile,
+                "output_path": out_path,
+                "message": "Cookies refreshed successfully (if profile was configured with authenticated session)",
+            }
+        )
+
+    except subprocess.TimeoutExpired:
+        return JSONResponse(
+            {
+                "status": "failed",
+                "message": "Refresher timed out (180s). Check if Playwright is installed and profile is valid.",
+            },
+            status_code=500,
+        )
+    except Exception as e:
+        logger.exception(f"[DEBUG] Refresh-cookies endpoint error: {e}")
+        return JSONResponse(
+            {
+                "status": "failed",
+                "message": f"Unexpected error: {str(e)}",
+            },
+            status_code=500,
+        )

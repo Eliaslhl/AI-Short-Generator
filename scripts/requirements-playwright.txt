@@ -1,0 +1,3 @@
+playwright>=1.40.0
+# Optional: pin yt-dlp if you want to run canary with a consistent version
+# yt-dlp>=2026.03.13

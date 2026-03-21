@@ -261,6 +261,13 @@ def _auto_refresh_and_retry_download(
             )
 
         out_path = os.environ.get("YOUTUBE_AUTO_REFRESH_OUT", "/tmp/yt_cookies_autorefresh.txt")
+        
+        # Ensure out_path is absolute (not relative), to avoid issues when subprocess runs from different cwd
+        out_path = str(Path(out_path).resolve())
+        
+        # Ensure the parent directory exists
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        
         refresh_cmd = [sys.executable, str(script_path), "--out", out_path]
         
         profile = os.environ.get("YOUTUBE_BROWSER_PROFILE_DIR")

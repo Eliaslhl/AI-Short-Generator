@@ -40,6 +40,63 @@ router = APIRouter()
 jobs: Dict[str, Dict[str, Any]] = {}
 
 
+def _normalize_clip_for_response(clip: dict, job_id: str) -> dict:
+    """Return a safe, frontend-friendly clip dict.
+
+    This function adds compatibility fields the frontend may expect:
+    - url: primary URL to access the clip (falls back to path)
+    - thumbnail: thumbnail path/url
+    - duration: duration in seconds
+    - title: human-friendly title
+
+    We do not remove original fields; we only ensure commonly expected
+    names are present so the UI can display clips without frontend changes.
+    """
+    out = dict(clip) if isinstance(clip, dict) else {"path": str(clip)}
+
+    # url: prefer existing 'url', then 'path'
+    if "url" not in out or not out.get("url"):
+        out["url"] = out.get("path") or out.get("file") or None
+
+    # thumbnail: prefer existing 'thumbnail' or 'thumb'
+    if "thumbnail" not in out or not out.get("thumbnail"):
+        thumb = out.get("thumbnail") or out.get("thumb")
+        if not thumb and out.get("url"):
+            # try to derive thumbnail filename by replacing extension
+            try:
+                from pathlib import Path
+
+                p = Path(out["url"])
+                derived = str(p.with_suffix(".jpg"))
+                out["thumbnail"] = derived
+            except Exception:
+                out["thumbnail"] = None
+        else:
+            out["thumbnail"] = thumb
+
+    # duration: normalize common keys
+    if "duration" not in out or not out.get("duration"):
+        out["duration"] = out.get("len") or out.get("length") or out.get("duration_seconds") or None
+
+    # title: fallback to file basename
+    if "title" not in out or not out.get("title"):
+        try:
+            from pathlib import Path
+
+            if out.get("url"):
+                out["title"] = Path(out["url"]).stem
+            elif out.get("path"):
+                out["title"] = Path(out["path"]).stem
+            else:
+                out["title"] = None
+        except Exception:
+            out["title"] = None
+
+    # include job_id for convenience
+    out.setdefault("job_id", job_id)
+    return out
+
+
 # ── Request / Response models ────────────────────────────────────────────────
 class GenerateRequest(BaseModel):
     youtube_url: str
@@ -75,21 +132,45 @@ async def run_pipeline(
 ):
     """Full async pipeline: download → transcribe → score → render."""
 
-    def update(progress: int, step: str):
+    async def update(progress: int, step: str):
+        """Update in-memory status and persist progress to DB.
+
+        Persisting progress ensures that if a user navigates away or the
+        process is restarted, status can be restored from the database.
+        """
         jobs[job_id]["progress"] = progress
         jobs[job_id]["step"] = step
         logger.info(f"[{job_id}] {progress}% – {step}")
 
+        # Persist a light-weight progress update to the DB so status survives
+        # process restarts or client navigation.
+        try:
+            from backend.database import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(select(Job).where(Job.id == job_id))
+                job_record = result.scalar_one_or_none()
+                if job_record:
+                    job_record.progress = progress
+                    job_record.status = jobs[job_id].get("status", job_record.status)
+                    job_record.clips_json = (
+                        job_record.clips_json or job_record.clips_json
+                    )
+                    await db.commit()
+        except Exception:
+            # Don't let persistence failures interrupt the pipeline; just log.
+            logger.debug(f"Failed to persist job progress for {job_id}", exc_info=True)
+
     try:
         jobs[job_id]["status"] = "processing"
 
-        update(5, "Downloading video from YouTube…")
+        await update(5, "Downloading video from YouTube…")
         video_path, video_title = await asyncio.to_thread(
             download_video, youtube_url, job_id
         )
         jobs[job_id]["video_title"] = video_title
 
-        update(20, "Transcribing audio with Faster-Whisper…")
+        await update(20, "Transcribing audio with Faster-Whisper…")
         # Determine transcription mode: default FAST. Only allow QUALITY for pro/proplus users.
         mode = (transcription_mode or "").upper() if transcription_mode else ""
         if mode == "QUALITY":
@@ -131,7 +212,7 @@ async def run_pipeline(
 
         video_duration = await asyncio.to_thread(_get_duration, str(video_path))
 
-        update(40, "Analysing and scoring segments…")
+        await update(40, "Analysing and scoring segments…")
         top_segments = await asyncio.to_thread(
             select_top_segments, segments, max_clips, video_duration
         )
@@ -140,20 +221,20 @@ async def run_pipeline(
         # the ranking order returned by select_top_segments.
         top_segments.sort(key=lambda s: s.get("start", 0.0))
 
-        update(55, "Generating viral hooks with local LLM…")
+        await update(55, "Generating viral hooks with local LLM…")
         for seg in top_segments:
             seg["hook"] = await asyncio.to_thread(generate_hook, seg["text"])
 
         # Pro+ only: auto title + auto hashtags
         if is_proplus:
-            update(60, "Generating titles & hashtags (Pro+)…")
+            await update(60, "Generating titles & hashtags (Pro+)…")
             for seg in top_segments:
                 seg["ai_title"] = await asyncio.to_thread(generate_title, seg["text"])
                 seg["hashtags"] = await asyncio.to_thread(
                     generate_hashtags, seg["text"]
                 )
 
-        update(65, "Building emoji captions…")
+        await update(65, "Building emoji captions…")
         for seg in top_segments:
             seg["captions"] = await asyncio.to_thread(
                 build_captions,
@@ -165,18 +246,69 @@ async def run_pipeline(
         total = len(top_segments)
         for idx, seg in enumerate(top_segments):
             pct = 75 + int((idx / total) * 22)
-            update(pct, f"Rendering clip {idx + 1}/{total}…")
-            clip_info = await asyncio.to_thread(
-                render_clip,
-                video_path=str(video_path),
-                segment=seg,
-                job_id=job_id,
-                clip_index=idx,
-                subtitle_style=subtitle_style,
-            )
+            await update(pct, f"Rendering clip {idx + 1}/{total}…")
+            try:
+                clip_info = await asyncio.to_thread(
+                    render_clip,
+                    video_path=str(video_path),
+                    segment=seg,
+                    job_id=job_id,
+                    clip_index=idx,
+                    subtitle_style=subtitle_style,
+                )
+            except Exception as e:
+                logger.exception(f"Failed to render clip {idx + 1}/{total} for job {job_id}: {e}")
+                # Persist error state and refund credit
+                jobs[job_id]["status"] = "error"
+                jobs[job_id]["step"] = f"Error rendering clip: {e}"
+                from backend.database import AsyncSessionLocal
+
+                async with AsyncSessionLocal() as db:
+                    result = await db.execute(select(Job).where(Job.id == job_id))
+                    job_record = result.scalar_one_or_none()
+                    if job_record:
+                        job_record.status = "error"
+                        job_record.error = str(e)
+                        # refund credit
+                        user_result = await db.execute(select(User).where(User.id == user_id))
+                        user_record = user_result.scalar_one_or_none()
+                        if user_record and user_record.generations_this_month > 0:
+                            user_record.generations_this_month -= 1
+                        await db.commit()
+                raise
+
             clips.append(clip_info)
 
-        update(100, "All clips are ready!")
+            # Persist the partially rendered clips immediately so the UI can show
+            # them while the rest of the pipeline continues.
+            jobs[job_id]["clips"] = clips.copy()
+            # Log minimal clip info for debugging (keys and common fields)
+            try:
+                import json as _json
+                keys = list(clip_info.keys()) if isinstance(clip_info, dict) else []
+                info_preview = {
+                    "keys": keys,
+                    "path": clip_info.get("path") if isinstance(clip_info, dict) else None,
+                    "thumbnail": clip_info.get("thumbnail") if isinstance(clip_info, dict) else None,
+                }
+                logger.info(f"[{job_id}] rendered clip preview: {_json.dumps(info_preview)}")
+            except Exception:
+                logger.debug(f"[{job_id}] unable to stringify clip_info for logging", exc_info=True)
+            try:
+                from backend.database import AsyncSessionLocal
+                import json as _json
+
+                async with AsyncSessionLocal() as db:
+                    result = await db.execute(select(Job).where(Job.id == job_id))
+                    job_record = result.scalar_one_or_none()
+                    if job_record:
+                        job_record.clips_json = _json.dumps(clips)
+                        job_record.progress = jobs[job_id].get("progress", job_record.progress)
+                        await db.commit()
+            except Exception:
+                logger.debug(f"Failed to persist partial clips for job {job_id}", exc_info=True)
+
+        await update(100, "All clips are ready!")
         jobs[job_id]["status"] = "done"
         jobs[job_id]["clips"] = clips
 
@@ -296,15 +428,20 @@ async def generate(
     # Subtitle style: standard and above can pick; free always uses default
     subtitle_style = request.subtitle_style if plan != "free" else "default"
 
-    background_tasks.add_task(
-        run_pipeline,
-        job_id,
-        request.youtube_url,
-        user.id,
-        allowed_clips,
-        language,
-        subtitle_style,
-        plan == "proplus",
+    # Schedule the pipeline as an independent asyncio Task so it continues
+    # running even if the client's request/connection is closed or the user
+    # navigates away. Using BackgroundTasks ties execution to the request
+    # lifecycle in some environments, so we prefer create_task here.
+    asyncio.create_task(
+        run_pipeline(
+            job_id,
+            request.youtube_url,
+            user.id,
+            allowed_clips,
+            language,
+            subtitle_style,
+            plan == "proplus",
+        )
     )
     return GenerateResponse(job_id=job_id, message="Job started.")
 
@@ -320,12 +457,15 @@ async def get_status(
         job = jobs[job_id]
         if job.get("user_id") and job["user_id"] != user.id:
             raise HTTPException(status_code=403, detail="Forbidden")
+        # Normalize clips for frontend compatibility
+        raw_clips = job.get("clips", []) or []
+        normalized = [_normalize_clip_for_response(c, job_id) for c in raw_clips]
         return StatusResponse(
             job_id=job_id,
             status=job["status"],
             progress=job["progress"],
             step=job["step"],
-            clips=job.get("clips", []),
+            clips=normalized,
         )
 
     # Fallback: job lost from memory (container restart) — reload from DB
@@ -354,12 +494,13 @@ async def get_status(
         "clips": clips,
         "user_id": user.id,
     }
+    normalized = [_normalize_clip_for_response(c, job_id) for c in clips]
     return StatusResponse(
         job_id=job_id,
         status=job_record.status,
         progress=progress,
         step=step,
-        clips=clips,
+        clips=normalized,
     )
 
 
@@ -559,3 +700,36 @@ async def debug_refresh_cookies():
             },
             status_code=500,
         )
+
+
+@router.get("/debug/job/{job_id}")
+async def debug_job(job_id: str, user: User = Depends(get_current_user)):
+    """
+    Debug endpoint: return in-memory job state and DB record for a given job_id.
+    Use this to inspect why a job is still processing or to retrieve error details.
+    """
+    # First check in-memory state
+    in_memory = jobs.get(job_id)
+
+    # Then fetch DB row
+    try:
+        from backend.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(Job).where(Job.id == job_id))
+            job_record = result.scalar_one_or_none()
+            db_row = None
+            if job_record:
+                db_row = {
+                    "id": job_record.id,
+                    "status": job_record.status,
+                    "progress": job_record.progress,
+                    "video_title": job_record.video_title,
+                    "error": job_record.error,
+                    "clips_json": job_record.clips_json,
+                    "created_at": job_record.created_at.isoformat() if job_record.created_at else None,
+                }
+    except Exception:
+        db_row = None
+
+    return JSONResponse({"in_memory": in_memory, "db": db_row})

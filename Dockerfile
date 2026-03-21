@@ -5,7 +5,7 @@
 
 FROM python:3.11-slim
 
-# System deps: ffmpeg (video), fonts (MoviePy TextClip), build tools
+# System deps: ffmpeg (video), fonts (MoviePy TextClip), build tools, Playwright browsers
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     fonts-liberation \
@@ -22,6 +22,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libswscale-dev \
     libswresample-dev \
     libavfilter-dev \
+    libglib2.0-0 \
+    libnss3 \
+    libnspr4 \
+    libdbus-1-3 \
+    libx11-6 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libpango-gobject-0 \
+    libxshmfence1 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -29,6 +42,9 @@ WORKDIR /app
 # Install Python deps first (better Docker layer caching)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install Playwright for YouTube cookie refresh
+RUN pip install playwright && python3 -m playwright install
 
 # Download spaCy model
 RUN python -m spacy download en_core_web_sm
@@ -47,6 +63,9 @@ RUN mkdir -p data/clips data/videos
 # Copy and prepare startup script
 COPY start.sh .
 RUN chmod +x start.sh
+
+# Copy YouTube refresher script
+COPY scripts/refresh_youtube_cookies.py /app/scripts/
 
 # Port exposed by Railway
 EXPOSE 8000

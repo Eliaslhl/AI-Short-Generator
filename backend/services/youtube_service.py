@@ -14,7 +14,6 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Optional
 
 from backend.config import settings
 
@@ -235,10 +234,31 @@ def _auto_refresh_and_retry_download(
     # Invoke the Playwright refresher script
     try:
         proj_root = Path(__file__).resolve().parents[2]
-        script_path = proj_root / "scripts" / "refresh_youtube_cookies.py"
-        if not script_path.exists():
-            logger.error(f"Auto-refresh script not found: {script_path}")
-            raise RuntimeError(f"Auto-refresh script not found at {script_path}")
+        # Try multiple possible locations (project root, /app/scripts, /scripts)
+        possible_paths = [
+            proj_root / "scripts" / "refresh_youtube_cookies.py",  # development: project root
+            Path("/app/scripts/refresh_youtube_cookies.py"),  # docker: /app layout
+            Path("/scripts/refresh_youtube_cookies.py"),  # docker: root /scripts
+        ]
+        
+        script_path = None
+        for path in possible_paths:
+            if path.exists():
+                script_path = path
+                logger.debug(f"Found refresher script at {script_path}")
+                break
+        
+        if not script_path:
+            logger.error(
+                f"Auto-refresh script not found at any of: {possible_paths}. "
+                "Ensure scripts/refresh_youtube_cookies.py is included in your Docker image. "
+                "Add to Dockerfile: COPY scripts/refresh_youtube_cookies.py /app/scripts/ "
+                "and install Playwright: RUN pip install -r scripts/requirements-playwright.txt && python3 -m playwright install"
+            )
+            raise RuntimeError(
+                "Playwright refresher not found. Ensure scripts are deployed to the image. "
+                "See logs for Dockerfile requirements."
+            )
 
         out_path = os.environ.get("YOUTUBE_AUTO_REFRESH_OUT", "/tmp/yt_cookies_autorefresh.txt")
         refresh_cmd = [sys.executable, str(script_path), "--out", out_path]

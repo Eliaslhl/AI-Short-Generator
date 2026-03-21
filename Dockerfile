@@ -5,7 +5,7 @@
 
 FROM python:3.11-slim
 
-# System deps: ffmpeg (video), fonts (MoviePy TextClip), build tools, Playwright browsers
+# System deps: ffmpeg (video), fonts (MoviePy TextClip), build tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     fonts-liberation \
@@ -22,19 +22,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libswscale-dev \
     libswresample-dev \
     libavfilter-dev \
-    libglib2.0-0 \
-    libnss3 \
-    libnspr4 \
-    libdbus-1-3 \
-    libx11-6 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libpango-gobject-0 \
-    libxshmfence1 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -44,7 +31,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install Playwright for YouTube cookie refresh
-RUN pip install playwright && python3 -m playwright install
+RUN pip install playwright && \
+    playwright install && \
+    playwright install-deps
 
 # Download spaCy model
 RUN python -m spacy download en_core_web_sm

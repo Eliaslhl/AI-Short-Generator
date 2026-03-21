@@ -31,9 +31,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install Playwright for YouTube cookie refresh
+# Only install chromium (not firefox/webkit) to reduce image size
 RUN pip install playwright && \
-    playwright install && \
-    playwright install-deps
+    playwright install chromium && \
+    playwright install-deps chromium
 
 # Download spaCy model
 RUN python -m spacy download en_core_web_sm

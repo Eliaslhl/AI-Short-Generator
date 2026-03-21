@@ -276,9 +276,9 @@ def _auto_refresh_and_retry_download(
         
         if refresh_proc.returncode != 0:
             logger.error(f"Playwright refresher failed with exit code {refresh_proc.returncode}")
-            logger.debug(f"refresher stdout: {refresh_proc.stdout}")
-            logger.debug(f"refresher stderr: {refresh_proc.stderr}")
-            raise RuntimeError(f"Playwright refresher failed (exit {refresh_proc.returncode})")
+            logger.error(f"refresher stdout: {refresh_proc.stdout}")
+            logger.error(f"refresher stderr: {refresh_proc.stderr}")
+            raise RuntimeError(f"Playwright refresher failed (exit {refresh_proc.returncode}): {refresh_proc.stderr or refresh_proc.stdout}")
         
         # Parse safe diagnostic: WROTE <path> size=<bytes> sha256=<hex>
         m = re.search(r"WROTE\s+(\S+)\s+size=\s*(\d+)\s+sha256=([0-9a-fA-F]+)", refresh_proc.stdout)

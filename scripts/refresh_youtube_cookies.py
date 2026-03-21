@@ -81,28 +81,34 @@ def main(argv: Optional[List[str]] = None) -> int:
         from playwright.sync_api import sync_playwright
     except Exception as exc:
         print("ERROR: Playwright is not installed or cannot be imported. Install with:")
-        print("  pip install playwright && playwright install")
+        print("  pip install playwright && playwright install chromium")
         print("Detailed error:", exc)
         return 2
 
     out_path = args.out
 
     try:
+        print(f"[REFRESH] Starting Playwright with profile: {args.profile}, headless: {args.headless}", flush=True)
         playwright = sync_playwright().start()
     except Exception as exc:
-        print("ERROR: Failed to start Playwright:", exc)
+        print("ERROR: Failed to start Playwright:", exc, flush=True)
         return 3
 
     browser_ctx = None
     try:
         if args.profile:
             headless = bool(args.headless)
+            print(f"[REFRESH] Launching persistent context from profile: {args.profile}", flush=True)
             browser_ctx = playwright.chromium.launch_persistent_context(user_data_dir=args.profile, headless=headless)
             page = browser_ctx.new_page()
+            print("[REFRESH] Navigating to YouTube...", flush=True)
             page.goto("https://www.youtube.com", timeout=60000)
+            print("[REFRESH] Page loaded, waiting for cookies...", flush=True)
             time.sleep(2)
             cookies = browser_ctx.cookies()
+            print(f"[REFRESH] Got {len(cookies)} cookies from persistent context", flush=True)
         else:
+            print("[REFRESH] Launching fresh browser context", flush=True)
             browser = playwright.chromium.launch(headless=bool(args.headless))
             context = browser.new_context()
             page = context.new_page()
@@ -116,6 +122,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         # simple heuristic (not used further here) — kept for future logging/alerts
         _ = any(c.get("name", "").lower() in ("sapisid", "ssid", "sid", "ytid") for c in cookies)
 
+        print(f"[REFRESH] Writing cookies to {out_path}", flush=True)
         write_netscape_cookies(cookies, out_path, meta_comment="exported-by-refresh_youtube_cookies.py")
         sha = sha256_of_file(out_path)
         size = size_of_file(out_path)
@@ -129,6 +136,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print("CANARY FAIL:", result)
 
         return 0
+
+    except Exception as e:
+        print(f"ERROR: Playwright refresh failed: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return 1
 
     finally:
         try:

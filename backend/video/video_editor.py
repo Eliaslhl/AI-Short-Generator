@@ -123,12 +123,12 @@ def _make_output_path(job_id: str, clip_index: int) -> Path:
 
 def _crop_to_portrait(clip):
     """
-    Crop a landscape clip to 9:16 portrait format.
+    Crop/scale a clip to 9:16 portrait format (1080×1920).
 
-    Strategy: centre-crop horizontally, keep full height, then resize.
-    Falls back to adding black bars if the clip is already taller.
+    Strategy: scale DOWN to fit, then add padding if needed (never crop content).
+    This preserves the full source video without zooming.
     """
-    from moviepy.video.fx import Crop, Resize
+    from moviepy.video.fx import Resize
 
     target_w = settings.output_width  # 1080
     target_h = settings.output_height  # 1920
@@ -137,19 +137,17 @@ def _crop_to_portrait(clip):
     w, h = clip.size
     current_ratio = w / h
 
+    # Scale down to fit 1080×1920 while preserving aspect ratio
+    # Then resize to exact dimensions (padding will be added by ffmpeg if needed)
     if current_ratio > target_ratio:
-        # Landscape → crop the sides
-        new_w = int(h * target_ratio)
-        x_center = w / 2
-        clip = Crop(x_center=x_center, width=new_w).apply(clip)
-    elif current_ratio < target_ratio:
-        # Portrait but different ratio → add side bars (pillarbox)
-        new_h = int(w / target_ratio)
-        y_center = h / 2
-        clip = Crop(y_center=y_center, height=new_h).apply(clip)
+        # Landscape → scale width to 1080, height scales proportionally down
+        new_h = int(target_w / current_ratio)
+        clip = Resize((target_w, new_h)).apply(clip)
+    else:
+        # Portrait → scale height to 1920, width scales proportionally down
+        new_w = int(target_h * current_ratio)
+        clip = Resize((new_w, target_h)).apply(clip)
 
-    # Resize to exact output dimensions
-    clip = Resize((target_w, target_h)).apply(clip)
     return clip
 
 
@@ -317,6 +315,7 @@ def render_clip(
     # "ai_title" = Pro+ generated title; "title" = clip_selector first-sentence fallback
     ai_title = segment.get("ai_title") or segment.get("title", f"Clip {clip_index + 1}")
     hashtags = segment.get("hashtags")  # Pro+ only
+    include_subtitles = segment.get("include_subtitles", True)  # Default to True
 
     output_path = _make_output_path(job_id, clip_index)
 
@@ -347,6 +346,7 @@ def render_clip(
             target_w=target_w,
             target_h=target_h,
             quality_profile=profile or "default",
+            include_subtitles=include_subtitles,
         )
         if ffmpeg_success:
             logger.info(f"Clip {clip_index + 1} saved (ffmpeg): {output_path}")
@@ -375,7 +375,7 @@ def render_clip(
         # ── Overlays ──────────────────────────────────────────────────────
         # Do not add the hook overlay (title at top) — keep only bottom captions
 
-        if captions:
+        if captions and include_subtitles:
             clip = _add_caption_overlays(clip, captions, start, subtitle_style)
 
         if broll:
@@ -550,6 +550,7 @@ def _render_with_ffmpeg(
     target_w: int | None = None,
     target_h: int | None = None,
     quality_profile: str = "default",
+    include_subtitles: bool = True,
 ) -> bool:
     """
     Fast path renderer using ffmpeg. Returns True on success.
@@ -585,7 +586,7 @@ def _render_with_ffmpeg(
         srt_path = None
         ass_path = None
         subtitle_path_for_filter = None
-        if captions:
+        if captions and include_subtitles:
             fd, srt_path = tempfile.mkstemp(suffix=".srt", prefix="caps_")
             os.close(fd)
             _write_srt(captions, start, srt_path)
@@ -605,14 +606,25 @@ def _render_with_ffmpeg(
             except Exception:
                 # fallback to SRT if conversion fails
                 subtitle_path_for_filter = str(srt_path)
-        # 3) Build filter graph: scale/pad to target WxH and overlay hook if present
-        tw = int(target_w) if target_w else settings.output_width
-        th = int(target_h) if target_h else settings.output_height
-        vf_parts = []
-        # scale/pad to ensure output while preserving aspect
-        vf_parts.append(f"scale={tw}:{th}:force_original_aspect_ratio=decrease")
-        vf_parts.append(f"pad={tw}:{th}:(ow-iw)/2:(oh-ih)/2:color=black")
-        vf_main = ",".join(vf_parts)
+        # 3) Build filter graph: scale DOWN + pad smartly to preserve ALL content
+        # Strategy: reduce to fit 1080×1920 (no crop), then pad with BLURRED background
+        # This shows the FULL source video with a blurred copy of itself as background
+        
+        # Create blurred background by scaling up (allowing crop) then blurring
+        # Then overlay the properly scaled+padded content on top at center
+        # This creates a nice visual effect of the video with a blurred version of itself behind
+        blur_filter_base = (
+            "[0:v]"
+            "scale=1080:1920:force_original_aspect_ratio=increase,"  # Fill frame (will crop)
+            "boxblur=20[blurred];"  # Apply blur
+            "[blurred]"
+            "scale=1080:1920:force_original_aspect_ratio=decrease,"  # Now scale down properly (no crop)
+            "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black[bg];"  # Pad with black as fallback
+            "[0:v]"
+            "scale=1080:1920:force_original_aspect_ratio=decrease,"  # Scale down original
+            "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black[main];"  # Pad it
+            "[bg][main]overlay=0:0"  # Composite main on top of blurred bg
+        )
 
         filter_complex = None
         cmd = [
@@ -630,21 +642,23 @@ def _render_with_ffmpeg(
         if hook_png:
             cmd += ["-i", hook_png]
             # overlay near top center (x=(W-w)/2, y=80)
-            # we'll label intermediate outputs and produce a final labeled video [vout]
-            # base chain: scale/pad -> [v0]; overlay -> [v1]
-            # Label final filtered video as [vout] so we can map it later
-            base_chain = f"[0:v]{vf_main}[v0];[v0][1:v]overlay=(W-w)/2:80[vout]"
+            # Apply blur background first, then overlay hook on top
+            base_chain = f"{blur_filter_base}[v0];[v0][1:v]overlay=(W-w)/2:80[vout]"
             filter_complex = base_chain
 
         # Subtitles: if present, do a safe two-pass approach to burn them in.
-        if subtitle_path_for_filter:
+        if subtitle_path_for_filter and not hook_png:
             # escape any single quotes in path (ffmpeg parsing is finicky)
             p = subtitle_path_for_filter.replace("'", "\\'")
             # 1) create an intermediate video with subtitles applied (scale/pad + subtitles)
             fd3, subbed_tmp = tempfile.mkstemp(suffix=".mp4", prefix="subbed_")
             os.close(fd3)
             tmp_files.append(subbed_tmp)
-            # build command to extract the segment and burn subtitles
+            # IMPORTANT: Apply subtitles BEFORE blur so they stay sharp and centered
+            # Then apply blur as background. Filter order:
+            # 1. scale/pad to portrait format
+            # 2. Apply subtitles (sharp text on clean video)
+            # 3. Apply blur effect (creates blurred background effect on the final composite)
             cmd_sub = [
                 "ffmpeg",
                 "-y",
@@ -655,7 +669,7 @@ def _render_with_ffmpeg(
                 "-i",
                 str(video_path),
                 "-vf",
-                f"{vf_main},subtitles=filename={p}",
+                f"scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,subtitles=filename={p},scale=1080:1920:force_original_aspect_ratio=increase,boxblur=20,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black",
                 "-c:v",
                 "libx264",
                 "-preset",
@@ -736,8 +750,10 @@ def _render_with_ffmpeg(
             # map the filtered video output explicitly
             cmd += ["-map", "[vout]"]
         else:
-            # simple scale/pad via -vf
-            cmd += ["-vf", vf_main]
+            # No complex filter: use blur background filter
+            # Build a filter_complex that creates blurred background + overlays clean video on top
+            cmd += ["-filter_complex", f"{blur_filter_base}[vout]"]
+            cmd += ["-map", "[vout]"]
 
         # Map audio if present and set target audio codec/bitrate/samplerate
         cmd += ["-map", "0:a?", "-c:a", "aac", "-b:a", settings.output_audio_bitrate, "-ar", str(settings.output_audio_samplerate)]

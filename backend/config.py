@@ -132,10 +132,10 @@ class Settings(BaseSettings):
     render_quality: str = "hq1080"
     # High quality presets (tunable)
     # High-quality 1080p target bitrate (used for HQ profile and hardware encoders)
-    hq1080_bitrate: str = "10000k"
+    hq1080_bitrate: str = "18000k"
     hq4k_bitrate: str = "20000k"
-    hq_crf: int = 18
-    hq_preset: str = "slow"
+    hq_crf: int = 16
+    hq_preset: str = "slower"
 
     # Audio export preferences
     output_audio_bitrate: str = "320k"

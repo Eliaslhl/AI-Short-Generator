@@ -36,6 +36,16 @@ from backend.database import AsyncSessionLocal, create_tables
 from backend.models.user import Plan, User
 
 TEST_ACCOUNTS = [
+    # YouTube plans
+    {
+        "email": "test.youtube.free@test.com",
+        "password": "Test1234!",
+        "full_name": "YT Free",
+        "platform": "youtube",
+        "plan_youtube": Plan.FREE,
+        "plan_twitch": None,
+        "subscription_type": "youtube",
+    },
     {
         "email": "test.youtube.standard@test.com",
         "password": "Test1234!",
@@ -53,6 +63,25 @@ TEST_ACCOUNTS = [
         "plan_youtube": Plan.PRO,
         "plan_twitch": None,
         "subscription_type": "youtube",
+    },
+    {
+        "email": "test.youtube.proplus@test.com",
+        "password": "Test1234!",
+        "full_name": "YT Pro+",
+        "platform": "youtube",
+        "plan_youtube": Plan.PROPLUS,
+        "plan_twitch": None,
+        "subscription_type": "youtube",
+    },
+    # Twitch plans
+    {
+        "email": "test.twitch.free@test.com",
+        "password": "Test1234!",
+        "full_name": "Twitch Free",
+        "platform": "twitch",
+        "plan_youtube": None,
+        "plan_twitch": Plan.FREE,
+        "subscription_type": "twitch",
     },
     {
         "email": "test.twitch.standard@test.com",
@@ -73,12 +102,40 @@ TEST_ACCOUNTS = [
         "subscription_type": "twitch",
     },
     {
+        "email": "test.twitch.proplus@test.com",
+        "password": "Test1234!",
+        "full_name": "Twitch Pro+",
+        "platform": "twitch",
+        "plan_youtube": None,
+        "plan_twitch": Plan.PROPLUS,
+        "subscription_type": "twitch",
+    },
+    # Combo plans
+    {
+        "email": "test.combo.standard@test.com",
+        "password": "Test1234!",
+        "full_name": "Combo Standard",
+        "platform": "combo",
+        "plan_youtube": Plan.STANDARD,
+        "plan_twitch": Plan.STANDARD,
+        "subscription_type": "combo",
+    },
+    {
         "email": "test.combo.pro@test.com",
         "password": "Test1234!",
         "full_name": "Combo Pro",
         "platform": "combo",
         "plan_youtube": Plan.PRO,
         "plan_twitch": Plan.PRO,
+        "subscription_type": "combo",
+    },
+    {
+        "email": "test.combo.proplus@test.com",
+        "password": "Test1234!",
+        "full_name": "Combo Pro+",
+        "platform": "combo",
+        "plan_youtube": Plan.PROPLUS,
+        "plan_twitch": Plan.PROPLUS,
         "subscription_type": "combo",
     },
 ]

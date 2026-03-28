@@ -170,8 +170,8 @@ const PLANS_BY_PLATFORM = {
       name: 'Pro+',
       icon: 'rocket' as const,
       monthlyEur: 54.99,
-      yearlyEur: +(494.99 / 12).toFixed(2),
-      yearlyTotal: 494.99,
+      yearlyEur: +(529.99 / 12).toFixed(2),
+      yearlyTotal: 529.99,
       style: 'proplus' as const,
       badge: null as null,
       features: [
@@ -193,8 +193,8 @@ const PLANS_BY_PLATFORM = {
       name: 'Combo Standard',
       icon: 'sparkles' as const,
       monthlyEur: 14.99,
-      yearlyEur: +(134.99 / 12).toFixed(2),
-      yearlyTotal: 134.99,
+      yearlyEur: +(129.99 / 12).toFixed(2),
+      yearlyTotal: 129.99,
       style: 'default' as const,
       badge: null as null,
       features: [
@@ -213,8 +213,8 @@ const PLANS_BY_PLATFORM = {
       name: 'Combo Pro',
       icon: 'crown' as const,
       monthlyEur: 39.99,
-      yearlyEur: +(359.99 / 12).toFixed(2),
-      yearlyTotal: 359.99,
+      yearlyEur: +(379.99 / 12).toFixed(2),
+      yearlyTotal: 379.99,
       style: 'pro' as const,
       badge: '⚡ BEST VALUE' as string | null,
       features: [
@@ -234,8 +234,8 @@ const PLANS_BY_PLATFORM = {
       name: 'Combo Pro+',
       icon: 'rocket' as const,
       monthlyEur: 64.99,
-      yearlyEur: +(584.99 / 12).toFixed(2),
-      yearlyTotal: 584.99,
+      yearlyEur: +(649.99 / 12).toFixed(2),
+      yearlyTotal: 649.99,
       style: 'proplus' as const,
       badge: null as null,
       features: [

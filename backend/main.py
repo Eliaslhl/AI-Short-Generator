@@ -130,3 +130,11 @@ async def health():
 app.include_router(router, prefix="/api")
 app.include_router(auth_router)
 app.include_router(advanced_router, prefix="/api", tags=["advanced"])
+
+
+# Debug route: show effective DATABASE_URL (dev only)
+@app.get("/_debug/db", include_in_schema=False)
+async def _debug_db():
+    from backend import database
+
+    return {"database_url": database.DATABASE_URL}

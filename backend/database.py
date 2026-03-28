@@ -33,6 +33,8 @@ elif _raw_url.startswith("postgresql://") and "+asyncpg" not in _raw_url:
 
 DATABASE_URL: str = _raw_url
 
+logger.info(f"Using DATABASE_URL={DATABASE_URL}")
+
 _is_sqlite = DATABASE_URL.startswith("sqlite")
 _is_postgres = DATABASE_URL.startswith("postgres")
 

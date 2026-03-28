@@ -164,21 +164,29 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 # ── Login ─────────────────────────────────────────────────────────────────────
 @router.post("/login", response_model=dict)
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == body.email))
-    user = result.scalar_one_or_none()
+    try:
+        result = await db.execute(select(User).where(User.email == body.email))
+        user = result.scalar_one_or_none()
 
-    if (
-        not user
-        or not user.hashed_password
-        or not verify_password(body.password, user.hashed_password)
-    ):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        if (
+            not user
+            or not user.hashed_password
+            or not verify_password(body.password, user.hashed_password)
+        ):
+            raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    if not user.is_active:
-        raise HTTPException(status_code=403, detail="Account disabled")
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="Account disabled")
 
-    token = create_access_token(user.id, user.email)
-    return {"access_token": token, "token_type": "bearer", "user": _user_dict(user)}
+        token = create_access_token(user.id, user.email)
+        # Return token and user object
+        return {"access_token": token, "token_type": "bearer", "user": _user_dict(user)}
+    except HTTPException:
+        # re-raise known HTTP exceptions unchanged
+        raise
+    except Exception as exc:
+        logger.exception("Unexpected error during login")
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 # ── Me ────────────────────────────────────────────────────────────────────────
@@ -553,5 +561,6 @@ def _user_dict(user: User) -> dict:
         "twitch_limit": user.twitch_limit,
         "youtube_generations_left": user.youtube_generations_left,
         "twitch_generations_left": user.twitch_generations_left,
-        "created_at": user.created_at.isoformat(),
+        # created_at may be a datetime or a text value depending on DB; handle both
+        "created_at": (user.created_at.isoformat() if hasattr(user.created_at, "isoformat") else str(user.created_at)),
     }

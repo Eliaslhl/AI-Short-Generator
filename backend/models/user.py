@@ -73,6 +73,10 @@ class User(Base):
         DateTime(timezone=True), default=_now, nullable=True
     )
 
+    # Per-user overrides for limits (optional)
+    youtube_limit_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    twitch_limit_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # Twitch quota
     twitch_generations_month: Mapped[int] = mapped_column(Integer, default=0)
     twitch_plan_reset_date: Mapped[datetime] = mapped_column(
@@ -114,11 +118,17 @@ class User(Base):
     @property
     def youtube_limit(self) -> int:
         """YouTube monthly generation limit."""
+        # Prefer per-user override when set
+        if getattr(self, "youtube_limit_override", None):
+            return int(self.youtube_limit_override)
         return self.PLAN_LIMITS.get(self.plan_youtube or self.plan, 2)
 
     @property
     def twitch_limit(self) -> int:
         """Twitch monthly generation limit."""
+        # Prefer per-user override when set
+        if getattr(self, "twitch_limit_override", None):
+            return int(self.twitch_limit_override)
         return self.PLAN_LIMITS.get(self.plan_twitch or Plan.FREE, 2)
 
     @property

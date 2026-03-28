@@ -1,0 +1,1 @@
+Toutes les anciennes migrations ont été supprimées pour repartir sur une base propre. Génère une nouvelle migration avec alembic revision --autogenerate -m "initial schema with all columns".

@@ -1,16 +1,19 @@
-"""initial schema: users and jobs
+"""initial schema with all columns
 
-Revision ID: 3b526031a41b
-Revises: 3ce4eda8188c
-Create Date: 2026-03-10 00:27:53.341821
+Revision ID: 86193de34e59
+Revises: 
+Create Date: 2026-03-28 19:05:11.564671
 
 """
-
 from typing import Sequence, Union
 
+from alembic import op
+import sqlalchemy as sa
+
+
 # revision identifiers, used by Alembic.
-revision: str = "3b526031a41b"
-down_revision: Union[str, Sequence[str], None] = "3ce4eda8188c"
+revision: str = '86193de34e59'
+down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

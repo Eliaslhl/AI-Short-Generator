@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.auth.dependencies import get_current_user
@@ -215,20 +215,22 @@ async def google_login():
 
 @router.get("/google/callback")
 async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
+    """Exchange Google code, find-or-create user using raw SQL to avoid selecting missing columns.
+
+    This is a defensive hotfix: if the DB schema is partially migrated and some columns
+    (like youtube_limit_override) are missing, ORM queries that select all columns will
+    raise and cause a 500. Using minimal raw SQL here avoids referencing those columns.
+    """
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=501, detail="Google OAuth not configured")
 
-    # Exchange code for token
+    # Exchange code for token and fetch Google user info
     async with AsyncOAuth2Client(
         client_id=GOOGLE_CLIENT_ID,
         client_secret=GOOGLE_CLIENT_SECRET,
         redirect_uri=GOOGLE_REDIRECT_URI,
     ) as client:
-        await client.fetch_token(
-            "https://oauth2.googleapis.com/token",
-            code=code,
-        )
-        # Get user info
+        await client.fetch_token("https://oauth2.googleapis.com/token", code=code)
         resp = await client.get("https://www.googleapis.com/oauth2/v3/userinfo")
         info = resp.json()
 
@@ -238,38 +240,48 @@ async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
     avatar_url = info.get("picture")
 
     if not email or not google_id:
-        raise HTTPException(
-            status_code=400, detail="Could not retrieve Google account info"
-        )
+        raise HTTPException(status_code=400, detail="Could not retrieve Google account info")
 
-    # Find or create user
-    result = await db.execute(select(User).where(User.google_id == google_id))
-    user = result.scalar_one_or_none()
+    # Use raw SQL to avoid ORM selecting all columns (some may not exist during migration drift)
+    user_id = None
 
-    if not user:
-        # Check if email already registered (link accounts)
-        result = await db.execute(select(User).where(User.email == email))
-        user = result.scalar_one_or_none()
-
-        if user:
-            user.google_id = google_id
-            user.avatar_url = avatar_url or user.avatar_url
-        else:
-            user = User(
-                email=email,
-                google_id=google_id,
-                full_name=full_name,
-                avatar_url=avatar_url,
-                is_verified=True,
+    # 1) try find by google_id
+    r = await db.execute(text("SELECT id, email, full_name, avatar_url, is_active FROM users WHERE google_id = :gid"), {"gid": google_id})
+    row = r.first()
+    if row:
+        user_id = row[0]
+    else:
+        # 2) try find by email (link account)
+        r = await db.execute(text("SELECT id FROM users WHERE email = :email"), {"email": email})
+        row = r.first()
+        if row:
+            user_id = row[0]
+            # update google_id and avatar_url if needed
+            await db.execute(
+                text(
+                    "UPDATE users SET google_id = :gid, avatar_url = COALESCE(:avatar, avatar) WHERE id = :id"
+                ),
+                {"gid": google_id, "avatar": avatar_url, "id": user_id},
             )
-            db.add(user)
+            await db.commit()
+        else:
+            # 3) create new user and return its id
+            res = await db.execute(
+                text(
+                    "INSERT INTO users (email, google_id, full_name, avatar_url, is_verified, created_at)"
+                    " VALUES (:email, :gid, :full, :avatar, true, now()) RETURNING id"
+                ),
+                {"email": email, "gid": google_id, "full": full_name, "avatar": avatar_url},
+            )
+            newrow = res.first()
+            if newrow:
+                user_id = newrow[0]
+            await db.commit()
 
-    await db.commit()
-    await db.refresh(user)
+    if not user_id:
+        raise HTTPException(status_code=500, detail="Could not create or find user")
 
-    jwt_token = create_access_token(user.id, user.email)
-
-    # Redirect to frontend with token
+    jwt_token = create_access_token(user_id, email)
     return RedirectResponse(f"{FRONTEND_URL}/auth/callback?token={jwt_token}")
 
 

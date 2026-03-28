@@ -11,7 +11,7 @@ from alembic import op
 from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
-revision = '20260328_add_youtube_twitch_plan_columns'
+revision = 'rev20260328a'
 down_revision = '3b526031a41b'
 branch_labels = None
 depends_on = None

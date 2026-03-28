@@ -1,7 +1,7 @@
 """
 idempotent: add youtube/twitch plan and override columns
 
-Revision ID: 20260329_idempotent_add_plan_and_override_columns
+Revision ID: rev20260329a
 Revises: 0831864a2940
 Create Date: 2026-03-29
 """
@@ -12,7 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = '20260329_idempotent_add_plan_and_override_columns'
+revision = 'rev20260329a'
 down_revision = '0831864a2940'
 branch_labels = None
 depends_on = None

@@ -1,8 +1,8 @@
 """
 add youtube/twitch limit override columns to users
 
-Revision ID: 20260328_add_youtube_twitch_limit_overrides
-Revises: 20260328_add_youtube_twitch_plan_columns
+Revision ID: rev20260328b
+Revises: rev20260328a
 Create Date: 2026-03-28
 """
 
@@ -10,8 +10,8 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = '20260328_add_youtube_twitch_limit_overrides'
-down_revision = '20260328_add_youtube_twitch_plan_columns'
+revision = 'rev20260328b'
+down_revision = 'rev20260328a'
 branch_labels = None
 depends_on = None
 

@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { LogOut, User, Crown, Sparkles, Rocket, LayoutDashboard, Clapperboard, Menu, X } from './icons'
 import CookieSettings from './CookieSettings'
+import { getCurrentPlatform, getPlanForPlatform, getGenerationsLeft, getGenerationLimit } from '../utils/planUtils'
 
 const PLAN_BADGE: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
   pro: {
@@ -34,7 +35,12 @@ export default function Navbar() {
     setMenuOpen(false)
   }
 
-  const planBadge = user ? PLAN_BADGE[user.plan] : null
+  const platform = user ? getCurrentPlatform(user) : 'youtube'
+  const effectivePlan = user ? getPlanForPlatform(user, platform) : 'free'
+  const generationsLeft = user ? getGenerationsLeft(user, platform) : 0
+  const generationLimit = user ? getGenerationLimit(user, platform) : 2
+
+  const planBadge = user ? PLAN_BADGE[effectivePlan] : null
 
   return (
     <nav className="border-b border-white/10 bg-black/40 backdrop-blur-md sticky top-0 z-50">
@@ -55,14 +61,14 @@ export default function Navbar() {
                 </span>
               ) : (
                 <span className="text-xs text-gray-400">
-                  {user.free_generations_left} free left
+                  {generationsLeft} free left
                 </span>
               )}
               {/* Quota counter for all plans */}
               <span className="text-xs text-gray-500">
-                {user.free_generations_left}
+                {generationsLeft}
                 {'/'}
-                {user.plan === 'standard' ? '20' : user.plan === 'pro' ? '50' : user.plan === 'proplus' ? '100' : '2'}
+                {generationLimit}
                 {' left'}
               </span>
 
@@ -156,9 +162,9 @@ export default function Navbar() {
                     {user.full_name ?? user.email}
                   </span>
                   <span className="text-gray-400 text-xs">
-                    {user.free_generations_left}
+                    {generationsLeft}
                     {'/'}
-                    {user.plan === 'standard' ? '20' : user.plan === 'pro' ? '50' : user.plan === 'proplus' ? '100' : '2'}
+                    {generationLimit}
                     {' left this month'}
                   </span>
                 </div>

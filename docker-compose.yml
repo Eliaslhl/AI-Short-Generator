@@ -21,7 +21,7 @@ services:
   # FastAPI Main Application
   api:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
     container_name: videoshort_api
     ports:
@@ -50,7 +50,7 @@ services:
   # RQ Worker 1
   worker_1:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile.worker
     container_name: videoshort_worker_1
     environment:
@@ -70,7 +70,7 @@ services:
   # RQ Worker 2 (optional - for parallel processing)
   worker_2:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile.worker
     container_name: videoshort_worker_2
     environment:

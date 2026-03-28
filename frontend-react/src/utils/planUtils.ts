@@ -1,4 +1,4 @@
-import { Plan, User } from '@/types'
+import { Plan, User } from '../types'
 
 /** Determine which platform we're currently working with */
 export type CurrentPlatform = 'youtube' | 'twitch' | 'combo'

@@ -8,8 +8,8 @@ import {
   getGenerationLimit,
   getGenerationsLeft,
   getMaxClipsAllowed,
-} from '../src/utils/planUtils'
-import type { User } from '../src/types'
+} from './planUtils'
+import type { User } from '../types'
 
 describe('planUtils', () => {
   describe('getCurrentPlatform', () => {

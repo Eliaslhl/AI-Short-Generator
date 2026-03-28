@@ -1,6 +1,3 @@
-// Test file to verify planUtils works correctly
-// Run from terminal: cd frontend-react && npm test -- planUtils.test.ts
-
 import { describe, it, expect } from 'vitest'
 import {
   getCurrentPlatform,

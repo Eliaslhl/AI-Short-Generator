@@ -26,6 +26,8 @@ services:
     container_name: videoshort_api
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       - QUEUE_BACKEND=rq
       - REDIS_URL=redis://redis:6379/0

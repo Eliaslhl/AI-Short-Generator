@@ -296,8 +296,26 @@ export default function GeneratorPage() {
   const generationLimit = getGenerationLimit(user, platform)
   const quotaEmpty = generationsLeft === 0
 
+  console.log('GeneratorPage debug:', {
+    user_email: user?.email,
+    user_plan_youtube: (user as any)?.plan_youtube,
+    user_plan_twitch: (user as any)?.plan_twitch,
+    user_youtube_limit: (user as any)?.youtube_limit,
+    user_twitch_limit: (user as any)?.twitch_limit,
+    platform,
+    currentPlan,
+    generationsLeft,
+    generationLimit,
+    user_keys: user ? Object.keys(user) : [],
+  })
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-12">
+      {/* DEBUG: Affichage des valeurs platform et currentPlan */}
+      <div className="mb-2 p-2 bg-black/30 rounded text-xs text-gray-400">
+        <div>platform: <span className="text-white">{platform}</span></div>
+        <div>currentPlan: <span className="text-white">{currentPlan}</span></div>
+      </div>
       <div className="text-center mb-10">
         <h1 className="text-4xl font-bold text-white mb-3">
           <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
@@ -370,7 +388,10 @@ export default function GeneratorPage() {
         {/* URL input */}
         <div className="relative mb-4">
           <Link2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+          <label htmlFor="video-url" className="sr-only">URL de la vidéo</label>
           <input
+            id="video-url"
+            name="video-url"
             type="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
@@ -378,6 +399,7 @@ export default function GeneratorPage() {
             required
             disabled={isProcessing}
             className="w-full pl-12 pr-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition"
+            autoComplete="url"
           />
           {/* Quick example link below the field */}
           {!url && !isProcessing && (
@@ -401,22 +423,31 @@ export default function GeneratorPage() {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <SlidersHorizontal className={`w-4 h-4 ${currentPlan !== 'free' ? 'text-yellow-400' : 'text-purple-400'}`} />
-              <span className="text-sm font-medium text-white">Number of clips</span>
-              {currentPlan === 'proplus' ? (
-                <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold">PRO+ · max 20</span>
-              ) : currentPlan === 'pro' ? (
-                <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO · max 10</span>
-              ) : currentPlan === 'standard' ? (
-                <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold">STANDARD · max 5</span>
-              ) : (
-                <span className="px-1.5 py-0.5 bg-white/10 text-gray-400 text-xs rounded-full">max 3 — upgrade for more</span>
-              )}
+              <span className="text-sm font-medium text-white">Nombre de clips</span>
+              <span
+                className={
+                  currentPlan === 'proplus'
+                    ? 'px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold'
+                    : currentPlan === 'pro'
+                    ? 'px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold'
+                    : currentPlan === 'standard'
+                    ? 'px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold'
+                    : 'px-1.5 py-0.5 bg-white/10 text-gray-400 text-xs rounded-full'
+                }
+              >
+                {currentPlan !== 'free'
+                  ? `${currentPlan.toUpperCase()} · max ${maxAllowed}`
+                  : `max ${maxAllowed} — upgrade for more`}
+              </span>
             </div>
             <span className={`text-3xl font-bold w-10 text-center ${currentPlan === 'proplus' ? 'text-pink-400' : currentPlan === 'pro' ? 'text-yellow-400' : 'text-purple-400'}`}>
               {maxClips}
             </span>
           </div>
+          <label htmlFor="clip-count" className="sr-only">Nombre de clips</label>
           <input
+            id="clip-count"
+            name="clip-count"
             type="range"
             min={1}
             max={maxAllowed}
@@ -427,66 +458,53 @@ export default function GeneratorPage() {
             className={`w-full cursor-pointer disabled:opacity-50 ${currentPlan === 'proplus' ? 'accent-pink-400' : currentPlan === 'pro' ? 'accent-yellow-400' : 'accent-purple-500'}`}
           />
           <div className="flex justify-between text-xs text-gray-500 mt-1">
-            <span>1</span>
-            {currentPlan === 'proplus' ? (
-              <>
-                <span>5</span>
-                <span>10</span>
-                <span>15</span>
-                <span>20</span>
-              </>
-            ) : currentPlan === 'pro' ? (
-              <>
-                <span>3</span>
-                <span>5</span>
-                <span>8</span>
-                <span>10</span>
-              </>
-            ) : currentPlan === 'standard' ? (
-              <>
-                <span>3</span>
-                <span>5</span>
-              </>
-            ) : (
-              <>
-                <span>2</span>
-                <span>3</span>
-              </>
-            )}
+            {Array.from({ length: maxAllowed }, (_, i) => {
+              // Affiche 1, puis des graduations intermédiaires, puis max
+              if (i === 0 || i === maxAllowed - 1 || (maxAllowed > 4 && (i + 1) % Math.ceil(maxAllowed / 4) === 0)) {
+                return <span key={i}>{i + 1}</span>
+              }
+              return <span key={i}></span>
+            })}
           </div>
         </div>
 
         {/* Language selector — Standard and above */}
         {currentPlan !== 'free' && (
-          <div className={`p-4 rounded-xl mb-4 ${
-            currentPlan === 'proplus'  ? 'bg-pink-500/5 border border-pink-500/20'
-            : currentPlan === 'pro'   ? 'bg-yellow-500/5 border border-yellow-500/20'
-                                     : 'bg-blue-500/5 border border-blue-500/20'
-          }`}>
-            <div className="flex items-center gap-2 mb-3">
-              <Globe className={`w-4 h-4 ${
-                currentPlan === 'proplus' ? 'text-pink-400'
-                : currentPlan === 'pro'  ? 'text-yellow-400'
-                                        : 'text-blue-400'
-              }`} />
-              <span className="text-sm font-medium text-white">Transcription language</span>
-              {currentPlan === 'proplus' ? (
-                <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold">PRO+</span>
-              ) : currentPlan === 'pro' ? (
-                <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO</span>
-              ) : (
-                <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold">STANDARD</span>
-              )}
-            </div>
+            <div className={`p-4 rounded-xl mb-4 ${
+              currentPlan === 'proplus'  ? 'bg-pink-500/5 border border-pink-500/20'
+              : currentPlan === 'pro'   ? 'bg-yellow-500/5 border border-yellow-500/20'
+                                       : 'bg-blue-500/5 border border-blue-500/20'
+            }`}>
+              <div className="flex items-center gap-2 mb-3">
+                <Globe className={`w-4 h-4 ${
+                  currentPlan === 'proplus' ? 'text-pink-400'
+                  : currentPlan === 'pro'  ? 'text-yellow-400'
+                                          : 'text-blue-400'
+                }`} />
+                <span className="text-sm font-medium text-white">Transcription language</span>
+                <span className={
+                  currentPlan === 'proplus'
+                    ? 'px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold'
+                    : currentPlan === 'pro'
+                    ? 'px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold'
+                    : 'px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold'
+                }>
+                  {currentPlan.toUpperCase()}
+                </span>
+              </div>
+            <label htmlFor="language-select" className="sr-only">Langue de transcription</label>
             <select
+              id="language-select"
+              name="language-select"
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
               disabled={isProcessing}
               className={`w-full px-3 py-2.5 bg-black/30 rounded-lg text-white text-sm focus:outline-none transition disabled:opacity-50 cursor-pointer border ${
-                user?.plan === 'proplus' ? 'border-pink-500/20 focus:border-pink-400'
-                : user?.plan === 'pro'  ? 'border-yellow-500/20 focus:border-yellow-400'
+                currentPlan === 'proplus' ? 'border-pink-500/20 focus:border-pink-400'
+                : currentPlan === 'pro'  ? 'border-yellow-500/20 focus:border-yellow-400'
                                         : 'border-blue-500/20 focus:border-blue-400'
               }`}
+              autoComplete="language"
             >
               {LANGUAGES.map((l) => (
                 <option key={l.code} value={l.code}>{l.label}</option>
@@ -500,26 +518,28 @@ export default function GeneratorPage() {
 
         {/* Subtitle style selector — Standard and above */}
         {currentPlan !== 'free' && (
-          <div className={`p-4 rounded-xl mb-4 ${
-            currentPlan === 'proplus'  ? 'bg-pink-500/5 border border-pink-500/20'
-            : currentPlan === 'pro'   ? 'bg-yellow-500/5 border border-yellow-500/20'
-                                     : 'bg-blue-500/5 border border-blue-500/20'
-          }`}>
-            <div className="flex items-center gap-2 mb-3">
-              <Type className={`w-4 h-4 ${
-                currentPlan === 'proplus' ? 'text-pink-400'
-                : currentPlan === 'pro'  ? 'text-yellow-400'
-                                        : 'text-blue-400'
-              }`} />
-              <span className="text-sm font-medium text-white">Subtitle style</span>
-              {currentPlan === 'proplus' ? (
-                <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold">PRO+</span>
-              ) : currentPlan === 'pro' ? (
-                <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO</span>
-              ) : (
-                <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold">STANDARD</span>
-              )}
-            </div>
+            <div className={`p-4 rounded-xl mb-4 ${
+              currentPlan === 'proplus'  ? 'bg-pink-500/5 border border-pink-500/20'
+              : currentPlan === 'pro'   ? 'bg-yellow-500/5 border border-yellow-500/20'
+                                       : 'bg-blue-500/5 border border-blue-500/20'
+            }`}>
+              <div className="flex items-center gap-2 mb-3">
+                <Type className={`w-4 h-4 ${
+                  currentPlan === 'proplus' ? 'text-pink-400'
+                  : currentPlan === 'pro'  ? 'text-yellow-400'
+                                          : 'text-blue-400'
+                }`} />
+                <span className="text-sm font-medium text-white">Subtitle style</span>
+                <span className={
+                  currentPlan === 'proplus'
+                    ? 'px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold'
+                    : currentPlan === 'pro'
+                    ? 'px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold'
+                    : 'px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold'
+                }>
+                  {currentPlan.toUpperCase()}
+                </span>
+              </div>
             <div className="grid grid-cols-5 gap-2">
               {SUBTITLE_STYLES.map((s) => (
                 <button

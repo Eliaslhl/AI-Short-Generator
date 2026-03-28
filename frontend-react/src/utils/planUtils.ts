@@ -39,11 +39,23 @@ export function getPlanForPlatform(user: User | null, platform: CurrentPlatform 
 export function getGenerationLimit(user: User | null, platform: CurrentPlatform = 'youtube'): number {
   if (!user) return 2
 
+  console.debug('getGenerationLimit debug:', {
+    email: user?.email,
+    platform,
+    youtube_limit: (user as any)?.youtube_limit,
+    twitch_limit: (user as any)?.twitch_limit,
+    plan_youtube: user?.plan_youtube,
+    plan_twitch: user?.plan_twitch,
+    user_keys: user ? Object.keys(user) : [],
+  })
+
   // Prefer computed limits from API
   if (platform === 'twitch' && user.twitch_limit !== undefined) {
+    console.debug('Using twitch_limit from API:', user.twitch_limit)
     return user.twitch_limit
   }
   if ((platform === 'youtube' || platform === 'combo') && user.youtube_limit !== undefined) {
+    console.debug('Using youtube_limit from API:', user.youtube_limit)
     return user.youtube_limit
   }
 
@@ -56,6 +68,7 @@ export function getGenerationLimit(user: User | null, platform: CurrentPlatform 
     proplus: 100,
   }
 
+  console.debug('Falling back to plan-based limit:', { plan, limit: planLimits[plan] ?? 2 })
   return planLimits[plan] ?? 2
 }
 

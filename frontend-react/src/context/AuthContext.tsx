@@ -33,6 +33,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string): Promise<User> => {
     const res = await authApi.login(email, password)
+    console.log('Login response user:', res.data.user)
+    console.log('User keys:', Object.keys(res.data.user))
+    console.log('youtube_limit:', (res.data.user as any).youtube_limit)
     localStorage.setItem('token', res.data.access_token)
     setUser(res.data.user)
     showToast('Connexion réussie 👋', 'success')
@@ -55,6 +58,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = async (): Promise<User> => {
     const res = await authApi.me()
+    console.log('Me response user:', res.data)
+    console.log('User keys:', Object.keys(res.data))
+    console.log('youtube_limit:', (res.data as any).youtube_limit)
     setUser(res.data)
     return res.data
   }

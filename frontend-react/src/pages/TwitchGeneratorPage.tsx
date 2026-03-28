@@ -7,6 +7,8 @@ import { LANGUAGES, SUBTITLE_STYLES } from '../components/GeneratorForm'
 import TwitchVodPickerModal from '../components/TwitchVodPickerModal'
 import { Download, Expand, X, Link2, SlidersHorizontal, Globe, Type, Sparkles, Tv } from 'lucide-react'
 
+import { getPlanForPlatform } from '../utils/planUtils'
+
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 const STEPS = [
@@ -195,11 +197,9 @@ export default function TwitchGeneratorPage() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Max clips by plan
-  const maxAllowed =
-    user?.plan === 'proplus' ? 20 :
-    user?.plan === 'pro' ? 10 :
-    user?.plan === 'standard' ? 5 : 3
+  // Max clips by plan (corrigé)
+  const currentPlan = getPlanForPlatform(user, 'twitch')
+  const maxAllowed = currentPlan === 'proplus' ? 20 : currentPlan === 'pro' ? 10 : currentPlan === 'standard' ? 5 : 3
 
   // Cleanup interval on unmount
   useEffect(() => {
@@ -308,11 +308,11 @@ export default function TwitchGeneratorPage() {
   const currentStep = stepIndex(status?.progress ?? 0)
   const isComplete = status?.status === 'done'
 
-  // Plan colors
+  // Plan colors (corrigé)
   const planColor = 
-    user?.plan === 'proplus' ? { bg: 'bg-pink-500/5', border: 'border-pink-500/20', text: 'text-pink-400', icon: 'text-pink-400', select: 'border-pink-500/20 focus:border-pink-400', accent: 'accent-pink-400' }
-    : user?.plan === 'pro' ? { bg: 'bg-yellow-500/5', border: 'border-yellow-500/20', text: 'text-yellow-400', icon: 'text-yellow-400', select: 'border-yellow-500/20 focus:border-yellow-400', accent: 'accent-yellow-400' }
-    : user?.plan === 'standard' ? { bg: 'bg-blue-500/5', border: 'border-blue-500/20', text: 'text-blue-400', icon: 'text-blue-400', select: 'border-blue-500/20 focus:border-blue-400', accent: 'accent-blue-400' }
+    currentPlan === 'proplus' ? { bg: 'bg-pink-500/5', border: 'border-pink-500/20', text: 'text-pink-400', icon: 'text-pink-400', select: 'border-pink-500/20 focus:border-pink-400', accent: 'accent-pink-400' }
+    : currentPlan === 'pro' ? { bg: 'bg-yellow-500/5', border: 'border-yellow-500/20', text: 'text-yellow-400', icon: 'text-yellow-400', select: 'border-yellow-500/20 focus:border-yellow-400', accent: 'accent-yellow-400' }
+    : currentPlan === 'standard' ? { bg: 'bg-blue-500/5', border: 'border-blue-500/20', text: 'text-blue-400', icon: 'text-blue-400', select: 'border-blue-500/20 focus:border-blue-400', accent: 'accent-blue-400' }
     : { bg: 'bg-white/5', border: 'border-white/10', text: 'text-purple-400', icon: 'text-purple-400', select: 'border-white/10 focus:border-purple-500', accent: 'accent-purple-500' }
 
   return (
@@ -398,11 +398,11 @@ export default function TwitchGeneratorPage() {
               <div className="flex items-center gap-2">
                 <SlidersHorizontal className={`w-4 h-4 ${planColor.icon}`} />
                 <span className="text-sm font-medium text-white">Number of clips</span>
-                {user?.plan === 'proplus' ? (
+                {currentPlan === 'proplus' ? (
                   <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold">PRO+ · max 20</span>
-                ) : user?.plan === 'pro' ? (
+                ) : currentPlan === 'pro' ? (
                   <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO · max 10</span>
-                ) : user?.plan === 'standard' ? (
+                ) : currentPlan === 'standard' ? (
                   <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold">STANDARD · max 5</span>
                 ) : (
                   <span className="px-1.5 py-0.5 bg-white/10 text-gray-400 text-xs rounded-full">max 3 — upgrade for more</span>
@@ -423,48 +423,30 @@ export default function TwitchGeneratorPage() {
               className={`w-full cursor-pointer disabled:opacity-50 ${planColor.accent}`}
             />
             <div className="flex justify-between text-xs text-gray-500 mt-1">
-              <span>1</span>
-              {user?.plan === 'proplus' ? (
-                <>
-                  <span>5</span>
-                  <span>10</span>
-                  <span>15</span>
-                  <span>20</span>
-                </>
-              ) : user?.plan === 'pro' ? (
-                <>
-                  <span>3</span>
-                  <span>5</span>
-                  <span>8</span>
-                  <span>10</span>
-                </>
-              ) : user?.plan === 'standard' ? (
-                <>
-                  <span>3</span>
-                  <span>5</span>
-                </>
-              ) : (
-                <>
-                  <span>2</span>
-                  <span>3</span>
-                </>
-              )}
+              {Array.from({ length: maxAllowed }, (_, i) => {
+                if (i === 0 || i === maxAllowed - 1 || (maxAllowed > 4 && (i + 1) % Math.ceil(maxAllowed / 4) === 0)) {
+                  return <span key={i}>{i + 1}</span>
+                }
+                return <span key={i}></span>
+              })}
             </div>
           </div>
 
           {/* Language selector — Standard and above */}
-          {user?.plan !== 'free' && (
+          {currentPlan !== 'free' && (
             <div className={`p-4 rounded-xl border ${planColor.bg} ${planColor.border}`}>
               <div className="flex items-center gap-2 mb-3">
                 <Globe className={`w-4 h-4 ${planColor.icon}`} />
                 <span className="text-sm font-medium text-white">Transcription language</span>
-                {user?.plan === 'proplus' ? (
-                  <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold">PRO+</span>
-                ) : user?.plan === 'pro' ? (
-                  <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO</span>
-                ) : (
-                  <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold">STANDARD</span>
-                )}
+                <span className={
+                  currentPlan === 'proplus'
+                    ? 'px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold'
+                    : currentPlan === 'pro'
+                    ? 'px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold'
+                    : 'px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold'
+                }>
+                  {currentPlan.toUpperCase()}
+                </span>
               </div>
               <select
                 value={language}
@@ -483,18 +465,20 @@ export default function TwitchGeneratorPage() {
           )}
 
           {/* Subtitle style selector — Standard and above */}
-          {user?.plan !== 'free' && (
+          {currentPlan !== 'free' && (
             <div className={`p-4 rounded-xl border ${planColor.bg} ${planColor.border}`}>
               <div className="flex items-center gap-2 mb-3">
                 <Type className={`w-4 h-4 ${planColor.icon}`} />
                 <span className="text-sm font-medium text-white">Subtitle style</span>
-                {user?.plan === 'proplus' ? (
-                  <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold">PRO+</span>
-                ) : user?.plan === 'pro' ? (
-                  <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO</span>
-                ) : (
-                  <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold">STANDARD</span>
-                )}
+                <span className={
+                  currentPlan === 'proplus'
+                    ? 'px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold'
+                    : currentPlan === 'pro'
+                    ? 'px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold'
+                    : 'px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold'
+                }>
+                  {currentPlan.toUpperCase()}
+                </span>
               </div>
               <div className="grid grid-cols-5 gap-2">
                 {SUBTITLE_STYLES.map((s) => (
@@ -506,11 +490,11 @@ export default function TwitchGeneratorPage() {
                     title={s.desc}
                     className={`px-2 py-2 rounded-lg text-xs font-medium border transition text-center disabled:opacity-50 disabled:cursor-not-allowed ${
                       subtitleStyle === s.code
-                        ? user?.plan === 'proplus' ? 'bg-pink-500/20 border-pink-400 text-pink-300'
-                          : user?.plan === 'pro'   ? 'bg-yellow-500/20 border-yellow-400 text-yellow-300'
+                        ? currentPlan === 'proplus' ? 'bg-pink-500/20 border-pink-400 text-pink-300'
+                          : currentPlan === 'pro'   ? 'bg-yellow-500/20 border-yellow-400 text-yellow-300'
                                                    : 'bg-blue-500/20 border-blue-400 text-blue-300'
-                        : user?.plan === 'proplus' ? 'bg-black/20 border-white/10 text-gray-400 hover:border-pink-500/40 hover:text-white'
-                          : user?.plan === 'pro'   ? 'bg-black/20 border-white/10 text-gray-400 hover:border-yellow-500/40 hover:text-white'
+                        : currentPlan === 'proplus' ? 'bg-black/20 border-white/10 text-gray-400 hover:border-pink-500/40 hover:text-white'
+                          : currentPlan === 'pro'   ? 'bg-black/20 border-white/10 text-gray-400 hover:border-yellow-500/40 hover:text-white'
                                                    : 'bg-black/20 border-white/10 text-gray-400 hover:border-blue-500/40 hover:text-white'
                     }`}
                   >

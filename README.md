@@ -72,12 +72,21 @@ ai-shorts-generator/
 
 ## ⚙️ Prerequisites
 
-| Tool | Install |
-|---|---|
-| Python 3.11 | [python.org](https://www.python.org) |
-| Node.js 18+ | [nodejs.org](https://nodejs.org) |
-| ffmpeg | `brew install ffmpeg` |
-| Ollama *(optional)* | [ollama.com](https://ollama.com) |
+| Tool | Install | Notes |
+|---|---|---|
+| Python 3.11 | [python.org](https://www.python.org) | Required for backend |
+| Node.js 18+ | [nodejs.org](https://nodejs.org) | Required for frontend |
+| **FFmpeg 8.0+** | `brew install ffmpeg` | **REQUIRED** for clip generation (libx264, libvpx-vp9, aac codecs needed) |
+| Ollama *(optional)* | [ollama.com](https://ollama.com) | Optional: local LLM for hooks |
+
+**Verify FFmpeg installation:**
+```bash
+# Check FFmpeg is available
+ffmpeg -version
+
+# Verify required encoders (libx264, libvpx-vp9, aac)
+./scripts/check_ffmpeg.sh
+```
 
 ---
 

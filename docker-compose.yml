@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # Redis - Message broker & cache
+  redis:
+    image: redis:7-alpine
+    container_name: videoshort_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - videoshort_network
+
+  # FastAPI Main Application
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: videoshort_api
+    ports:
+      - "8000:8000"
+    environment:
+      - QUEUE_BACKEND=rq
+      - REDIS_URL=redis://redis:6379/0
+      - CHUNK_DURATION=1800
+      - WINDOW_SIZE=15
+      - WINDOW_OVERLAP=0.5
+      - AUDIO_WEIGHT=0.5
+      - MOTION_WEIGHT=0.2
+      - TEXT_WEIGHT=0.3
+      - MIN_SCORE_THRESHOLD=0.3
+      - MERGE_THRESHOLD=2.0
+    volumes:
+      - ./backend:/app/backend
+      - ./temp:/app/temp  # For video chunks
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - videoshort_network
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # RQ Worker 1
+  worker_1:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: videoshort_worker_1
+    environment:
+      - QUEUE_BACKEND=rq
+      - REDIS_URL=redis://redis:6379/0
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend:/app/backend
+      - ./temp:/app/temp
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - videoshort_network
+    command: rq worker
+
+  # RQ Worker 2 (optional - for parallel processing)
+  worker_2:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: videoshort_worker_2
+    environment:
+      - QUEUE_BACKEND=rq
+      - REDIS_URL=redis://redis:6379/0
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend:/app/backend
+      - ./temp:/app/temp
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - videoshort_network
+    command: rq worker
+
+volumes:
+  redis_data:
+
+networks:
+  videoshort_network:
+    driver: bridge

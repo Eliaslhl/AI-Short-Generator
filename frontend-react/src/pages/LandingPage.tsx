@@ -23,97 +23,191 @@ const features = [
 ]
 
 // ── Pricing plans ────────────────────────────────────────────────────────────
-const PLANS = [
-  {
-    key: 'free',
-    name: 'Free',
-    icon: null as null,
-    monthlyEur: 0,
-    yearlyEur: 0,
-    yearlyTotal: 0,
-    style: 'default' as const,
-    badge: null as null,
-    features: [
-      '1 video / month',
-      '3 shorts per video',
-      'Export 1080p',
-      'Auto captions',
-      'Watermark on exports',
-    ],
-    cta: 'Get started free',
-    ctaHref: '/register' as string | null,
-  },
-  {
-    key: 'standard',
-    name: 'Standard',
-    icon: 'sparkles' as const,
-    monthlyEur: 4.99,
-    yearlyEur: +(44.99 / 12).toFixed(2),
-    yearlyTotal: 44.99,
-    style: 'default' as const,
-    badge: null as null,
-    features: [
-      '20 videos / month',
-      '5 shorts per video',
-      'Export 1080p',
-      'Automatic subtitles',
-      'Hook generator',
-      'Emoji captions',
-    ],
-    cta: 'Start Standard',
-    ctaHref: null as string | null,
-  },
-  {
-    key: 'pro',
-    name: 'Pro',
-    icon: 'crown' as const,
-    monthlyEur: 19.99,
-    yearlyEur: +(179 / 12).toFixed(2),
-    yearlyTotal: 179,
-    style: 'pro' as const,
-    badge: '⭐ MOST POPULAR' as string | null,
-    features: [
-      '50 videos / month',
-      '10 shorts per video',
-      'Auto zoom speaker',
-      'Smart subtitles',
-      'Batch processing',
-      'Fast export',
-    ],
-    cta: 'Start Pro',
-    ctaHref: null as string | null,
-  },
-  {
-    key: 'proplus',
-    name: 'Pro+',
-    icon: 'rocket' as const,
-    monthlyEur: 39.99,
-    yearlyEur: +(359 / 12).toFixed(2),
-    yearlyTotal: 359,
-    style: 'proplus' as const,
-    badge: null as null,
-    features: [
-      '100 videos / month',
-      '20 shorts per video',
-      'Auto title generator',
-      'Auto hashtags',
-      'Priority rendering (coming soon)',
-      'Multi-channel support (coming soon)',
-      'Team access (coming soon)',
-    ],
-    cta: 'Start Pro+',
-    ctaHref: null as string | null,
-  },
-]
+const PLANS_BY_PLATFORM = {
+  youtube: [
+    {
+      key: 'free',
+      name: 'Free',
+      icon: null as null,
+      monthlyEur: 0,
+      yearlyEur: 0,
+      yearlyTotal: 0,
+      style: 'default' as const,
+      badge: null as null,
+      features: [
+        '1 video / month',
+        '3 shorts per video',
+        'Export 1080p',
+        'Auto captions',
+        'Watermark on exports',
+      ],
+      cta: 'Get started free',
+      ctaHref: '/register' as string | null,
+    },
+    {
+      key: 'standard',
+      name: 'Standard',
+      icon: 'sparkles' as const,
+      monthlyEur: 4.99,
+      yearlyEur: +(44.99 / 12).toFixed(2),
+      yearlyTotal: 44.99,
+      style: 'default' as const,
+      badge: null as null,
+      features: [
+        '20 videos / month',
+        '5 shorts per video',
+        'Export 1080p',
+        'Automatic subtitles',
+        'Hook generator',
+        'Emoji captions',
+      ],
+      cta: 'Start Standard',
+      ctaHref: null as string | null,
+    },
+    {
+      key: 'pro',
+      name: 'Pro',
+      icon: 'crown' as const,
+      monthlyEur: 19.99,
+      yearlyEur: +(179 / 12).toFixed(2),
+      yearlyTotal: 179,
+      style: 'pro' as const,
+      badge: '⭐ MOST POPULAR' as string | null,
+      features: [
+        '50 videos / month',
+        '10 shorts per video',
+        'Auto zoom speaker',
+        'Smart subtitles',
+        'Batch processing',
+        'Fast export',
+      ],
+      cta: 'Start Pro',
+      ctaHref: null as string | null,
+    },
+    {
+      key: 'proplus',
+      name: 'Pro+',
+      icon: 'rocket' as const,
+      monthlyEur: 39.99,
+      yearlyEur: +(359 / 12).toFixed(2),
+      yearlyTotal: 359,
+      style: 'proplus' as const,
+      badge: null as null,
+      features: [
+        '100 videos / month',
+        '20 shorts per video',
+        'Auto title generator',
+        'Auto hashtags',
+        'Priority rendering (coming soon)',
+        'Multi-channel support (coming soon)',
+        'Team access (coming soon)',
+      ],
+      cta: 'Start Pro+',
+      ctaHref: null as string | null,
+    },
+  ],
+  twitch: [
+    {
+      key: 'free',
+      name: 'Free',
+      icon: null as null,
+      monthlyEur: 0,
+      yearlyEur: 0,
+      yearlyTotal: 0,
+      style: 'default' as const,
+      badge: null as null,
+      features: [
+        '1 VOD / month',
+        '3 clips per VOD',
+        'Export 1080p',
+        'Auto captions',
+        'Watermark on exports',
+      ],
+      cta: 'Get started free',
+      ctaHref: '/register' as string | null,
+    },
+    {
+      key: 'standard',
+      name: 'Standard',
+      icon: 'sparkles' as const,
+      monthlyEur: 9.99,
+      yearlyEur: +(89.99 / 12).toFixed(2),
+      yearlyTotal: 89.99,
+      style: 'default' as const,
+      badge: null as null,
+      features: [
+        '50 VODs / month',
+        '5 clips per VOD',
+        'Export 1080p',
+        'Automatic subtitles',
+        'Trending highlight detection',
+      ],
+      cta: 'Start Standard',
+      ctaHref: null as string | null,
+    },
+    {
+      key: 'pro',
+      name: 'Pro',
+      icon: 'crown' as const,
+      monthlyEur: 34.99,
+      yearlyEur: +(314.99 / 12).toFixed(2),
+      yearlyTotal: 314.99,
+      style: 'pro' as const,
+      badge: '⭐ MOST POPULAR' as string | null,
+      features: [
+        '200 VODs / month',
+        '10 clips per VOD',
+        'Auto zoom streamer',
+        'Smart subtitle styling',
+        'Batch clip generation',
+        'Chatter detection',
+      ],
+      cta: 'Start Pro',
+      ctaHref: null as string | null,
+    },
+  ],
+  combo: [
+    {
+      key: 'combo_pro',
+      name: 'Combo Pro',
+      icon: 'crown' as const,
+      monthlyEur: 44.99,
+      yearlyEur: +(404.99 / 12).toFixed(2),
+      yearlyTotal: 404.99,
+      style: 'pro' as const,
+      badge: '⚡ BEST VALUE' as string | null,
+      features: [
+        '50 YouTube videos / month',
+        '10 YouTube shorts per video',
+        '200 Twitch VODs / month',
+        '10 Twitch clips per VOD',
+        'All YouTube Pro features',
+        'All Twitch Pro features',
+        'Priority processing',
+      ],
+      cta: 'Start Combo Pro',
+      ctaHref: null as string | null,
+    },
+  ],
+}
 
 // Stripe Price IDs (monthly + yearly) — must match your Stripe dashboard
-const PRICE_IDS = {
+const PRICE_IDS_YOUTUBE = {
   standard: { monthly: 'price_1T9TOzEjLhnJfUeo7r6bk5H3', yearly: 'price_1T9TOzEjLhnJfUeoOd4Q6vIw' },
   pro:      { monthly: 'price_1T9TPOEjLhnJfUeo8wr3XuPa', yearly: 'price_1T9TPxEjLhnJfUeoHQmyDdNT' },
   proplus:  { monthly: 'price_1T9TQsEjLhnJfUeohPBAd8wD', yearly: 'price_1T9TREEjLhnJfUeoY8RkeQqG' },
 } as const
 
-type PlanIcon = typeof PLANS[number]['icon']
+const PRICE_IDS_TWITCH = {
+  standard: { monthly: import.meta.env.REACT_APP_STRIPE_TWITCH_STANDARD_MONTHLY || '', yearly: import.meta.env.REACT_APP_STRIPE_TWITCH_STANDARD_YEARLY || '' },
+  pro:      { monthly: import.meta.env.REACT_APP_STRIPE_TWITCH_PRO_MONTHLY || '', yearly: import.meta.env.REACT_APP_STRIPE_TWITCH_PRO_YEARLY || '' },
+} as const
+
+const PRICE_IDS_COMBO = {
+  combo_pro: { monthly: import.meta.env.REACT_APP_STRIPE_COMBO_PRO_MONTHLY || '', yearly: import.meta.env.REACT_APP_STRIPE_COMBO_PRO_YEARLY || '' },
+} as const
+
+type PlanIcon = typeof PLANS_BY_PLATFORM.youtube[number]['icon']
 function PlanIcon({ icon }: { icon: PlanIcon }) {
   if (icon === 'crown')    return <Crown className="w-4 h-4 text-yellow-400" />
   if (icon === 'sparkles') return <Sparkles className="w-4 h-4 text-blue-400" />
@@ -124,15 +218,30 @@ function PlanIcon({ icon }: { icon: PlanIcon }) {
 export default function LandingPage() {
   const { user } = useAuth()
   const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly')
+  const [platform, setPlatform] = useState<'youtube' | 'twitch' | 'combo'>('youtube')
   const [loadingKey, setLoadingKey] = useState<string | null>(null)
 
   const handleUpgrade = async (planKey: string) => {
     if (!user) { window.location.href = '/register'; return }
     setLoadingKey(planKey)
     try {
-      const priceIds = PRICE_IDS[planKey as keyof typeof PRICE_IDS]
-      if (!priceIds) { window.location.href = '/register'; return }
-      const priceId = billing === 'yearly' ? priceIds.yearly : priceIds.monthly
+      let priceId = ''
+      if (platform === 'youtube') {
+        const priceIds = PRICE_IDS_YOUTUBE[planKey as keyof typeof PRICE_IDS_YOUTUBE]
+        priceId = billing === 'yearly' ? priceIds.yearly : priceIds.monthly
+      } else if (platform === 'twitch') {
+        const priceIds = PRICE_IDS_TWITCH[planKey as keyof typeof PRICE_IDS_TWITCH]
+        priceId = billing === 'yearly' ? priceIds.yearly : priceIds.monthly
+      } else if (platform === 'combo') {
+        const priceIds = PRICE_IDS_COMBO[planKey as keyof typeof PRICE_IDS_COMBO]
+        priceId = billing === 'yearly' ? priceIds.yearly : priceIds.monthly
+      }
+      if (!priceId) { 
+        alert('Price ID not configured for this plan. Contact support.')
+        window.location.href = '/#pricing'
+        setLoadingKey(null)
+        return 
+      }
       const res = await authApi.createCheckout(priceId)
       window.location.href = res.data.checkout_url
     } catch {
@@ -232,7 +341,35 @@ export default function LandingPage() {
       {/* ── Pricing ── */}
       <section id="pricing" className="max-w-7xl mx-auto px-6 py-24">
         <h2 className="text-3xl sm:text-4xl font-bold text-center mb-3">Simple pricing</h2>
-        <p className="text-center text-gray-400 mb-8">Start free. Scale when you grow.</p>
+        <p className="text-center text-gray-400 mb-8">Choose your content platform. Start free. Scale when you grow.</p>
+
+        {/* Platform tabs */}
+        <div className="flex items-center justify-center gap-2 mb-12 flex-wrap">
+          <button
+            onClick={() => setPlatform('youtube')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+              platform === 'youtube' ? 'bg-purple-600 text-white shadow' : 'bg-white/5 text-gray-400 hover:text-white border border-white/10'
+            }`}
+          >
+            📺 YouTube
+          </button>
+          <button
+            onClick={() => setPlatform('twitch')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+              platform === 'twitch' ? 'bg-purple-600 text-white shadow' : 'bg-white/5 text-gray-400 hover:text-white border border-white/10'
+            }`}
+          >
+            🎮 Twitch
+          </button>
+          <button
+            onClick={() => setPlatform('combo')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+              platform === 'combo' ? 'bg-purple-600 text-white shadow' : 'bg-white/5 text-gray-400 hover:text-white border border-white/10'
+            }`}
+          >
+            ⚡ Combo Pack
+          </button>
+        </div>
 
         {/* Billing toggle */}
         <div className="flex items-center justify-center mb-14">
@@ -261,7 +398,7 @@ export default function LandingPage() {
 
         {/* Plans grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 items-stretch">
-          {PLANS.map((plan) => {
+          {PLANS_BY_PLATFORM[platform].map((plan: any) => {
             const isPro     = plan.style === 'pro'
             const isProPlus = plan.style === 'proplus'
             const isCurrent = currentPlan === plan.key
@@ -322,7 +459,7 @@ export default function LandingPage() {
 
                 {/* Features */}
                 <ul className="flex flex-col gap-2.5 flex-1">
-                  {plan.features.map((feat) => {
+                  {plan.features.map((feat: string) => {
                     const isSoon = feat.includes('(coming soon)')
                     const label = feat.replace(' (coming soon)', '')
                     return (

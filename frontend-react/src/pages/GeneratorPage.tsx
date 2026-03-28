@@ -5,6 +5,7 @@ import { generatorApi } from '../api'
 import { type AxiosError } from 'axios'
 import type { StatusResponse, Clip } from '../types'
 import { Link2, Sparkles, Download, Crown, CheckCircle, Clock, AlertCircle, SlidersHorizontal, Expand, X, Lightbulb, Globe, Type } from 'lucide-react'
+import { getPlanForPlatform, getGenerationLimit, getGenerationsLeft, getMaxClipsAllowed, getCurrentPlatform } from '../utils/planUtils'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -234,11 +235,8 @@ export default function GeneratorPage() {
   const [showTip, setShowTip] = useState(() => !localStorage.getItem('has_generated'))
 
   // Keep maxClips within plan limits if plan changes
-  const maxAllowed =
-    user?.plan === 'proplus'  ? 20 :
-    user?.plan === 'pro'      ? 10 :
-    user?.plan === 'standard' ?  5 :
-    3 // free
+  const platform = getCurrentPlatform(user)
+  const maxAllowed = getMaxClipsAllowed(user, platform)
   useEffect(() => {
     if (maxClips > maxAllowed) setMaxClips(maxAllowed)
   }, [maxAllowed, maxClips])
@@ -293,7 +291,10 @@ export default function GeneratorPage() {
 
   const currentStep = status ? stepIndex(status.progress) : -1
   const isProcessing = status?.status === 'processing' || status?.status === 'pending'
-  const quotaEmpty = (user?.free_generations_left ?? 1) === 0
+  const currentPlan = getPlanForPlatform(user, platform)
+  const generationsLeft = getGenerationsLeft(user, platform)
+  const generationLimit = getGenerationLimit(user, platform)
+  const quotaEmpty = generationsLeft === 0
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-12">
@@ -306,14 +307,14 @@ export default function GeneratorPage() {
         <p className="text-gray-400">Turn any YouTube video into viral shorts</p>
         {user && (
           <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-full text-sm">
-            {(user.free_generations_left ?? 0) > 0 ? (
+            {generationsLeft > 0 ? (
               <span className="text-gray-300">
-                <span className="text-purple-400 font-semibold">{user.free_generations_left}</span>
+                <span className="text-purple-400 font-semibold">{generationsLeft}</span>
                 {' / '}
                 <span className="text-gray-400">
-                  {user.plan === 'standard' ? '20' : user.plan === 'pro' ? '50' : user.plan === 'proplus' ? '100' : '2'}
+                  {generationLimit}
                 </span>
-                {' generation'}{user.free_generations_left !== 1 ? 's' : ''}{' left this month'}
+                {' generation'}{generationsLeft !== 1 ? 's' : ''}{' left this month'}
               </span>
             ) : (
               <span className="text-red-400">No generations left this month</span>
@@ -327,13 +328,7 @@ export default function GeneratorPage() {
           <Crown className="w-8 h-8 text-yellow-400 mx-auto mb-3" />
           <h3 className="text-white font-semibold text-lg mb-1">Limit reached</h3>
           <p className="text-gray-400 text-sm mb-4">
-            {user?.plan === 'free'
-              ? "You've used your 2 free generations this month."
-              : user?.plan === 'standard'
-              ? "You've used all 20 of your Standard plan generations this month."
-              : user?.plan === 'pro'
-              ? "You've used all 50 of your Pro plan generations this month."
-              : "You've used all 100 of your Pro+ plan generations this month."}
+            You've used all {generationLimit} of your {getPlanForPlatform(user, platform)} plan generations this month.
           </p>
           <button
             onClick={() => void handleUpgrade()}
@@ -398,26 +393,26 @@ export default function GeneratorPage() {
 
         {/* Clip count slider */}
         <div className={`p-4 rounded-xl mb-4 ${
-          user?.plan === 'proplus'  ? 'bg-pink-500/5 border border-pink-500/20'
-          : user?.plan === 'pro'   ? 'bg-yellow-500/5 border border-yellow-500/20'
-          : user?.plan === 'standard' ? 'bg-blue-500/5 border border-blue-500/20'
+          currentPlan === 'proplus'  ? 'bg-pink-500/5 border border-pink-500/20'
+          : currentPlan === 'pro'   ? 'bg-yellow-500/5 border border-yellow-500/20'
+          : currentPlan === 'standard' ? 'bg-blue-500/5 border border-blue-500/20'
           : 'bg-white/5 border border-white/10'
         }`}>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <SlidersHorizontal className={`w-4 h-4 ${user?.plan !== 'free' ? 'text-yellow-400' : 'text-purple-400'}`} />
+              <SlidersHorizontal className={`w-4 h-4 ${currentPlan !== 'free' ? 'text-yellow-400' : 'text-purple-400'}`} />
               <span className="text-sm font-medium text-white">Number of clips</span>
-              {user?.plan === 'proplus' ? (
+              {currentPlan === 'proplus' ? (
                 <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold">PRO+ · max 20</span>
-              ) : user?.plan === 'pro' ? (
+              ) : currentPlan === 'pro' ? (
                 <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO · max 10</span>
-              ) : user?.plan === 'standard' ? (
+              ) : currentPlan === 'standard' ? (
                 <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold">STANDARD · max 5</span>
               ) : (
                 <span className="px-1.5 py-0.5 bg-white/10 text-gray-400 text-xs rounded-full">max 3 — upgrade for more</span>
               )}
             </div>
-            <span className={`text-3xl font-bold w-10 text-center ${user?.plan === 'proplus' ? 'text-pink-400' : user?.plan === 'pro' ? 'text-yellow-400' : 'text-purple-400'}`}>
+            <span className={`text-3xl font-bold w-10 text-center ${currentPlan === 'proplus' ? 'text-pink-400' : currentPlan === 'pro' ? 'text-yellow-400' : 'text-purple-400'}`}>
               {maxClips}
             </span>
           </div>
@@ -429,25 +424,25 @@ export default function GeneratorPage() {
             value={maxClips}
             onChange={(e) => setMaxClips(Number(e.target.value))}
             disabled={isProcessing}
-            className={`w-full cursor-pointer disabled:opacity-50 ${user?.plan === 'proplus' ? 'accent-pink-400' : user?.plan === 'pro' ? 'accent-yellow-400' : 'accent-purple-500'}`}
+            className={`w-full cursor-pointer disabled:opacity-50 ${currentPlan === 'proplus' ? 'accent-pink-400' : currentPlan === 'pro' ? 'accent-yellow-400' : 'accent-purple-500'}`}
           />
           <div className="flex justify-between text-xs text-gray-500 mt-1">
             <span>1</span>
-            {user?.plan === 'proplus' ? (
+            {currentPlan === 'proplus' ? (
               <>
                 <span>5</span>
                 <span>10</span>
                 <span>15</span>
                 <span>20</span>
               </>
-            ) : user?.plan === 'pro' ? (
+            ) : currentPlan === 'pro' ? (
               <>
                 <span>3</span>
                 <span>5</span>
                 <span>8</span>
                 <span>10</span>
               </>
-            ) : user?.plan === 'standard' ? (
+            ) : currentPlan === 'standard' ? (
               <>
                 <span>3</span>
                 <span>5</span>
@@ -462,22 +457,22 @@ export default function GeneratorPage() {
         </div>
 
         {/* Language selector — Standard and above */}
-        {user?.plan !== 'free' && (
+        {currentPlan !== 'free' && (
           <div className={`p-4 rounded-xl mb-4 ${
-            user?.plan === 'proplus'  ? 'bg-pink-500/5 border border-pink-500/20'
-            : user?.plan === 'pro'   ? 'bg-yellow-500/5 border border-yellow-500/20'
+            currentPlan === 'proplus'  ? 'bg-pink-500/5 border border-pink-500/20'
+            : currentPlan === 'pro'   ? 'bg-yellow-500/5 border border-yellow-500/20'
                                      : 'bg-blue-500/5 border border-blue-500/20'
           }`}>
             <div className="flex items-center gap-2 mb-3">
               <Globe className={`w-4 h-4 ${
-                user?.plan === 'proplus' ? 'text-pink-400'
-                : user?.plan === 'pro'  ? 'text-yellow-400'
+                currentPlan === 'proplus' ? 'text-pink-400'
+                : currentPlan === 'pro'  ? 'text-yellow-400'
                                         : 'text-blue-400'
               }`} />
               <span className="text-sm font-medium text-white">Transcription language</span>
-              {user?.plan === 'proplus' ? (
+              {currentPlan === 'proplus' ? (
                 <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold">PRO+</span>
-              ) : user?.plan === 'pro' ? (
+              ) : currentPlan === 'pro' ? (
                 <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO</span>
               ) : (
                 <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold">STANDARD</span>
@@ -504,22 +499,22 @@ export default function GeneratorPage() {
         )}
 
         {/* Subtitle style selector — Standard and above */}
-        {user?.plan !== 'free' && (
+        {currentPlan !== 'free' && (
           <div className={`p-4 rounded-xl mb-4 ${
-            user?.plan === 'proplus'  ? 'bg-pink-500/5 border border-pink-500/20'
-            : user?.plan === 'pro'   ? 'bg-yellow-500/5 border border-yellow-500/20'
+            currentPlan === 'proplus'  ? 'bg-pink-500/5 border border-pink-500/20'
+            : currentPlan === 'pro'   ? 'bg-yellow-500/5 border border-yellow-500/20'
                                      : 'bg-blue-500/5 border border-blue-500/20'
           }`}>
             <div className="flex items-center gap-2 mb-3">
               <Type className={`w-4 h-4 ${
-                user?.plan === 'proplus' ? 'text-pink-400'
-                : user?.plan === 'pro'  ? 'text-yellow-400'
+                currentPlan === 'proplus' ? 'text-pink-400'
+                : currentPlan === 'pro'  ? 'text-yellow-400'
                                         : 'text-blue-400'
               }`} />
               <span className="text-sm font-medium text-white">Subtitle style</span>
-              {user?.plan === 'proplus' ? (
+              {currentPlan === 'proplus' ? (
                 <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 text-xs rounded-full font-semibold">PRO+</span>
-              ) : user?.plan === 'pro' ? (
+              ) : currentPlan === 'pro' ? (
                 <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs rounded-full font-semibold">PRO</span>
               ) : (
                 <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold">STANDARD</span>
@@ -535,11 +530,11 @@ export default function GeneratorPage() {
                   title={s.desc}
                   className={`px-2 py-2 rounded-lg text-xs font-medium border transition text-center disabled:opacity-50 disabled:cursor-not-allowed ${
                     subtitleStyle === s.code
-                      ? user?.plan === 'proplus' ? 'bg-pink-500/20 border-pink-400 text-pink-300'
-                        : user?.plan === 'pro'   ? 'bg-yellow-500/20 border-yellow-400 text-yellow-300'
+                      ? currentPlan === 'proplus' ? 'bg-pink-500/20 border-pink-400 text-pink-300'
+                        : currentPlan === 'pro'   ? 'bg-yellow-500/20 border-yellow-400 text-yellow-300'
                                                  : 'bg-blue-500/20 border-blue-400 text-blue-300'
-                      : user?.plan === 'proplus' ? 'bg-black/20 border-white/10 text-gray-400 hover:border-pink-500/40 hover:text-white'
-                        : user?.plan === 'pro'   ? 'bg-black/20 border-white/10 text-gray-400 hover:border-yellow-500/40 hover:text-white'
+                      : currentPlan === 'proplus' ? 'bg-black/20 border-white/10 text-gray-400 hover:border-pink-500/40 hover:text-white'
+                        : currentPlan === 'pro'   ? 'bg-black/20 border-white/10 text-gray-400 hover:border-yellow-500/40 hover:text-white'
                                                  : 'bg-black/20 border-white/10 text-gray-400 hover:border-blue-500/40 hover:text-white'
                   }`}
                 >

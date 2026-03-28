@@ -10,6 +10,9 @@ import RegisterPage from './pages/RegisterPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import GeneratorPage from './pages/GeneratorPage'
+import SourceSelectorPage from './pages/SourceSelectorPage'
+import YouTubeGeneratorPage from './pages/YouTubeGeneratorPage'
+import TwitchGeneratorPage from './pages/TwitchGeneratorPage'
 import DashboardPage from './pages/DashboardPage'
 import AuthCallbackPage from './pages/AuthCallbackPage'
 import YoutubeShortsGenerator from './pages/YoutubeShortsGenerator'
@@ -86,7 +89,9 @@ export default function App() {
               <Route path="/seo/convert-youtube-to-shorts" element={<ConvertYoutubeToShortsSEO />} />
 
               {/* Protected */}
-              <Route path="/generate" element={<ProtectedRoute><GeneratorPage /></ProtectedRoute>} />
+              <Route path="/generate" element={<ProtectedRoute><SourceSelectorPage /></ProtectedRoute>} />
+              <Route path="/generate/youtube" element={<ProtectedRoute><YouTubeGeneratorPage /></ProtectedRoute>} />
+              <Route path="/generate/twitch" element={<ProtectedRoute><TwitchGeneratorPage /></ProtectedRoute>} />
               <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
               <Route path="/jobs/:jobId" element={<ProtectedRoute><JobDetailPage /></ProtectedRoute>} />
 

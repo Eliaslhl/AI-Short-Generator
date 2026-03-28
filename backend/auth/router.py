@@ -73,6 +73,24 @@ PRICE_TO_PLAN: dict[str, Plan] = {
 # Remove empty-key entries (unset env vars)
 PRICE_TO_PLAN = {k: v for k, v in PRICE_TO_PLAN.items() if k}
 
+# Build a mapping price_id -> (platform, Plan) for platform-specific price IDs
+PRICE_TO_PLATFORM_PLAN: dict[str, tuple[str, Plan]] = {}
+for prefix, platform in (
+    ("STRIPE_YOUTUBE", "youtube"),
+    ("STRIPE_TWITCH", "twitch"),
+    ("STRIPE_COMBO", "combo"),
+):
+    for plan_name in ("STANDARD", "PRO", "PROPLUS"):
+        for period in ("MONTHLY", "YEARLY"):
+            env_key = f"{prefix}_{plan_name}_{period}_PRICE_ID"
+            pid = os.getenv(env_key, "")
+            if pid:
+                try:
+                    PRICE_TO_PLATFORM_PLAN[pid] = (platform, Plan[plan_name])
+                except Exception:
+                    # ignore unknown plan names
+                    pass
+
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 class RegisterRequest(BaseModel):
@@ -92,9 +110,16 @@ class UserResponse(BaseModel):
     full_name: str | None
     avatar_url: str | None
     plan: str
+    plan_youtube: str | None = None
+    plan_twitch: str | None = None
+    subscription_type: str | None = None
     generations_this_month: int
     free_generations_left: int
     can_generate: bool
+    youtube_limit: int | None = None
+    twitch_limit: int | None = None
+    youtube_generations_left: int | None = None
+    twitch_generations_left: int | None = None
     created_at: datetime
 
     class Config:
@@ -325,14 +350,20 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             result = await db.execute(select(User).where(User.id == user_id))
             user = result.scalar_one_or_none()
             if user:
-                # First, prefer a plan explicitly attached to the session metadata
-                # (used for local TEST:<PLAN> sessions). If not present, fall
-                # back to retrieving the subscription and mapping by price_id.
-                target_plan = Plan.PRO  # fallback
+                # Prefer explicit metadata (used for local TEST sessions). Otherwise
+                # retrieve the subscription and map the Stripe price id to a
+                # platform-specific plan. Then assign the plan to the correct
+                # platform field and initialize monthly counters/reset dates.
                 meta_plan = session.get("metadata", {}).get("plan")
-                if meta_plan:
+                meta_platform = session.get("metadata", {}).get("platform")
+
+                assigned_platform = None
+                assigned_plan = None
+
+                if meta_plan and meta_platform:
                     try:
-                        target_plan = Plan[meta_plan]
+                        assigned_plan = Plan[meta_plan]
+                        assigned_platform = meta_platform
                     except Exception:
                         logger.warning(f"Unknown plan in session metadata: {meta_plan}")
                 else:
@@ -340,17 +371,51 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
                         try:
                             sub = stripe.Subscription.retrieve(subscription_id)
                             price_id = sub["items"]["data"][0]["price"]["id"]
-                            target_plan = PRICE_TO_PLAN.get(price_id, Plan.PRO)
+                            # platform-agnostic fallback
+                            assigned_plan = PRICE_TO_PLAN.get(price_id, None)
+                            # platform-aware mapping
+                            pp = PRICE_TO_PLATFORM_PLAN.get(price_id)
+                            if pp:
+                                assigned_platform, assigned_plan = pp
                         except Exception as e:
-                            logger.warning(
-                                f"Could not retrieve subscription price: {e}"
-                            )
+                            logger.warning(f"Could not retrieve subscription price: {e}")
 
-                user.plan = target_plan
-                user.stripe_customer_id = customer_id
-                user.stripe_subscription_id = subscription_id
+                # Apply the assignment to the correct user fields
+                now = datetime.now(timezone.utc)
+                if assigned_plan and assigned_platform:
+                    if assigned_platform == "youtube":
+                        user.plan_youtube = assigned_plan
+                        user.youtube_generations_month = 0
+                        user.youtube_plan_reset_date = now
+                        user.stripe_customer_id = customer_id
+                        user.stripe_subscription_id = subscription_id
+                    elif assigned_platform == "twitch":
+                        user.plan_twitch = assigned_plan
+                        user.twitch_generations_month = 0
+                        user.twitch_plan_reset_date = now
+                        user.stripe_customer_id = customer_id
+                        user.stripe_subscription_id_twitch = subscription_id
+                    elif assigned_platform == "combo":
+                        # Combo applies to both platforms
+                        user.plan_youtube = assigned_plan
+                        user.plan_twitch = assigned_plan
+                        user.youtube_generations_month = 0
+                        user.youtube_plan_reset_date = now
+                        user.twitch_generations_month = 0
+                        user.twitch_plan_reset_date = now
+                        user.stripe_customer_id = customer_id
+                        user.stripe_subscription_id = subscription_id
+                    # update subscription_type when available
+                    if meta_platform:
+                        user.subscription_type = meta_platform
+                elif assigned_plan:
+                    # legacy fallback: set global plan for compatibility
+                    user.plan = assigned_plan
+                    user.stripe_customer_id = customer_id
+                    user.stripe_subscription_id = subscription_id
+
                 await db.commit()
-                logger.info(f"User {user.email} upgraded to {target_plan.value}")
+                logger.info(f"User {user.email} upgraded (platform={assigned_platform}) to {assigned_plan}")
 
     elif event["type"] in (
         "customer.subscription.deleted",
@@ -478,8 +543,15 @@ def _user_dict(user: User) -> dict:
         "full_name": user.full_name,
         "avatar_url": user.avatar_url,
         "plan": user.plan.value,
+        "plan_youtube": user.plan_youtube.value if user.plan_youtube else None,
+        "plan_twitch": user.plan_twitch.value if user.plan_twitch else None,
+        "subscription_type": user.subscription_type,
         "generations_this_month": user.generations_this_month,
         "free_generations_left": user.free_generations_left,
         "can_generate": user.can_generate,
+        "youtube_limit": user.youtube_limit,
+        "twitch_limit": user.twitch_limit,
+        "youtube_generations_left": user.youtube_generations_left,
+        "twitch_generations_left": user.twitch_generations_left,
         "created_at": user.created_at.isoformat(),
     }

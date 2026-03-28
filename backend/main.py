@@ -10,9 +10,17 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
-load_dotenv()  # ← Must be called BEFORE any internal module import that reads os.getenv()
+# Load the project's top-level .env file (searches parent directories).
+# This makes behaviour deterministic whether you run uvicorn from the repo root
+# or from the backend folder. Prefer a single root `.env` for secrets/config.
+_dotenv_path = find_dotenv()
+if _dotenv_path:
+    load_dotenv(_dotenv_path)
+else:
+    # fall back to default behaviour (no .env found)
+    load_dotenv()
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
@@ -24,6 +32,7 @@ from slowapi.errors import RateLimitExceeded  # noqa: E402
 
 from backend.api.routes import router  # noqa: E402
 from backend.auth.router import router as auth_router  # noqa: E402
+from backend.api.advanced_routes import advanced_router  # noqa: E402
 from backend.database import create_tables  # noqa: E402
 
 # ──────────────────────────────────────────────
@@ -120,3 +129,4 @@ async def health():
 # ──────────────────────────────────────────────
 app.include_router(router, prefix="/api")
 app.include_router(auth_router)
+app.include_router(advanced_router, prefix="/api", tags=["advanced"])

@@ -49,16 +49,42 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    # Plan
+    # Plan (legacy, kept for backward compatibility)
     plan: Mapped[Plan] = mapped_column(Enum(Plan), default=Plan.FREE)
     generations_this_month: Mapped[int] = mapped_column(Integer, default=0)
     plan_reset_date: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now
     )
 
+    # NEW: Separated YouTube and Twitch plans + quotas
+    plan_youtube: Mapped[Plan] = mapped_column(
+        Enum(Plan), default=Plan.FREE, nullable=True
+    )
+    plan_twitch: Mapped[Plan] = mapped_column(
+        Enum(Plan), default=Plan.FREE, nullable=True
+    )
+    subscription_type: Mapped[str] = mapped_column(
+        String(50), default="none", nullable=True
+    )  # "none" | "youtube" | "twitch" | "combo"
+
+    # YouTube quota
+    youtube_generations_month: Mapped[int] = mapped_column(Integer, default=0)
+    youtube_plan_reset_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, nullable=True
+    )
+
+    # Twitch quota
+    twitch_generations_month: Mapped[int] = mapped_column(Integer, default=0)
+    twitch_plan_reset_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, nullable=True
+    )
+
     # Stripe
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     stripe_subscription_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    stripe_subscription_id_twitch: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )
 
@@ -82,15 +108,48 @@ class User(Base):
 
     @property
     def monthly_limit(self) -> int:
-        return self.PLAN_LIMITS.get(self.plan, 2)
+        """Legacy property: returns YouTube limit for backward compatibility."""
+        return self.PLAN_LIMITS.get(self.plan_youtube or self.plan, 2)
+
+    @property
+    def youtube_limit(self) -> int:
+        """YouTube monthly generation limit."""
+        return self.PLAN_LIMITS.get(self.plan_youtube or self.plan, 2)
+
+    @property
+    def twitch_limit(self) -> int:
+        """Twitch monthly generation limit."""
+        return self.PLAN_LIMITS.get(self.plan_twitch or Plan.FREE, 2)
 
     @property
     def free_generations_left(self) -> int:
-        return max(0, self.monthly_limit - self.generations_this_month)
+        """Legacy property: returns YouTube generations left."""
+        return max(0, self.youtube_limit - (self.youtube_generations_month or 0))
+
+    @property
+    def youtube_generations_left(self) -> int:
+        """YouTube generations left this month."""
+        return max(0, self.youtube_limit - (self.youtube_generations_month or 0))
+
+    @property
+    def twitch_generations_left(self) -> int:
+        """Twitch generations left this month."""
+        return max(0, self.twitch_limit - (self.twitch_generations_month or 0))
 
     @property
     def can_generate(self) -> bool:
-        return self.generations_this_month < self.monthly_limit
+        """Legacy property: can generate on YouTube."""
+        return (self.youtube_generations_month or 0) < self.youtube_limit
+
+    @property
+    def can_generate_youtube(self) -> bool:
+        """Can generate on YouTube."""
+        return (self.youtube_generations_month or 0) < self.youtube_limit
+
+    @property
+    def can_generate_twitch(self) -> bool:
+        """Can generate on Twitch."""
+        return (self.twitch_generations_month or 0) < self.twitch_limit
 
 
 class Job(Base):

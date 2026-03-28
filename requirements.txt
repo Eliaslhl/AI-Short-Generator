@@ -22,7 +22,7 @@ moviepy==2.1.1
 ffmpeg-python==0.2.0
 
 # AI / NLP
-spacy==3.8.4
+spacy>=3.0.0
 # After install run: python -m spacy download en_core_web_sm
 requests==2.31.0          # Ollama HTTP calls
 
@@ -33,7 +33,7 @@ pydantic-settings==2.2.1
 aiofiles==23.2.1
 httpx==0.27.0
 tqdm==4.66.2
-numpy==1.26.4
+numpy>=2.0.0          # Updated for opencv-python 4.13+ compatibility
 Pillow==10.3.0
 imageio==2.34.1
 imageio-ffmpeg==0.5.1
@@ -54,3 +54,10 @@ authlib==1.3.1                    # Google OAuth
 stripe==9.9.0                     # Stripe payments
 fastapi-mail==1.4.1
 groq>=1.1.0
+
+# Queue & Job Processing (Advanced Twitch)
+redis>=4.5.0              # Redis client
+rq>=1.13.0                # RQ job queue (simple alternative to Celery)
+librosa>=0.10.0           # Audio feature extraction
+scipy>=1.11.0             # Required by librosa
+scikit-learn>=1.3.0       # For advanced audio analysis

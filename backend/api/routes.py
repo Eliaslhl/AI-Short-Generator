@@ -25,7 +25,10 @@ from sqlalchemy import select
 from backend.database import get_db
 from backend.models.user import User, Job
 from backend.auth.dependencies import get_current_user, require_can_generate
-from backend.services.youtube_service import download_video, _get_cookies_file
+from backend.services.youtube_service import download_video as download_youtube, _get_cookies_file
+from backend.services.twitch_service import download_video as download_twitch
+from backend.services.twitch_api_client import TwitchAPIClient
+from backend.config import settings
 from backend.services.clip_selector import select_top_segments
 from backend.services.hook_service import generate_hook
 from backend.services.emoji_caption_service import build_captions
@@ -119,6 +122,38 @@ class StatusResponse(BaseModel):
     clips: list
 
 
+class PreviewRequest(BaseModel):
+    url: str
+
+
+class PreviewResponse(BaseModel):
+    url: str
+    title: str | None = None
+    duration: float | None = None
+    thumbnail: str | None = None
+
+
+class TwitchVodsRequest(BaseModel):
+    channel_login: str
+    limit: int = 20
+
+
+class TwitchVodItem(BaseModel):
+    id: str
+    title: str | None = None
+    created_at: str | None = None
+    duration: int | None = None
+    view_count: int | None = None
+    url: str | None = None
+    thumbnail_url: str | None = None
+    channel_name: str | None = None
+
+
+class TwitchVodsResponse(BaseModel):
+    channel_login: str
+    vods: list[TwitchVodItem]
+
+
 # ── Background pipeline ──────────────────────────────────────────────────────
 async def run_pipeline(
     job_id: str,
@@ -164,10 +199,21 @@ async def run_pipeline(
     try:
         jobs[job_id]["status"] = "processing"
 
-        await update(5, "Downloading video from YouTube…")
-        video_path, video_title = await asyncio.to_thread(
-            download_video, youtube_url, job_id
-        )
+        # Detect source (YouTube or Twitch)
+        is_twitch = "twitch.tv" in youtube_url.lower()
+        source_name = "Twitch" if is_twitch else "YouTube"
+        
+        await update(5, f"Downloading video from {source_name}…")
+        
+        # Download from appropriate service
+        if is_twitch:
+            video_path, video_title = await asyncio.to_thread(
+                download_twitch, youtube_url, job_id
+            )
+        else:
+            video_path, video_title = await asyncio.to_thread(
+                download_youtube, youtube_url, job_id
+            )
         jobs[job_id]["video_title"] = video_title
 
         await update(20, "Transcribing audio with Faster-Whisper…")
@@ -444,6 +490,89 @@ async def generate(
         )
     )
     return GenerateResponse(job_id=job_id, message="Job started.")
+
+
+@router.post("/preview", response_model=PreviewResponse)
+async def preview(
+    request: PreviewRequest,
+    user: User = Depends(get_current_user),
+):
+    """Return lightweight metadata for a YouTube or Twitch URL using yt-dlp.
+
+    This endpoint runs yt-dlp in "print-json" mode without downloading the full
+    video so the frontend can show a preview (title, duration, thumbnail).
+    """
+    url = request.url.strip()
+    # Basic validation
+    if not url:
+        raise HTTPException(status_code=400, detail="Empty URL")
+
+    # Use yt-dlp installed in the same virtualenv
+    import sys
+    from pathlib import Path
+    import subprocess
+    import json as _json
+
+    venv_bin = Path(sys.executable).parent
+    ytdlp = venv_bin / "yt-dlp"
+
+    if not ytdlp.exists():
+        raise HTTPException(status_code=500, detail="yt-dlp not available on server")
+
+    cmd = [str(ytdlp), "-j", "--no-warnings", "--skip-download", url]
+    try:
+        proc = await asyncio.to_thread(
+            lambda: subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=60)
+        )
+        info = _json.loads(proc.stdout)
+        title = info.get("title") or info.get("fulltitle")
+        duration = float(info.get("duration")) if info.get("duration") else None
+        # Try common thumbnail keys
+        thumbnail = info.get("thumbnail") or info.get("thumbnails") and (info.get("thumbnails")[-1].get("url") if isinstance(info.get("thumbnails"), list) and info.get("thumbnails") else None)
+        return PreviewResponse(url=url, title=title, duration=duration, thumbnail=thumbnail)
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=400, detail=f"yt-dlp failed: {e.stderr or e.stdout or str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/twitch/vods", response_model=TwitchVodsResponse)
+async def get_twitch_vods(
+    request: TwitchVodsRequest,
+    user: User = Depends(get_current_user),
+):
+    """Fetch VODs for a Twitch channel using Client Credentials flow.
+
+    Requires TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET environment variables.
+    """
+    import os
+
+    client_id = os.environ.get("TWITCH_CLIENT_ID", "").strip()
+    client_secret = os.environ.get("TWITCH_CLIENT_SECRET", "").strip()
+
+    if not client_id or not client_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="Twitch API credentials not configured on server (TWITCH_CLIENT_ID / TWITCH_CLIENT_SECRET)",
+        )
+
+    channel_login = request.channel_login.strip().lower()
+    if not channel_login:
+        raise HTTPException(status_code=400, detail="channel_login cannot be empty")
+
+    try:
+        async with TwitchAPIClient(client_id, client_secret) as client:
+            vods = await client.get_vods(channel_login, limit=request.limit)
+            return TwitchVodsResponse(
+                channel_login=channel_login,
+                vods=[TwitchVodItem(**vod) for vod in vods],
+            )
+    except RuntimeError as e:
+        logger.warning(f"Twitch API error for channel {channel_login}: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error fetching Twitch VODs for {channel_login}: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
 @router.get("/status/{job_id}", response_model=StatusResponse)

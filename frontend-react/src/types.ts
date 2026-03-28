@@ -10,6 +10,15 @@ export interface User {
   plan: Plan
   generations_this_month: number
   free_generations_left: number
+  // Platform-specific plan fields (from backend /auth/me)
+  plan_youtube?: Plan
+  plan_twitch?: Plan
+  subscription_type?: 'youtube' | 'twitch' | 'combo' | null
+  // Computed limits and counters
+  youtube_limit?: number
+  twitch_limit?: number
+  youtube_generations_left?: number
+  twitch_generations_left?: number
 }
 
 export interface Clip {

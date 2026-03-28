@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { generatorApi, authApi } from '../api'
 import type { Job, JobStatus } from '../types'
 import { Crown, Sparkles, Rocket, Clock, CheckCircle, AlertCircle, Film, TrendingUp } from 'lucide-react'
+import { getPlanForPlatform, getGenerationLimit, getGenerationsLeft, getCurrentPlatform } from '../utils/planUtils'
 
 function StatusIcon({ status }: { status: JobStatus }) {
   if (status === 'done') return <CheckCircle className="w-5 h-5 text-green-400 shrink-0" />
@@ -63,8 +64,11 @@ export default function DashboardPage() {
     }
   }
 
-  const plan: string = user?.plan ?? 'free'
-  const planConfig = PLAN_CONFIG[plan as keyof typeof PLAN_CONFIG] ?? PLAN_CONFIG.free
+  const platform = getCurrentPlatform(user)
+  const effectivePlan = getPlanForPlatform(user, platform)
+  const planConfig = PLAN_CONFIG[effectivePlan as keyof typeof PLAN_CONFIG] ?? PLAN_CONFIG.free
+  const generationLimit = getGenerationLimit(user, platform)
+  const generationsLeft = getGenerationsLeft(user, platform)
   const totalClips = history.reduce((acc, j) => acc + (j.clips_count ?? 0), 0)
 
   return (
@@ -86,10 +90,10 @@ export default function DashboardPage() {
             {planConfig.icon}
             <span className="text-white font-semibold">{planConfig.label}</span>
           </div>
-          {plan === 'free' ? (
+          {effectivePlan === 'free' ? (
             <>
               <p className="text-gray-400 text-sm mb-3">
-                <span className="text-white font-semibold">{user?.free_generations_left}</span>/2 generations this month
+                <span className="text-white font-semibold">{generationsLeft}</span>/{generationLimit} generations this month
               </p>
               <button
                 onClick={() => void handleUpgrade()}
@@ -101,9 +105,9 @@ export default function DashboardPage() {
           ) : (
             <>
               <p className={`text-sm mb-3 ${planConfig.textClass}`}>
-                <span className="text-white font-semibold">{user?.free_generations_left}</span>
+                <span className="text-white font-semibold">{generationsLeft}</span>
                 {' / '}
-                {plan === 'standard' ? '20' : plan === 'pro' ? '50' : '100'}
+                {generationLimit}
                 {' videos left this month'}
               </p>
               {/* Cancel subscription */}

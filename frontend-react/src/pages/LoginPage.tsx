@@ -5,11 +5,13 @@ import { authApi } from '../api'
 import { type AxiosError } from 'axios'
 import { Film, Mail, Lock, Chrome, AlertTriangle } from 'lucide-react'
 
+
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loginAttempted, setLoginAttempted] = useState(false)
   const { login } = useAuth()
   const navigate = useNavigate()
 
@@ -23,14 +25,15 @@ export default function LoginPage() {
     e.preventDefault()
     setError('')
     setLoading(true)
+    setLoginAttempted(true)
     try {
       await login(email, password)
       // clear persisted error on success
       localStorage.removeItem('login_error')
       navigate('/generate')
     } catch (err) {
-  const axiosErr = err as AxiosError<{ detail: string }>
-  const msg = axiosErr.response?.data?.detail ?? 'Email or password incorrect.'
+      const axiosErr = err as AxiosError<{ detail: string }>
+      const msg = axiosErr.response?.data?.detail ?? 'Email or password incorrect.'
       setError(msg)
       try { localStorage.setItem('login_error', msg) } catch {}
     } finally {
@@ -52,7 +55,7 @@ export default function LoginPage() {
 
         {/* Card */}
         <div className="bg-white/5 border border-white/10 rounded-2xl p-8 space-y-4">
-          {error && (
+          {loginAttempted && error && (
             <div
               role="alert"
               aria-live="assertive"

@@ -14,6 +14,7 @@ auth/router.py – Authentication routes:
 import logging
 import os
 import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -266,16 +267,26 @@ async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
             await db.commit()
         else:
             # 3) create new user and return its id
+            new_id = str(uuid.uuid4())
             res = await db.execute(
                 text(
-                    "INSERT INTO users (email, google_id, full_name, avatar_url, is_verified, created_at)"
-                    " VALUES (:email, :gid, :full, :avatar, true, now()) RETURNING id"
+                    "INSERT INTO users (id, email, google_id, full_name, avatar_url, is_verified, created_at)"
+                    " VALUES (:id, :email, :gid, :full, :avatar, true, now()) RETURNING id"
                 ),
-                {"email": email, "gid": google_id, "full": full_name, "avatar": avatar_url},
+                {
+                    "id": new_id,
+                    "email": email,
+                    "gid": google_id,
+                    "full": full_name,
+                    "avatar": avatar_url,
+                },
             )
             newrow = res.first()
             if newrow:
                 user_id = newrow[0]
+            else:
+                # Fallback: use the generated id even if RETURNING failed
+                user_id = new_id
             await db.commit()
 
     if not user_id:

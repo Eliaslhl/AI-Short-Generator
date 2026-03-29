@@ -36,7 +36,8 @@ DATABASE_URL: str = _raw_url
 logger.info(f"Using DATABASE_URL={DATABASE_URL}")
 
 _is_sqlite = DATABASE_URL.startswith("sqlite")
-_is_postgres = DATABASE_URL.startswith("postgres")
+# DATABASE_URL in async mode looks like: postgresql+asyncpg://...
+_is_postgres = DATABASE_URL.startswith("postgresql") or DATABASE_URL.startswith("postgres+") or DATABASE_URL.startswith("postgres://")
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Engine
@@ -100,6 +101,29 @@ async def create_tables():
     Create all tables on first boot (dev convenience).
     In production, run:  alembic upgrade head
     """
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info(f"DB tables ready  [{DATABASE_URL.split('://')[0]}]")
+    # Allow skipping DB init (useful during deploy when you prefer to run
+    # migrations manually). Set MIGRATE_ON_START=false to skip.
+    migrate_on_start = os.getenv("MIGRATE_ON_START", "true").lower() == "true"
+    if not migrate_on_start:
+        logger.info("Skipping create_tables because MIGRATE_ON_START is false")
+        return
+
+    # Retry loop for DB connection — DB may be starting up or transiently
+    # unavailable during deploy. Configure via env vars.
+    max_retries = int(os.getenv("DB_CONNECT_RETRIES", "12"))
+    delay_seconds = float(os.getenv("DB_CONNECT_DELAY", "5"))
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            logger.info(f"DB tables ready  [{DATABASE_URL.split('://')[0]}]")
+            return
+        except Exception as exc:  # pragma: no cover - runtime network/errors
+            logger.warning(
+                f"DB connect attempt {attempt}/{max_retries} failed: {exc}. Retrying in {delay_seconds}s"
+            )
+            if attempt >= max_retries:
+                logger.error("Exceeded DB connect retries while creating tables")
+                raise
+            await __import__("asyncio").sleep(delay_seconds)

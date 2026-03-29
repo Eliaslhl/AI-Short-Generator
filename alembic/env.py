@@ -75,8 +75,32 @@ async def run_async_migrations() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,  # use NullPool for migrations
     )
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
+
+    # Retry loop: the DB may not be available immediately on container start.
+    # Configure with env vars for flexibility in CI / deploy environments.
+    max_retries = int(os.getenv("MIGRATION_DB_CONNECT_RETRIES", "12"))
+    delay_seconds = float(os.getenv("MIGRATION_DB_CONNECT_DELAY", "5"))
+
+    last_exc = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            async with connectable.connect() as connection:
+                await connection.run_sync(do_run_migrations)
+            last_exc = None
+            break
+        except Exception as exc:  # pragma: no cover - runtime network issues
+            # store and retry
+            last_exc = exc
+            if attempt >= max_retries:
+                raise
+            # simple backoff
+            import time
+
+            print(
+                f"[alembic] DB connect attempt {attempt}/{max_retries} failed: {exc}; retrying in {delay_seconds}s"
+            )
+            await asyncio.sleep(delay_seconds)
+
     await connectable.dispose()
 
 

@@ -32,6 +32,24 @@ target_metadata = Base.metadata
 # Override sqlalchemy.url from environment (DATABASE_URL) if set,
 # falling back to the value in alembic.ini
 _db_url = os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
+_using_public_proxy = False
+
+# If Railway provides a public proxy URL (useful when running alembic from
+# outside Railway's internal network), prefer it when DATABASE_URL points to
+# the internal host (postgres.railway.internal). This allows local CI/CLI to
+# reach the DB via the proxy when needed.
+if _db_url and "postgres.railway.internal" in _db_url:
+    _public = os.getenv("DATABASE_PUBLIC_URL")
+    if _public:
+        # The public proxy used by Railway may require non-SSL connections
+        # from local machines. If the public URL doesn't already include an
+        # sslmode parameter, add sslmode=disable so asyncpg doesn't attempt
+        # an SSL upgrade that the proxy rejects.
+        if "sslmode=" not in _public:
+            sep = "&" if "?" in _public else "?"
+            _public = f"{_public}{sep}sslmode=disable"
+        _db_url = _public
+        _using_public_proxy = True
 
 # Alembic async engine needs postgresql+asyncpg://
 # Railway injects postgres:// or postgresql:// — convert it
@@ -81,21 +99,17 @@ async def run_async_migrations() -> None:
     max_retries = int(os.getenv("MIGRATION_DB_CONNECT_RETRIES", "12"))
     delay_seconds = float(os.getenv("MIGRATION_DB_CONNECT_DELAY", "5"))
 
-    last_exc = None
     for attempt in range(1, max_retries + 1):
         try:
             async with connectable.connect() as connection:
                 await connection.run_sync(do_run_migrations)
-            last_exc = None
             break
         except Exception as exc:  # pragma: no cover - runtime network issues
             # store and retry
-            last_exc = exc
             if attempt >= max_retries:
                 raise
             # simple backoff
-            import time
-
+            #
             print(
                 f"[alembic] DB connect attempt {attempt}/{max_retries} failed: {exc}; retrying in {delay_seconds}s"
             )
@@ -105,7 +119,25 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    asyncio.run(run_async_migrations())
+    # If we swapped to the public proxy URL, prefer running migrations using
+    # a sync engine (psycopg) because the proxy can require non-async SSL
+    # handling that asyncpg doesn't accept via URL query params. Creating a
+    # sync engine here avoids passing unexpected kwargs like 'sslmode' to
+    # asyncpg.connect.
+    if _using_public_proxy:
+        # Convert the URL back to sync (remove +asyncpg if present)
+        sync_url = _db_url
+        if sync_url.startswith("postgresql+asyncpg://"):
+            sync_url = sync_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+
+        from sqlalchemy import create_engine
+
+        engine = create_engine(sync_url)
+        with engine.connect() as connection:
+            do_run_migrations(connection)
+        engine.dispose()
+    else:
+        asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():

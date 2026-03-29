@@ -25,6 +25,21 @@ _raw_url: str = os.getenv(
     "sqlite+aiosqlite:///./data/app.db",
 )
 
+# If the injected DATABASE_URL points to the Railway internal host, prefer the
+# public proxy URL when available (useful when running tools locally or in
+# CI that cannot resolve internal DNS). DATABASE_PUBLIC_URL is provided by
+# Railway and points to the switchback proxy.
+if _raw_url and "postgres.railway.internal" in _raw_url:
+    public = os.getenv("DATABASE_PUBLIC_URL")
+    if public:
+        # Append sslmode=disable for the public proxy if not provided so
+        # asyncpg/psycopg won't attempt an SSL upgrade that the proxy
+        # rejects.
+        if "sslmode=" not in public:
+            sep = "&" if "?" in public else "?"
+            public = f"{public}{sep}sslmode=disable"
+        _raw_url = public
+
 # Railway injecte postgresql:// ou postgres:// — on convertit en asyncpg
 if _raw_url.startswith("postgres://"):
     _raw_url = _raw_url.replace("postgres://", "postgresql+asyncpg://", 1)
@@ -37,7 +52,11 @@ logger.info(f"Using DATABASE_URL={DATABASE_URL}")
 
 _is_sqlite = DATABASE_URL.startswith("sqlite")
 # DATABASE_URL in async mode looks like: postgresql+asyncpg://...
-_is_postgres = DATABASE_URL.startswith("postgresql") or DATABASE_URL.startswith("postgres+") or DATABASE_URL.startswith("postgres://")
+_is_postgres = (
+    DATABASE_URL.startswith("postgresql")
+    or DATABASE_URL.startswith("postgresql+")
+    or DATABASE_URL.startswith("postgres://")
+)
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Engine

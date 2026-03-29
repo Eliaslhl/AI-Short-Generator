@@ -277,8 +277,8 @@ async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
                 new_id = str(uuid.uuid4())
                 res = await db.execute(
                     text(
-                        "INSERT INTO users (id, email, google_id, full_name, avatar_url, is_verified, created_at)"
-                        " VALUES (:id, :email, :gid, :full, :avatar, true, now()) RETURNING id"
+                        "INSERT INTO users (id, email, google_id, full_name, avatar_url, is_verified, is_active, created_at)"
+                        " VALUES (:id, :email, :gid, :full, :avatar, true, true, now()) RETURNING id"
                     ),
                     {
                         "id": new_id,
@@ -326,6 +326,7 @@ async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
                         full_name=full_name,
                         avatar_url=avatar_url,
                         is_verified=True,
+                        is_active=True,
                     )
                     db.add(user)
                     await db.commit()

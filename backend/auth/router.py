@@ -244,50 +244,96 @@ async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Could not retrieve Google account info")
 
     # Use raw SQL to avoid ORM selecting all columns (some may not exist during migration drift)
+    # Defensive DB operations: try raw SQL first (safe during schema drift),
+    # but if any DB/driver error occurs (prepared-statement, syntax, etc.)
+    # fall back to an ORM-backed implementation. All DB errors are logged.
     user_id = None
 
-    # 1) try find by google_id
-    r = await db.execute(text("SELECT id, email, full_name, avatar_url, is_active FROM users WHERE google_id = :gid"), {"gid": google_id})
-    row = r.first()
-    if row:
-        user_id = row[0]
-    else:
-        # 2) try find by email (link account)
-        r = await db.execute(text("SELECT id FROM users WHERE email = :email"), {"email": email})
+    try:
+        # 1) try find by google_id
+        r = await db.execute(
+            text("SELECT id, email, full_name, avatar_url, is_active FROM users WHERE google_id = :gid"),
+            {"gid": google_id},
+        )
         row = r.first()
         if row:
             user_id = row[0]
-            # update google_id and avatar_url if needed
-            await db.execute(
-                text(
-                    "UPDATE users SET google_id = :gid, avatar_url = COALESCE(:avatar, avatar) WHERE id = :id"
-                ),
-                {"gid": google_id, "avatar": avatar_url, "id": user_id},
-            )
-            await db.commit()
         else:
-            # 3) create new user and return its id
-            new_id = str(uuid.uuid4())
-            res = await db.execute(
-                text(
-                    "INSERT INTO users (id, email, google_id, full_name, avatar_url, is_verified, created_at)"
-                    " VALUES (:id, :email, :gid, :full, :avatar, true, now()) RETURNING id"
-                ),
-                {
-                    "id": new_id,
-                    "email": email,
-                    "gid": google_id,
-                    "full": full_name,
-                    "avatar": avatar_url,
-                },
-            )
-            newrow = res.first()
-            if newrow:
-                user_id = newrow[0]
+            # 2) try find by email (link account)
+            r = await db.execute(text("SELECT id FROM users WHERE email = :email"), {"email": email})
+            row = r.first()
+            if row:
+                user_id = row[0]
+                # update google_id and avatar_url if needed
+                await db.execute(
+                    text(
+                        "UPDATE users SET google_id = :gid, avatar_url = COALESCE(:avatar, avatar) WHERE id = :id"
+                    ),
+                    {"gid": google_id, "avatar": avatar_url, "id": user_id},
+                )
+                await db.commit()
             else:
-                # Fallback: use the generated id even if RETURNING failed
-                user_id = new_id
-            await db.commit()
+                # 3) create new user and return its id
+                new_id = str(uuid.uuid4())
+                res = await db.execute(
+                    text(
+                        "INSERT INTO users (id, email, google_id, full_name, avatar_url, is_verified, created_at)"
+                        " VALUES (:id, :email, :gid, :full, :avatar, true, now()) RETURNING id"
+                    ),
+                    {
+                        "id": new_id,
+                        "email": email,
+                        "gid": google_id,
+                        "full": full_name,
+                        "avatar": avatar_url,
+                    },
+                )
+                newrow = res.first()
+                if newrow:
+                    user_id = newrow[0]
+                else:
+                    # Fallback: use the generated id even if RETURNING failed
+                    user_id = new_id
+                await db.commit()
+    except Exception as exc:
+        # Log the low-level DB error and attempt an ORM fallback
+        logger.exception("Raw SQL path failed in google_callback, falling back to ORM: %s", exc)
+
+        try:
+            # ORM fallback: safer once schema is in expected state
+            result = await db.execute(select(User).where(User.google_id == google_id))
+            user = result.scalar_one_or_none()
+            if user:
+                user_id = user.id
+            else:
+                result = await db.execute(select(User).where(User.email == email))
+                user = result.scalar_one_or_none()
+                if user:
+                    user_id = user.id
+                    # update google_id and avatar_url
+                    user.google_id = google_id
+                    if avatar_url:
+                        user.avatar_url = avatar_url
+                    db.add(user)
+                    await db.commit()
+                else:
+                    # create new user via ORM
+                    new_id = str(uuid.uuid4())
+                    user = User(
+                        id=new_id,
+                        email=email,
+                        google_id=google_id,
+                        full_name=full_name,
+                        avatar_url=avatar_url,
+                        is_verified=True,
+                    )
+                    db.add(user)
+                    await db.commit()
+                    await db.refresh(user)
+                    user_id = user.id
+        except Exception:
+            logger.exception("ORM fallback also failed in google_callback")
+            raise HTTPException(status_code=502, detail="Database error during authentication")
 
     if not user_id:
         raise HTTPException(status_code=500, detail="Could not create or find user")

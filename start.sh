@@ -15,7 +15,9 @@ echo "=== Starting uvicorn ==="
 # avoid accidentally binding the HTTP server to the DB port (which then
 # receives non-HTTP traffic), default to 8000 when PORT is 5432.
 _port="${PORT:-8000}"
-if [ "\"${_port}\"" = "\"5432\"" ]; then
+# If the platform injects PORT=5432 (commonly the Postgres port), avoid
+# binding the HTTP server to that port. Use a robust numeric comparison.
+if [ "${_port}" = "5432" ] || [ "${_port}" -eq 5432 ] 2>/dev/null; then
     echo "Detected PORT=5432 (Postgres). Overriding to 8000 for HTTP server."
     _port=8000
 fi

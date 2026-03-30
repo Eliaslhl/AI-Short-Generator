@@ -43,7 +43,30 @@ _is_postgres = DATABASE_URL.startswith("postgresql") or DATABASE_URL.startswith(
 #  - SQLite  : NullPool (no persistent pool — file-based, single-writer)
 #  - Postgres: AsyncAdaptedQueuePool with sane prod defaults
 # ──────────────────────────────────────────────────────────────────────────────
-_connect_args: dict = {"check_same_thread": False} if _is_sqlite else {}
+# Build DB driver-specific connect args.
+# - For SQLite we need check_same_thread
+# - For asyncpg (Postgres) we may need to explicitly disable SSL when connecting
+#   to certain internal hosts (e.g. Railway internal host) or when the
+#   environment requests it (DB_DISABLE_SSL=true). asyncpg expects an
+#   `ssl` keyword argument (True/False/SSLContext).
+_connect_args: dict
+if _is_sqlite:
+    _connect_args = {"check_same_thread": False}
+else:
+    _connect_args = {}
+    # Allow explicit opt-out via env var (useful for internal, non-SSL DBs)
+    disable_ssl = os.getenv("DB_DISABLE_SSL", "false").lower() == "true"
+    # Auto-detect Railway internal host and disable SSL there by default
+    if "railway.internal" in DATABASE_URL:
+        disable_ssl = True
+
+    if disable_ssl:
+        logger.warning(
+            "Disabling asyncpg SSL for DB connections (DB_DISABLE_SSL=%s, detected railway.internal=%s)",
+            os.getenv("DB_DISABLE_SSL", "false"),
+            "railway.internal" in DATABASE_URL,
+        )
+        _connect_args["ssl"] = False
 
 _pool_kwargs: dict = (
     {

@@ -34,25 +34,9 @@ target_metadata = Base.metadata
 _db_url = os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
 _using_public_proxy = False
 
-# If Railway provides a public proxy URL (useful when running alembic from
-# outside Railway's internal network), prefer it when DATABASE_URL points to
-# the internal host (postgres.railway.internal). This allows local CI/CLI to
-# reach the DB via the proxy when needed.
-if _db_url and "postgres.railway.internal" in _db_url:
-    _public = os.getenv("DATABASE_PUBLIC_URL")
-    if _public:
-        # The public proxy used by Railway may require non-SSL connections
-        # from local machines. If the public URL doesn't already include an
-        # sslmode parameter, add sslmode=disable so asyncpg doesn't attempt
-        # an SSL upgrade that the proxy rejects.
-        if "sslmode=" not in _public:
-            sep = "&" if "?" in _public else "?"
-            _public = f"{_public}{sep}sslmode=disable"
-        _db_url = _public
-        _using_public_proxy = True
+_db_url = os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
 
-# Alembic async engine needs postgresql+asyncpg://
-# Railway injects postgres:// or postgresql:// — convert it
+# Convert postgres:// or postgresql:// -> postgresql+asyncpg:// for async engine
 if _db_url and _db_url.startswith("postgres://"):
     _db_url = _db_url.replace("postgres://", "postgresql+asyncpg://", 1)
 elif _db_url and _db_url.startswith("postgresql://") and "+asyncpg" not in _db_url:
@@ -119,25 +103,7 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    # If we swapped to the public proxy URL, prefer running migrations using
-    # a sync engine (psycopg) because the proxy can require non-async SSL
-    # handling that asyncpg doesn't accept via URL query params. Creating a
-    # sync engine here avoids passing unexpected kwargs like 'sslmode' to
-    # asyncpg.connect.
-    if _using_public_proxy:
-        # Convert the URL back to sync (remove +asyncpg if present)
-        sync_url = _db_url
-        if sync_url.startswith("postgresql+asyncpg://"):
-            sync_url = sync_url.replace("postgresql+asyncpg://", "postgresql://", 1)
-
-        from sqlalchemy import create_engine
-
-        engine = create_engine(sync_url)
-        with engine.connect() as connection:
-            do_run_migrations(connection)
-        engine.dispose()
-    else:
-        asyncio.run(run_async_migrations())
+    asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():

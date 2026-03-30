@@ -9,7 +9,18 @@ else
 fi
 
 echo "=== Starting uvicorn ==="
+# Some hosts (Railway) may inject a PORT value used for TCP services
+# (for example Postgres uses 5432). If PORT is set to 5432, it's almost
+# certainly the database port and not intended for the HTTP server. To
+# avoid accidentally binding the HTTP server to the DB port (which then
+# receives non-HTTP traffic), default to 8000 when PORT is 5432.
+_port="${PORT:-8000}"
+if [ "\"${_port}\"" = "\"5432\"" ]; then
+    echo "Detected PORT=5432 (Postgres). Overriding to 8000 for HTTP server."
+    _port=8000
+fi
+
 exec uvicorn backend.main:app \
     --host 0.0.0.0 \
-    --port "${PORT:-8000}" \
+    --port "${_port}" \
     --workers "${UVICORN_WORKERS:-1}"

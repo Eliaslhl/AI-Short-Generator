@@ -18,6 +18,26 @@ services:
     networks:
       - videoshort_network
 
+  # PostgreSQL (local for Docker-only development)
+  postgres:
+    image: postgres:15
+    container_name: videoshort_postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=railway
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d railway"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - videoshort_network
+
   # FastAPI Main Application
   api:
     build:
@@ -44,6 +64,8 @@ services:
       - ./temp:/app/temp  # For video chunks
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - videoshort_network
@@ -91,7 +113,9 @@ services:
 
 volumes:
   redis_data:
+  pgdata:
 
 networks:
   videoshort_network:
     driver: bridge
+

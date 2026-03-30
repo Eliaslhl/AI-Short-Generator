@@ -13,6 +13,7 @@ from pathlib import Path
 from dotenv import load_dotenv, find_dotenv
 
 # Load the project's top-level .env file (searches parent directories).
+import asyncio
 # This makes behaviour deterministic whether you run uvicorn from the repo root
 # or from the backend folder. Prefer a single root `.env` for secrets/config.
 _dotenv_path = find_dotenv()
@@ -63,6 +64,24 @@ async def lifespan(app: FastAPI):
     yield
     # ── shutdown ──
     logger.info("Shutting down…")
+    # Run DB initialization in background so the HTTP server can become
+    # healthy quickly even if the DB is slow or migrations take time.
+    # This avoids failing container healthchecks when DB is temporarily
+    # unavailable. Use MIGRATE_ON_START=false to fully skip this behavior.
+    migrate_on_start = os.getenv("MIGRATE_ON_START", "true").lower() == "true"
+    if migrate_on_start:
+        async def _init_db():
+            try:
+                await create_tables()
+                logger.info("DB initialization completed")
+            except Exception:
+                logger.exception("Background DB initialization failed")
+
+        # schedule background init and don't await it
+        asyncio.create_task(_init_db())
+    else:
+        logger.info("Skipping DB initialization at startup (MIGRATE_ON_START=false)")
+
 
 
 # ──────────────────────────────────────────────

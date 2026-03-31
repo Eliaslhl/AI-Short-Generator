@@ -81,23 +81,57 @@ def download_video(twitch_url: str, job_id: str) -> tuple[Path, str]:
     
     try:
         # Build yt-dlp command
-        cmd = [
-            str(_YTDLP_BIN),
-            "--quiet",
-            "-f", "best[ext=mp4]",  # Prefer MP4 format
-            "-o", str(output_template),
-            "--no-warnings",
-            "--socket-timeout", "60",
-            twitch_url,
-        ]
+        # Prefer a capped-resolution video to avoid downloading huge VODs
+        # (e.g. 1080p60 -> many GB). Use processing_max_height from settings
+        # to choose a reasonable default (usually 480).
+        # Decide format selection: either capped by processing_max_height
+        # (default behaviour) or allow full-VOD if explicitly enabled in settings.
+        if getattr(settings, "ytdlp_allow_full_vod", False):
+            # Full VOD: request best video + best audio and let yt-dlp
+            # merge them (may be large). We prefer mp4 ext where possible.
+            fmt = "bestvideo[ext=mp4]+bestaudio/best[ext=mp4]/best"
+        else:
+            fmt = (
+                f"bestvideo[ext=mp4][height<={settings.processing_max_height}]"
+                f"+bestaudio/best[ext=mp4][height<={settings.processing_max_height}]/best[ext=mp4]"
+            )
+
+        cmd = [str(_YTDLP_BIN), "--quiet", "-f", fmt, "-o", str(output_template), "--no-warnings"]
+
+        # Socket timeout for individual HTTP requests (leave as 60s default)
+        cmd += ["--socket-timeout", "60"]
+
+        # Use configured downloader and args if provided (e.g. aria2c)
+        try:
+            if getattr(settings, "ytdlp_downloader", ""):
+                cmd += ["--downloader", settings.ytdlp_downloader]
+            if getattr(settings, "ytdlp_downloader_args", ""):
+                cmd += ["--downloader-args", settings.ytdlp_downloader_args]
+            if getattr(settings, "ytdlp_concurrent_fragments", 0) and int(settings.ytdlp_concurrent_fragments) > 0:
+                cmd += ["--concurrent-fragments", str(int(settings.ytdlp_concurrent_fragments))]
+
+            # Add fragment retry tuning for flaky networks
+            if getattr(settings, "ytdlp_fragment_retries", 0):
+                cmd += ["--fragment-retries", str(int(settings.ytdlp_fragment_retries))]
+
+            # For HLS segmented streams, using mpegts can reduce re-muxing
+            # overhead; prefer native HLS implementation if available.
+            cmd += ["--hls-prefer-native", "--hls-use-mpegts"]
+        except Exception:
+            # be defensive: don't crash if settings are malformed
+            pass
+
+        # Finally add the URL
+        cmd.append(twitch_url)
         
         logger.debug(f"[{job_id}] Running: {' '.join(cmd)}")
         
+        # Use a configurable timeout for large VODs
         subprocess.run(
             cmd,
             check=True,
             capture_output=True,
-            timeout=300,  # 5 minutes
+            timeout=int(getattr(settings, "ytdlp_download_timeout", 3600)),
             text=True,
         )
         

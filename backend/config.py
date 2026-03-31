@@ -115,6 +115,19 @@ class Settings(BaseSettings):
     # If >0, pass --concurrent-fragments N to yt-dlp (useful for HLS/DASH)
     ytdlp_concurrent_fragments: int = 0
 
+    # Timeout (seconds) for yt-dlp subprocess downloads. Increase if you
+    # regularly download long VODs or slow streams. Default 3600 (1 hour).
+    ytdlp_download_timeout: int = 3600
+
+    # Allow downloading the full VOD (not limited by processing_max_height).
+    # When true, the service will request the best available format and use
+    # the configured external downloader (aria2c) for speed. Default: False.
+    ytdlp_allow_full_vod: bool = False
+
+    # Number of fragment retries for yt-dlp when downloading segmented HLS
+    # streams. Increase if your network is flaky. Default: 5
+    ytdlp_fragment_retries: int = 5
+
     # ---------- Clip selection ----------
     max_clips: int = 10
     min_clip_duration: int = 20  # seconds — min to have enough content
@@ -164,6 +177,8 @@ class Settings(BaseSettings):
     video_dir: str = str(VIDEO_DIR)
     clips_dir: str = str(CLIPS_DIR)
     broll_dir: str = str(BROLL_DIR)
+    # Temporary working directory for downloads / processing (can be overridden via VIDEO_TEMP_DIR)
+    video_temp_dir: str = str(DATA_DIR / "tmp")
 
     class Config:
         env_file = ".env"

@@ -88,7 +88,8 @@ async def run_async_migrations() -> None:
             async with connectable.connect() as connection:
                 # HOTFIX: Clean orphaned migration references before running migrations
                 # Some databases may have stale alembic_version entries from failed deployments
-                await connection.run_sync(_cleanup_orphaned_migrations)
+                # Use a separate connection to isolate this cleanup from the main migration transaction
+                await _cleanup_orphaned_migrations_async(connectable)
                 await connection.run_sync(do_run_migrations)
             break
         except Exception as exc:  # pragma: no cover - runtime network issues
@@ -105,33 +106,41 @@ async def run_async_migrations() -> None:
     await connectable.dispose()
 
 
-def _cleanup_orphaned_migrations(connection: Connection) -> None:
+async def _cleanup_orphaned_migrations_async(engine) -> None:
     """
-    Clean up orphaned migration references that may exist from failed deployments.
-    Deletes entries that reference non-existent revisions.
+    Clean up orphaned migration references in a separate transaction.
+    This prevents transaction corruption if cleanup fails.
     """
     from sqlalchemy import text
     
     try:
-        # Check if alembic_version table exists
-        result = connection.execute(
-            text("SELECT version_num FROM alembic_version LIMIT 1")
-        )
-        result.close()
-        
-        # If it exists, try to clean orphaned entries
-        # This is safe: we only delete entries that don't correspond to actual migration files
-        orphaned_revisions = [
-            '20260329_idempotent_add_plan_and_override_columns',  # filename, not revision ID
-        ]
-        for rev in orphaned_revisions:
-            connection.execute(
-                text(f"DELETE FROM alembic_version WHERE version_num = '{rev}'")
-            )
-        connection.commit()
+        # Use a separate connection for cleanup (isolated transaction)
+        async with engine.connect() as connection:
+            try:
+                # Check if alembic_version table exists
+                result = await connection.execute(
+                    text("SELECT version_num FROM alembic_version LIMIT 1")
+                )
+                await result.close()
+                
+                # If it exists, try to clean orphaned entries
+                # This is safe: we only delete entries that don't correspond to actual migration files
+                orphaned_revisions = [
+                    '20260329_idempotent_add_plan_and_override_columns',  # filename, not revision ID
+                ]
+                for rev in orphaned_revisions:
+                    await connection.execute(
+                        text(f"DELETE FROM alembic_version WHERE version_num = '{rev}'")
+                    )
+                await connection.commit()
+            except Exception as inner_exc:
+                # Rollback this cleanup transaction if it fails
+                await connection.rollback()
+                # Continue anyway—cleanup is optional
+                print(f"[alembic] Cleanup of orphaned migrations failed (non-fatal): {inner_exc}")
     except Exception:
-        # Table doesn't exist or cleanup failed—no problem, continue
-        # The migrations will create it if needed
+        # Connection failed—no problem, continue with migrations
+        # The alembic_version table may not exist yet
         pass
 
 

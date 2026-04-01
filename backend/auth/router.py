@@ -276,14 +276,12 @@ async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
                 # 3) create new user and return its id
                 new_id = str(uuid.uuid4())
                 # Include `plan` in the INSERT (set to 'free') because this raw SQL
-                # path bypasses ORM defaults. Some production DBs have `plan` as
-                # NOT NULL without a server default, which caused NotNullViolation
-                # errors when the INSERT omitted the column. Setting it here keeps
-                # the raw-SQL path robust during schema drift.
+                # path bypasses ORM defaults. We cast to the enum type explicitly
+                # using ::plan to ensure PostgreSQL recognizes it as an enum value.
                 res = await db.execute(
                     text(
                         "INSERT INTO users (id, email, google_id, full_name, avatar_url, plan, is_verified, is_active, created_at)"
-                        " VALUES (:id, :email, :gid, :full, :avatar, :plan, true, true, now()) RETURNING id"
+                        " VALUES (:id, :email, :gid, :full, :avatar, :plan::plan, true, true, now()) RETURNING id"
                     ),
                     {
                         "id": new_id,

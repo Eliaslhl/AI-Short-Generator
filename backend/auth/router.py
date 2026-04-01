@@ -347,8 +347,8 @@ async def create_checkout(
 ):
     if not stripe.api_key:
         raise HTTPException(status_code=501, detail="Stripe not configured")
-    # Validate the price_id is one of our known prices
-    if body.price_id not in PRICE_TO_PLAN:
+    # Validate the price_id is one of our known prices (generic or platform-specific)
+    if body.price_id not in PRICE_TO_PLAN and body.price_id not in PRICE_TO_PLATFORM_PLAN:
         raise HTTPException(status_code=400, detail="Invalid price ID")
 
     # Create or retrieve Stripe customer

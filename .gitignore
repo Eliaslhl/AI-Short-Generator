@@ -54,3 +54,7 @@ Thumbs.db
 secrets/
 secrets/
 secrets/
+backups/
+deploy_prod_fix.sh
+scripts/prod_migrate_and_smoke.sh
+data/dev.db

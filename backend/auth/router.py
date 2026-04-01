@@ -627,3 +627,34 @@ def _user_dict(user: User) -> dict:
         # created_at may be a datetime or a text value depending on DB; handle both
         "created_at": (user.created_at.isoformat() if hasattr(user.created_at, "isoformat") else str(user.created_at)),
     }
+
+
+# ── Stripe Pricing endpoint (for frontend) ──────────────────────────────────
+@router.get("/stripe-pricing")
+async def get_stripe_pricing():
+    """Expose Stripe price IDs to frontend (loaded dynamically at runtime)."""
+    prices = {}
+    
+    # Collect platform-specific prices (YouTube, Twitch, Combo)
+    for prefix, platform in (
+        ("STRIPE_YOUTUBE", "youtube"),
+        ("STRIPE_TWITCH", "twitch"),
+        ("STRIPE_COMBO", "combo"),
+    ):
+        platform_prices = {}
+        for plan_name in ("STANDARD", "PRO", "PROPLUS"):
+            plan_key = plan_name.lower()  # "standard", "pro", "proplus"
+            monthly_key = f"{prefix}_{plan_name}_MONTHLY_PRICE_ID"
+            yearly_key = f"{prefix}_{plan_name}_YEARLY_PRICE_ID"
+            monthly_pid = os.getenv(monthly_key, "")
+            yearly_pid = os.getenv(yearly_key, "")
+            if monthly_pid or yearly_pid:
+                platform_prices[plan_key] = {
+                    "monthly": monthly_pid,
+                    "yearly": yearly_pid,
+                }
+        if platform_prices:
+            prices[platform] = platform_prices
+    
+    return prices
+

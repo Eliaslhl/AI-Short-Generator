@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Film, Zap, Clock, Download, Star, ArrowRight, CheckCircle, Crown, Sparkles, Rocket } from '../components/icons'
 import { useAuth } from '../context/AuthContext'
@@ -263,15 +263,15 @@ const PRICE_IDS_YOUTUBE = {
 } as const
 
 const PRICE_IDS_TWITCH = {
-  standard: { monthly: import.meta.env.REACT_APP_STRIPE_TWITCH_STANDARD_MONTHLY || '', yearly: import.meta.env.REACT_APP_STRIPE_TWITCH_STANDARD_YEARLY || '' },
-  pro:      { monthly: import.meta.env.REACT_APP_STRIPE_TWITCH_PRO_MONTHLY || '', yearly: import.meta.env.REACT_APP_STRIPE_TWITCH_PRO_YEARLY || '' },
-  proplus:  { monthly: import.meta.env.REACT_APP_STRIPE_TWITCH_PROPLUS_MONTHLY || '', yearly: import.meta.env.REACT_APP_STRIPE_TWITCH_PROPLUS_YEARLY || '' },
+  standard: { monthly: 'price_1TFkihEjLhnJfUeo01AH9DUk', yearly: 'price_1TFkk3EjLhnJfUeooCZ04j4u' },
+  pro:      { monthly: 'price_1TFkkvEjLhnJfUeoHzUpXQGR', yearly: 'price_1TFklaEjLhnJfUeotfuxMQWR' },
+  proplus:  { monthly: 'price_1TFkmIEjLhnJfUeoxJi8jNVI', yearly: 'price_1TFknbEjLhnJfUeo4taraTmO' },
 } as const
 
 const PRICE_IDS_COMBO = {
-  combo_standard: { monthly: import.meta.env.REACT_APP_STRIPE_COMBO_STANDARD_MONTHLY || '', yearly: import.meta.env.REACT_APP_STRIPE_COMBO_STANDARD_YEARLY || '' },
-  combo_pro:      { monthly: import.meta.env.REACT_APP_STRIPE_COMBO_PRO_MONTHLY || '', yearly: import.meta.env.REACT_APP_STRIPE_COMBO_PRO_YEARLY || '' },
-  combo_proplus:  { monthly: import.meta.env.REACT_APP_STRIPE_COMBO_PROPLUS_MONTHLY || '', yearly: import.meta.env.REACT_APP_STRIPE_COMBO_PROPLUS_YEARLY || '' },
+  combo_standard: { monthly: 'price_1TFkoFEjLhnJfUeo0n9ujCCk', yearly: 'price_1TFkomEjLhnJfUeoG9ofsz7t' },
+  combo_pro:      { monthly: 'price_1TFkpHEjLhnJfUeopkqsxjDq', yearly: 'price_1TFkqEEjLhnJfUeoDRDmRnTp' },
+  combo_proplus:  { monthly: 'price_1TFkqmEjLhnJfUeonz3yYclY', yearly: 'price_1TFkrIEjLhnJfUeoVAdWBWwU' },
 } as const
 
 type PlanIcon = typeof PLANS_BY_PLATFORM.youtube[number]['icon']

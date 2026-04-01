@@ -20,20 +20,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    # Create ENUM type if it doesn't exist
-    op.execute("""
-    DO $$
-    BEGIN
-        IF NOT EXISTS (
-            SELECT 1 FROM pg_type WHERE typname = 'plan'
-        ) THEN
-            CREATE TYPE plan AS ENUM ('free', 'standard', 'pro', 'proplus');
-        END IF;
-    END
-    $$;
-    """)
+    # Step 1: Create ENUM type if it doesn't exist (direct SQL, not in DO block)
+    op.execute("CREATE TYPE IF NOT EXISTS plan AS ENUM ('free', 'standard', 'pro', 'proplus');")
     
-    # Ensure plan column exists with correct type and default
+    # Step 2: Add plan column if it doesn't exist
     op.execute("""
     DO $$
     BEGIN
@@ -42,16 +32,12 @@ def upgrade() -> None:
             WHERE table_name = 'users' AND column_name = 'plan'
         ) THEN
             ALTER TABLE users ADD COLUMN plan plan DEFAULT 'free'::plan NOT NULL;
-        ELSE
-            -- Column exists, ensure it's the right type and has default
-            ALTER TABLE users ALTER COLUMN plan SET DEFAULT 'free'::plan;
-            ALTER TABLE users ALTER COLUMN plan SET NOT NULL;
         END IF;
     END
     $$;
     """)
     
-    # Ensure is_active has proper default
+    # Step 3: Ensure is_active has proper default
     op.execute("""
     DO $$
     BEGIN

@@ -6,6 +6,7 @@ import { type AxiosError } from 'axios'
 import type { StatusResponse, Clip } from '../types'
 import { Link2, Sparkles, Download, Crown, CheckCircle, Clock, AlertCircle, SlidersHorizontal, Expand, X, Lightbulb, Globe, Type } from 'lucide-react'
 import { getPlanForPlatform, getGenerationLimit, getGenerationsLeft, getMaxClipsAllowed, getCurrentPlatform } from '../utils/planUtils'
+import { AnimatedProgressBar } from '../components/AnimatedProgressBar'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -583,10 +584,15 @@ export default function GeneratorPage() {
 
       {status && status.status !== 'done' && status.status !== 'error' && (
         <div className="bg-white/5 border border-white/10 rounded-2xl p-6 mb-8">
-          <div className="h-2 bg-white/10 rounded-full mb-6 overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-500"
-              style={{ width: `${status.progress}%` }}
+          {/* Animated progress bar component */}
+          <div className="mb-6">
+            <AnimatedProgressBar
+              progress={status.progress}
+              label="Progression"
+              showPercentage={true}
+              size="md"
+              variant="default"
+              animated={true}
             />
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

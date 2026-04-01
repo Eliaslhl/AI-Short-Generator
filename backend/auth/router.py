@@ -243,10 +243,8 @@ async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
     if not email or not google_id:
         raise HTTPException(status_code=400, detail="Could not retrieve Google account info")
 
-    # Use raw SQL to avoid ORM selecting all columns (some may not exist during migration drift)
-    # Defensive DB operations: try raw SQL first (safe during schema drift),
-    # but if any DB/driver error occurs (prepared-statement, syntax, etc.)
-    # fall back to an ORM-backed implementation. All DB errors are logged.
+    # Use raw SQL to find existing users (avoid ORM selecting all columns during schema drift)
+    # but always use ORM for creating new users (handles defaults properly)
     user_id = None
 
     try:
@@ -273,35 +271,26 @@ async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
                 )
                 await db.commit()
             else:
-                # 3) create new user and return its id
+                # 3) create new user via ORM (handles plan default properly)
                 new_id = str(uuid.uuid4())
-                # Include `plan` in the INSERT (set to 'free') because this raw SQL
-                # path bypasses ORM defaults. We cast to the enum type explicitly
-                # using $6::plan to ensure PostgreSQL recognizes it as an enum value.
-                res = await db.execute(
-                    text(
-                        "INSERT INTO users (id, email, google_id, full_name, avatar_url, plan, is_verified, is_active, created_at)"
-                        " VALUES (:id, :email, :gid, :full, :avatar, CAST(:plan AS plan), true, true, now()) RETURNING id"
-                    ),
-                    {
-                        "id": new_id,
-                        "email": email,
-                        "gid": google_id,
-                        "full": full_name,
-                        "avatar": avatar_url,
-                        "plan": "free",
-                    },
+                user = User(
+                    id=new_id,
+                    email=email,
+                    google_id=google_id,
+                    full_name=full_name,
+                    avatar_url=avatar_url,
+                    is_verified=True,
+                    is_active=True,
                 )
-                newrow = res.first()
-                if newrow:
-                    user_id = newrow[0]
-                else:
-                    # Fallback: use the generated id even if RETURNING failed
-                    user_id = new_id
+                db.add(user)
                 await db.commit()
+                user_id = new_id
     except Exception as exc:
         # Log the low-level DB error and attempt an ORM fallback
         logger.exception("Raw SQL path failed in google_callback, falling back to ORM: %s", exc)
+        
+        # Rollback the corrupted transaction before retrying
+        await db.rollback()
 
         try:
             # ORM fallback: safer once schema is in expected state

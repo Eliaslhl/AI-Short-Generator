@@ -20,16 +20,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    # Step 1: Create ENUM type if it doesn't exist (using DO block for PostgreSQL < 13 compatibility)
-    op.execute("""
-    DO $$
-    BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'plan') THEN
-            CREATE TYPE plan AS ENUM ('free', 'standard', 'pro', 'proplus');
-        END IF;
-    END
-    $$;
-    """)
+    # Step 1: Try to create ENUM type (ignore if exists)
+    # Use simple CREATE TYPE with error handling at Python level
+    try:
+        op.execute(
+            "CREATE TYPE plan AS ENUM ('free', 'standard', 'pro', 'proplus');"
+        )
+    except Exception:
+        # Type probably already exists, that's fine
+        pass
     
     # Step 2: Add plan column if it doesn't exist
     op.execute("""

@@ -71,8 +71,8 @@ describe('planUtils', () => {
         plan_twitch: 'pro' as const,
       } as User
 
-      expect(getGenerationLimit(userPro, 'youtube')).toBe(50)
-      expect(getGenerationLimit(userPro, 'twitch')).toBe(50)
+      expect(getGenerationLimit(userPro, 'youtube')).toBe(25)
+      expect(getGenerationLimit(userPro, 'twitch')).toBe(25)
     })
 
     it('should return hardcoded limits for each plan', () => {

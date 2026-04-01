@@ -12,7 +12,9 @@ import logging
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
+from datetime import datetime
 
 from backend.config import settings
 
@@ -71,6 +73,7 @@ def download_video(twitch_url: str, job_id: str) -> tuple[Path, str]:
         )
     
     # Create temp directory for this job
+    download_start_time = time.time()
     temp_dir = Path(settings.video_temp_dir) / job_id
     temp_dir.mkdir(parents=True, exist_ok=True)
     
@@ -127,6 +130,7 @@ def download_video(twitch_url: str, job_id: str) -> tuple[Path, str]:
         logger.debug(f"[{job_id}] Running: {' '.join(cmd)}")
         
         # Use a configurable timeout for large VODs
+        download_start = time.time()
         subprocess.run(
             cmd,
             check=True,
@@ -134,6 +138,7 @@ def download_video(twitch_url: str, job_id: str) -> tuple[Path, str]:
             timeout=int(getattr(settings, "ytdlp_download_timeout", 3600)),
             text=True,
         )
+        download_time = time.time() - download_start
         
         # Find the downloaded file
         video_files = list(temp_dir.glob("video.*"))
@@ -141,7 +146,12 @@ def download_video(twitch_url: str, job_id: str) -> tuple[Path, str]:
             raise RuntimeError("No video file found after download")
         
         video_path = video_files[0]
-        logger.info(f"[{job_id}] Downloaded to: {video_path}")
+        file_size_mb = video_path.stat().st_size / (1024 * 1024)
+        logger.info(
+            f"[{job_id}] ✅ Downloaded to: {video_path} "
+            f"({file_size_mb:.1f} MB in {download_time:.1f}s, "
+            f"{file_size_mb/download_time:.1f} MB/s)"
+        )
         
         # Get video title using ffprobe
         try:

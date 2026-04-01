@@ -29,9 +29,9 @@ Chaque utilisateur a **deux plans indépendants** :
 | Plan | Générations/mois | Clips/session | Concurrence | Prix mensuel | Prix annuel | ID Stripe (monthly) |
 |------|------------------|--------------|-------------|--------------|------------|---------------------|
 | FREE | 2 | Illimité | 1 | Gratuit | - | - |
-| STANDARD | 20 | Illimité | 2 | 9.99€ | 99.99€ | price_yt_std_m |
-| PRO | 50 | Illimité | 5 | 19.99€ | 199.99€ | price_yt_pro_m |
-| PRO+ | 100 | Illimité | 10 | 29.99€ | 299.99€ | price_yt_proplus_m |
+| STANDARD | 10 | Illimité | 2 | 9.99€ | 99.99€ | price_yt_std_m |
+| PRO | 25 | Illimité | 5 | 19.99€ | 199.99€ | price_yt_pro_m |
+| PRO+ | 50 | Illimité | 10 | 29.99€ | 299.99€ | price_yt_proplus_m |
 
 *Existants (à conserver et renommer)*
 - STRIPE_STANDARD_MONTHLY_PRICE_ID=price_1T9TOzEjLhnJfUeo7r6bk5H3
@@ -45,9 +45,9 @@ Chaque utilisateur a **deux plans indépendants** :
 | Plan | Générations/mois | Clips/session | Concurrence | Prix mensuel | Prix annuel | ID Stripe (monthly) |
 |------|------------------|--------------|-------------|--------------|------------|---------------------|
 | FREE | 2 | Illimité | 1 | Gratuit | - | - |
-| STANDARD | 20 | Illimité | 2 | 9.99€ | 94.99€ | price_tw_std_m |
-| PRO | 50 | Illimité | 5 | 29.99€ | 279.99€ | price_tw_pro_m |
-| PRO+ | 100 | Illimité | 10 | 54.99€ | 529.99€ | price_tw_proplus_m |
+| STANDARD | 10 | Illimité | 2 | 9.99€ | 94.99€ | price_tw_std_m |
+| PRO | 25 | Illimité | 5 | 29.99€ | 279.99€ | price_tw_pro_m |
+| PRO+ | 50 | Illimité | 10 | 54.99€ | 529.99€ | price_tw_proplus_m |
 
 *Variant B : Twitch agressif (prix supérieurs à YouTube pour refléter la valeur de streaming)*
 
@@ -58,9 +58,9 @@ Chaque utilisateur a **deux plans indépendants** :
 
 | Plan | Générations/mois | Accès | Prix mensuel | Prix annuel | Économie vs séparé | ID Stripe (monthly) |
 |------|------------------|-------|--------------|------------|--------------------|---------------------|
-| COMBO STANDARD | 20 chaque plateforme | YT + TW | 14.99€ | 129.99€ | ~ (9.99€ + 9.99€ + discount) | price_combo_std_m |
-| COMBO PRO | 50 chaque plateforme | YT + TW | 39.99€ | 379.99€ | ~ (YT Pro + TW Pro - discount) | price_combo_pro_m |
-| COMBO PRO+ | 100 chaque plateforme | YT + TW | 64.99€ | 649.99€ | ~ (YT Pro+ + TW Pro+ - discount) | price_combo_proplus_m |
+| COMBO STANDARD | 10 chaque plateforme | YT + TW | 14.99€ | 129.99€ | ~ (9.99€ + 9.99€ + discount) | price_combo_std_m |
+| COMBO PRO | 25 chaque plateforme | YT + TW | 39.99€ | 379.99€ | ~ (YT Pro + TW Pro - discount) | price_combo_pro_m |
+| COMBO PRO+ | 50 chaque plateforme | YT + TW | 64.99€ | 649.99€ | ~ (YT Pro+ + TW Pro+ - discount) | price_combo_proplus_m |
 
 **Exemples (approx) :**
 - COMBO STANDARD ≈ 9.99€ (YT Standard) + 9.99€ (TW Standard) - 5.99€ (réduction) = 14.99€

@@ -47,9 +47,9 @@ async def require_can_generate_youtube(
     if (user.youtube_generations_month or 0) >= youtube_limit:
         plan_messages = {
             "free": "You've used your 2 free YouTube generations this month. Upgrade to Standard or Pro.",
-            "standard": "You've used all 20 YouTube Standard plan generations this month.",
-            "pro": "You've used all 50 YouTube Pro plan generations this month.",
-            "proplus": "You've used all 100 YouTube Pro+ plan generations this month.",
+            "standard": "You've used all 10 YouTube Standard plan generations this month.",
+            "pro": "You've used all 25 YouTube Pro plan generations this month.",
+            "proplus": "You've used all 50 YouTube Pro+ plan generations this month.",
         }
         plan_val = (user.plan_youtube or user.plan).value if user.plan_youtube else "free"
         message = plan_messages.get(
@@ -89,9 +89,9 @@ async def require_can_generate_twitch(
     if (user.twitch_generations_month or 0) >= twitch_limit:
         plan_messages = {
             "free": "You've used your 2 free Twitch generations this month. Upgrade to Standard or Pro.",
-            "standard": "You've used all 20 Twitch Standard plan generations this month.",
-            "pro": "You've used all 50 Twitch Pro plan generations this month.",
-            "proplus": "You've used all 100 Twitch Pro+ plan generations this month.",
+            "standard": "You've used all 10 Twitch Standard plan generations this month.",
+            "pro": "You've used all 25 Twitch Pro plan generations this month.",
+            "proplus": "You've used all 50 Twitch Pro+ plan generations this month.",
         }
         plan_val = (user.plan_twitch).value if user.plan_twitch else "free"
         message = plan_messages.get(

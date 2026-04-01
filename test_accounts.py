@@ -101,11 +101,11 @@ def get_generation_limit(plan, platform):
     if plan == Plan.FREE:
         return 1
     elif plan == Plan.STANDARD:
-        return 20 if platform == "youtube" else 50
+        return 10 if platform == "youtube" else 10
     elif plan == Plan.PRO:
-        return 50 if platform == "youtube" else 200
+        return 25 if platform == "youtube" else 25
     elif plan == Plan.PROPLUS:
-        return 100 if platform == "youtube" else 500
+        return 50 if platform == "youtube" else 50
     return 1
 
 async def test_accounts():

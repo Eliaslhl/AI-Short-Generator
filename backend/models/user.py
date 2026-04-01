@@ -103,17 +103,27 @@ class User(Base):
     )
 
     # Monthly generation limits per plan
-    PLAN_LIMITS: dict = {
+    PLAN_LIMITS_YOUTUBE: dict = {
         Plan.FREE: 2,
-        Plan.STANDARD: 20,
-        Plan.PRO: 50,
-        Plan.PROPLUS: 100,
+        Plan.STANDARD: 10,
+        Plan.PRO: 25,
+        Plan.PROPLUS: 50,
     }
+
+    PLAN_LIMITS_TWITCH: dict = {
+        Plan.FREE: 2,
+        Plan.STANDARD: 10,
+        Plan.PRO: 25,
+        Plan.PROPLUS: 50,
+    }
+
+    # Legacy mapping (for backward compatibility)
+    PLAN_LIMITS: dict = PLAN_LIMITS_YOUTUBE
 
     @property
     def monthly_limit(self) -> int:
         """Legacy property: returns YouTube limit for backward compatibility."""
-        return self.PLAN_LIMITS.get(self.plan_youtube or self.plan, 2)
+        return self.PLAN_LIMITS_YOUTUBE.get(self.plan_youtube or self.plan, 2)
 
     @property
     def youtube_limit(self) -> int:
@@ -121,7 +131,7 @@ class User(Base):
         # Prefer per-user override when set
         if getattr(self, "youtube_limit_override", None):
             return int(self.youtube_limit_override)
-        return self.PLAN_LIMITS.get(self.plan_youtube or self.plan, 2)
+        return self.PLAN_LIMITS_YOUTUBE.get(self.plan_youtube or self.plan, 2)
 
     @property
     def twitch_limit(self) -> int:
@@ -129,7 +139,7 @@ class User(Base):
         # Prefer per-user override when set
         if getattr(self, "twitch_limit_override", None):
             return int(self.twitch_limit_override)
-        return self.PLAN_LIMITS.get(self.plan_twitch or Plan.FREE, 2)
+        return self.PLAN_LIMITS_TWITCH.get(self.plan_twitch or Plan.FREE, 2)
 
     @property
     def free_generations_left(self) -> int:

@@ -86,8 +86,8 @@ describe('planUtils', () => {
         plan_youtube: 'free' as const,
       } as User
 
-      expect(getGenerationLimit(userStandard, 'youtube')).toBe(20)
-      expect(getGenerationLimit(userProPlus, 'youtube')).toBe(100)
+      expect(getGenerationLimit(userStandard, 'youtube')).toBe(10)
+      expect(getGenerationLimit(userProPlus, 'youtube')).toBe(50)
       expect(getGenerationLimit(userFree, 'youtube')).toBe(2)
     })
   })

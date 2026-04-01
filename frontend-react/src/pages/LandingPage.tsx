@@ -54,7 +54,7 @@ const PLANS_BY_PLATFORM = {
       style: 'default' as const,
       badge: null as null,
       features: [
-        '20 videos / month',
+        '10 videos / month',
         '5 shorts per video',
         'Export 1080p',
         'Automatic subtitles',
@@ -74,7 +74,7 @@ const PLANS_BY_PLATFORM = {
       style: 'pro' as const,
       badge: '⭐ MOST POPULAR' as string | null,
       features: [
-        '50 videos / month',
+        '25 videos / month',
         '10 shorts per video',
         'Auto zoom speaker',
         'Smart subtitles',
@@ -94,7 +94,7 @@ const PLANS_BY_PLATFORM = {
       style: 'proplus' as const,
       badge: null as null,
       features: [
-        '100 videos / month',
+        '50 videos / month',
         '20 shorts per video',
         'Auto title generator',
         'Auto hashtags',
@@ -136,7 +136,7 @@ const PLANS_BY_PLATFORM = {
       style: 'default' as const,
       badge: null as null,
       features: [
-        '50 VODs / month',
+        '10 VODs / month',
         '5 clips per VOD',
         'Export 1080p',
         'Automatic subtitles',
@@ -155,7 +155,7 @@ const PLANS_BY_PLATFORM = {
       style: 'pro' as const,
       badge: '⭐ MOST POPULAR' as string | null,
       features: [
-        '200 VODs / month',
+        '25 VODs / month',
         '10 clips per VOD',
         'Auto zoom streamer',
         'Smart subtitle styling',
@@ -175,7 +175,7 @@ const PLANS_BY_PLATFORM = {
       style: 'proplus' as const,
       badge: null as null,
       features: [
-        '500 VODs / month',
+        '50 VODs / month',
         '20 clips per VOD',
         'Auto title generator',
         'Auto hashtags',
@@ -198,9 +198,9 @@ const PLANS_BY_PLATFORM = {
       style: 'default' as const,
       badge: null as null,
       features: [
-        '20 YouTube videos / month',
+        '10 YouTube videos / month',
         '5 YouTube shorts per video',
-        '50 Twitch VODs / month',
+        '10 Twitch VODs / month',
         '5 Twitch clips per VOD',
         'All YouTube Standard features',
         'All Twitch Standard features',
@@ -218,9 +218,9 @@ const PLANS_BY_PLATFORM = {
       style: 'pro' as const,
       badge: '⚡ BEST VALUE' as string | null,
       features: [
-        '50 YouTube videos / month',
+        '25 YouTube videos / month',
         '10 YouTube shorts per video',
-        '200 Twitch VODs / month',
+        '25 Twitch VODs / month',
         '10 Twitch clips per VOD',
         'All YouTube Pro features',
         'All Twitch Pro features',
@@ -239,9 +239,9 @@ const PLANS_BY_PLATFORM = {
       style: 'proplus' as const,
       badge: null as null,
       features: [
-        '100 YouTube videos / month',
+        '50 YouTube videos / month',
         '20 YouTube shorts per video',
-        '500 Twitch VODs / month',
+        '50 Twitch VODs / month',
         '20 Twitch clips per VOD',
         'All YouTube Pro+ features',
         'All Twitch Pro+ features',

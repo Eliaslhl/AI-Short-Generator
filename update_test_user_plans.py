@@ -10,18 +10,18 @@ db_path = "data/app.db"
 users = [
     # Youtube Platform
     {"email": "test.youtube.free@test.com", "plan_youtube": "free", "plan_twitch": "free", "yt_limit": 1, "tw_limit": 1},
-    {"email": "test.youtube.standard@test.com", "plan_youtube": "standard", "plan_twitch": "free", "yt_limit": 20, "tw_limit": 1},
-    {"email": "test.youtube.pro@test.com", "plan_youtube": "pro", "plan_twitch": "free", "yt_limit": 50, "tw_limit": 1},
-    {"email": "test.youtube.proplus@test.com", "plan_youtube": "proplus", "plan_twitch": "free", "yt_limit": 100, "tw_limit": 1},
+    {"email": "test.youtube.standard@test.com", "plan_youtube": "standard", "plan_twitch": "free", "yt_limit": 10, "tw_limit": 1},
+    {"email": "test.youtube.pro@test.com", "plan_youtube": "pro", "plan_twitch": "free", "yt_limit": 25, "tw_limit": 1},
+    {"email": "test.youtube.proplus@test.com", "plan_youtube": "proplus", "plan_twitch": "free", "yt_limit": 50, "tw_limit": 1},
     # Twitch Platform
     {"email": "test.twitch.free@test.com", "plan_youtube": "free", "plan_twitch": "free", "yt_limit": 1, "tw_limit": 1},
-    {"email": "test.twitch.standard@test.com", "plan_youtube": "free", "plan_twitch": "standard", "yt_limit": 1, "tw_limit": 50},
-    {"email": "test.twitch.pro@test.com", "plan_youtube": "free", "plan_twitch": "pro", "yt_limit": 1, "tw_limit": 200},
-    {"email": "test.twitch.proplus@test.com", "plan_youtube": "free", "plan_twitch": "proplus", "yt_limit": 1, "tw_limit": 500},
+    {"email": "test.twitch.standard@test.com", "plan_youtube": "free", "plan_twitch": "standard", "yt_limit": 1, "tw_limit": 10},
+    {"email": "test.twitch.pro@test.com", "plan_youtube": "free", "plan_twitch": "pro", "yt_limit": 1, "tw_limit": 25},
+    {"email": "test.twitch.proplus@test.com", "plan_youtube": "free", "plan_twitch": "proplus", "yt_limit": 1, "tw_limit": 50},
     # Combo Platform
-    {"email": "test.combo.standard@test.com", "plan_youtube": "standard", "plan_twitch": "standard", "yt_limit": 20, "tw_limit": 50},
-    {"email": "test.combo.pro@test.com", "plan_youtube": "pro", "plan_twitch": "pro", "yt_limit": 50, "tw_limit": 200},
-    {"email": "test.combo.proplus@test.com", "plan_youtube": "proplus", "plan_twitch": "proplus", "yt_limit": 100, "tw_limit": 500},
+    {"email": "test.combo.standard@test.com", "plan_youtube": "standard", "plan_twitch": "standard", "yt_limit": 10, "tw_limit": 10},
+    {"email": "test.combo.pro@test.com", "plan_youtube": "pro", "plan_twitch": "pro", "yt_limit": 25, "tw_limit": 25},
+    {"email": "test.combo.proplus@test.com", "plan_youtube": "proplus", "plan_twitch": "proplus", "yt_limit": 50, "tw_limit": 50},
 ]
 
 conn = sqlite3.connect(db_path)

@@ -63,9 +63,9 @@ export function getGenerationLimit(user: User | null, platform: CurrentPlatform 
   const plan = getPlanForPlatform(user, platform)
   const planLimits: Record<Plan, number> = {
     free: 2,
-    standard: 20,
-    pro: 50,
-    proplus: 100,
+    standard: 10,
+    pro: 25,
+    proplus: 50,
   }
 
   console.debug('Falling back to plan-based limit:', { plan, limit: planLimits[plan] ?? 2 })

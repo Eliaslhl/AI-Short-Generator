@@ -227,7 +227,7 @@ class EmailConfirmationToken(Base):
     __tablename__ = "email_confirmation_tokens"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
     token: Mapped[str] = mapped_column(
         String(64), unique=True, index=True, nullable=False
     )

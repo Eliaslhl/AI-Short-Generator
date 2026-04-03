@@ -21,7 +21,7 @@ import bcrypt
 import stripe
 from authlib.integrations.httpx_client import AsyncOAuth2Client
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select, text
@@ -131,9 +131,22 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 
+# ── Helper: Send email in background (catches errors silently) ────────────────
+async def send_confirmation_email_safe(email: str, token: str) -> None:
+    """Send confirmation email. Silently catch errors (for background tasks)."""
+    try:
+        await send_confirmation_email(email, token)
+    except Exception as exc:
+        logger.error(f"Failed to send confirmation email to {email}: {exc}")
+
+
 # ── Register ─────────────────────────────────────────────────────────────────
 @router.post("/register", response_model=dict)
-async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+async def register(
+    body: RegisterRequest,
+    db: AsyncSession = Depends(get_db),
+    background_tasks: BackgroundTasks = BackgroundTasks()
+):
     # Check if email already exists
     result = await db.execute(select(User).where(User.email == body.email))
     if result.scalar_one_or_none():
@@ -171,13 +184,12 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
     logger.info(f"New user registered (awaiting email confirmation): {user.email}")
 
-    # Send confirmation email (non-blocking - don't fail if email service down)
-    try:
-        await send_confirmation_email(user.email, confirmation_token)
-    except Exception as exc:
-        logger.error(f"Failed to send confirmation email to {user.email}: {exc}")
-        # Continue anyway - user can try resending later
-        # Don't raise exception, registration is still successful
+    # Send confirmation email in background (non-blocking)
+    background_tasks.add_task(
+        send_confirmation_email_safe,
+        user.email,
+        confirmation_token
+    )
 
     return {
         "message": "Registration successful! Please check your email to confirm your address.",
@@ -599,7 +611,9 @@ class ResendConfirmationRequest(BaseModel):
 
 @router.post("/resend-confirmation-email")
 async def resend_confirmation_email(
-    body: ResendConfirmationRequest, db: AsyncSession = Depends(get_db)
+    body: ResendConfirmationRequest,
+    db: AsyncSession = Depends(get_db),
+    background_tasks: BackgroundTasks = BackgroundTasks()
 ):
     """Resend email confirmation link to user."""
     # Find the user
@@ -647,12 +661,12 @@ async def resend_confirmation_email(
     db.add(email_token)
     await db.commit()
     
-    # Send confirmation email
-    try:
-        await send_confirmation_email(body.email, confirmation_token)
-        logger.info(f"Confirmation email resent to: {body.email}")
-    except Exception as exc:
-        logger.error(f"Failed to resend confirmation email: {exc}")
+    # Send confirmation email in background (non-blocking)
+    background_tasks.add_task(
+        send_confirmation_email_safe,
+        body.email,
+        confirmation_token
+    )
     
     return {
         "message": "If an account exists, a confirmation email will be sent.",

@@ -172,8 +172,13 @@ ALLOWED_ORIGINS = [
 ]
 
 _frontend_url = os.getenv("FRONTEND_URL", "")
-if _frontend_url and _frontend_url not in ALLOWED_ORIGINS:
-    ALLOWED_ORIGINS.append(_frontend_url)
+if _frontend_url:
+    if _frontend_url not in ALLOWED_ORIGINS:
+        ALLOWED_ORIGINS.append(_frontend_url)
+    # Also add www version
+    www_frontend_url = _frontend_url.replace("https://", "https://www.")
+    if www_frontend_url not in ALLOWED_ORIGINS and www_frontend_url != _frontend_url:
+        ALLOWED_ORIGINS.append(www_frontend_url)
 
 app.add_middleware(
     CORSMiddleware,

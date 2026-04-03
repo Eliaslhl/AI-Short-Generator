@@ -59,9 +59,13 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 #  Security Headers Middleware
 # ──────────────────────────────────────────────
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Add security headers to all responses."""
+    """Add security headers to all responses (except preflight OPTIONS)."""
     
     async def dispatch(self, request: Request, call_next):
+        # Skip security headers for OPTIONS (CORS preflight) requests
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        
         response = await call_next(request)
         
         # Prevent MIME type sniffing

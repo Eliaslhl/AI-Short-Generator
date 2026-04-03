@@ -69,6 +69,16 @@ export default function DashboardPage() {
   const planConfig = PLAN_CONFIG[effectivePlan as keyof typeof PLAN_CONFIG] ?? PLAN_CONFIG.free
   const generationLimit = getGenerationLimit(user, platform)
   const generationsLeft = getGenerationsLeft(user, platform)
+  
+  // Get all platform counts for combo display
+  const subscriptionType = user?.subscription_type
+  const showYouTube = subscriptionType === 'youtube' || subscriptionType === 'combo'
+  const showTwitch = subscriptionType === 'twitch' || subscriptionType === 'combo'
+  const youtubeLeft = user ? getGenerationsLeft(user, 'youtube') : 0
+  const youtubeLimit = user ? getGenerationLimit(user, 'youtube') : 2
+  const twitchLeft = user ? getGenerationsLeft(user, 'twitch') : 0
+  const twitchLimit = user ? getGenerationLimit(user, 'twitch') : 2
+  
   const totalClips = history.reduce((acc, j) => acc + (j.clips_count ?? 0), 0)
 
   return (
@@ -105,9 +115,17 @@ export default function DashboardPage() {
           ) : (
             <>
               <p className={`text-sm mb-3 ${planConfig.textClass}`}>
-                <span className="text-white font-semibold">{generationsLeft}</span>
-                {' / '}
-                {generationLimit}
+                {showYouTube && (
+                  <>
+                    🎬 YouTube: <span className="text-white font-semibold">{youtubeLeft}</span>/{youtubeLimit}
+                  </>
+                )}
+                {showYouTube && showTwitch && <span className="mx-1">|</span>}
+                {showTwitch && (
+                  <>
+                    🎮 Twitch: <span className="text-white font-semibold">{twitchLeft}</span>/{twitchLimit}
+                  </>
+                )}
                 {' videos left this month'}
               </p>
               {/* Cancel subscription */}

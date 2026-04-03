@@ -150,3 +150,47 @@ async def send_welcome_email(to_email: str, full_name: str = "") -> None:
     except Exception as exc:
         # Don't block registration if welcome email fails
         logger.error(f"Failed to send welcome email to {to_email}: {exc}")
+
+
+async def send_confirmation_email(to_email: str, confirmation_token: str) -> None:
+    """Send an email confirmation link to verify the user's email."""
+    mailer, suppress = _get_mailer()
+    confirmation_url = f"{FRONTEND_URL}/confirm-email?token={confirmation_token}"
+
+    if suppress:
+        logger.info(f"[DEV] Email confirmation suppressed. URL: {confirmation_url}")
+        return
+
+    html = f"""
+    <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;background:#0f0f0f;color:#fff;border-radius:12px">
+      <div style="text-align:center;margin-bottom:24px">
+        <span style="font-size:32px">✉️</span>
+        <h1 style="font-size:24px;font-weight:700;margin:8px 0">Confirm your email</h1>
+      </div>
+      <p style="color:#9ca3af;margin-bottom:24px">
+        Thanks for signing up! Click the button below to confirm your email and activate your account.
+      </p>
+      <a href="{confirmation_url}"
+         style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#7c3aed,#db2777);color:#fff;font-weight:600;border-radius:8px;text-decoration:none">
+        Confirm email
+      </a>
+      <p style="margin-top:24px;font-size:12px;color:#6b7280">
+        This link expires in <strong style="color:#fff">24 hours</strong>.<br>
+        Link: <a href="{confirmation_url}" style="color:#a78bfa;word-break:break-all">{confirmation_url}</a>
+      </p>
+    </div>
+    """
+
+    message = MessageSchema(
+        subject="Confirm your AI Shorts email",
+        recipients=[to_email],
+        body=html,
+        subtype=MessageType.html,
+    )
+
+    try:
+        await mailer.send_message(message)
+        logger.info(f"Confirmation email sent to {to_email}")
+    except Exception as exc:
+        logger.error(f"Failed to send confirmation email to {to_email}: {exc}")
+        raise

@@ -1,9 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
 import { authApi } from '../api'
 import { type AxiosError } from 'axios'
-import { Film, Mail, Lock, User, Chrome } from 'lucide-react'
+import { Film, Mail, Lock, User, Chrome, CheckCircle } from 'lucide-react'
 
 export default function RegisterPage() {
   const [fullName, setFullName] = useState('')
@@ -11,7 +10,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const { register } = useAuth()
+  const [registered, setRegistered] = useState(false)
   const navigate = useNavigate()
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
@@ -23,14 +22,43 @@ export default function RegisterPage() {
     }
     setLoading(true)
     try {
-      await register(email, password, fullName)
-      navigate('/generate')
+      await authApi.register(email, password, fullName)
+      setRegistered(true)
+      // Redirect to login page after 3 seconds
+      setTimeout(() => {
+        navigate('/login', { state: { registeredEmail: email } })
+      }, 3000)
     } catch (err) {
       const axiosErr = err as AxiosError<{ detail: string }>
       setError(axiosErr.response?.data?.detail ?? "Erreur lors de l'inscription.")
     } finally {
       setLoading(false)
     }
+  }
+
+  if (registered) {
+    return (
+      <div className="min-h-[calc(100vh-64px)] flex items-center justify-center px-4">
+        <div className="w-full max-w-md">
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-8 text-center space-y-4">
+            <div className="flex justify-center">
+              <CheckCircle className="w-16 h-16 text-green-400" />
+            </div>
+            <h1 className="text-2xl font-bold text-white">Vérifiez votre email</h1>
+            <p className="text-gray-400">
+              Un email de confirmation a été envoyé à <strong>{email}</strong>
+            </p>
+            <p className="text-gray-500 text-sm">
+              Cliquez sur le lien dans l'email pour confirmer votre adresse et activer votre compte.
+            </p>
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 text-sm text-blue-300">
+              📧 Le lien d'activation expire dans 24 heures.
+            </div>
+            <p className="text-gray-400">Redirection vers la page de connexion...</p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

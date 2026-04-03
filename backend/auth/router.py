@@ -30,8 +30,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.auth.dependencies import get_current_user
 from backend.auth.jwt import create_access_token
 from backend.database import get_db
-from backend.models.user import Plan, PasswordResetToken, User
-from backend.services.email_service import send_reset_email, send_welcome_email
+from backend.models.user import Plan, PasswordResetToken, User, EmailConfirmationToken
+from backend.services.email_service import send_reset_email, send_welcome_email, send_confirmation_email
 
 load_dotenv()
 
@@ -140,26 +140,45 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
             status_code=400, detail="Password must be at least 8 characters"
         )
 
+    # Create user with is_verified=False (requires email confirmation)
     user = User(
         email=body.email,
         hashed_password=hash_password(body.password),
         full_name=body.full_name,
-        is_verified=True,  # skip email verification for now
+        is_verified=False,  # Email must be confirmed before using account
     )
     db.add(user)
     await db.commit()
     await db.refresh(user)
 
-    token = create_access_token(user.id, user.email)
-    logger.info(f"New user registered: {user.email}")
+    # Create confirmation token (24 hours expiry)
+    confirmation_token = secrets.token_urlsafe(48)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+    
+    email_token = EmailConfirmationToken(
+        email=body.email,
+        token=confirmation_token,
+        expires_at=expires_at,
+        user_id=user.id,
+        used=False
+    )
+    db.add(email_token)
+    await db.commit()
 
-    # Send welcome email (non-blocking — won't fail registration if SMTP is down)
+    logger.info(f"New user registered (awaiting email confirmation): {user.email}")
+
+    # Send confirmation email
     try:
-        await send_welcome_email(user.email, body.full_name or "")
-    except Exception:
-        pass
+        await send_confirmation_email(user.email, confirmation_token)
+    except Exception as exc:
+        logger.error(f"Failed to send confirmation email: {exc}")
+        # Don't block registration if email fails
+        raise HTTPException(status_code=500, detail="Failed to send confirmation email")
 
-    return {"access_token": token, "token_type": "bearer", "user": _user_dict(user)}
+    return {
+        "message": "Registration successful! Please check your email to confirm your address.",
+        "email": user.email
+    }
 
 
 # ── Login ─────────────────────────────────────────────────────────────────────
@@ -194,6 +213,65 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 @router.get("/me", response_model=dict)
 async def me(user: User = Depends(get_current_user)):
     return _user_dict(user)
+
+
+# ── Confirm Email ─────────────────────────────────────────────────────────────
+@router.post("/confirm-email", response_model=dict)
+async def confirm_email(token: str, db: AsyncSession = Depends(get_db)):
+    """Verify email confirmation token and activate user account."""
+    # Find the confirmation token
+    result = await db.execute(
+        select(EmailConfirmationToken).where(
+            EmailConfirmationToken.token == token
+        )
+    )
+    email_token = result.scalar_one_or_none()
+    
+    if not email_token:
+        raise HTTPException(status_code=400, detail="Invalid confirmation token")
+    
+    if email_token.used:
+        raise HTTPException(status_code=400, detail="Confirmation token already used")
+    
+    # Check if token has expired
+    if email_token.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Confirmation token has expired")
+    
+    # Find the user and verify email
+    result = await db.execute(
+        select(User).where(User.id == email_token.user_id)
+    )
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Mark user as verified and token as used
+    user.is_verified = True
+    email_token.used = True
+    
+    db.add(user)
+    db.add(email_token)
+    await db.commit()
+    await db.refresh(user)
+    
+    # Create access token for immediate login
+    access_token = create_access_token(user.id, user.email)
+    
+    logger.info(f"Email confirmed for user: {user.email}")
+    
+    # Send welcome email now that they're verified
+    try:
+        await send_welcome_email(user.email, user.full_name or "")
+    except Exception as exc:
+        logger.error(f"Failed to send welcome email: {exc}")
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": _user_dict(user),
+        "message": "Email confirmed! Your account is now active."
+    }
 
 
 # ── Google OAuth ──────────────────────────────────────────────────────────────

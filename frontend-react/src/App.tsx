@@ -7,9 +7,9 @@ import ProtectedRoute from './components/ProtectedRoute'
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
+import ConfirmEmailPage from './pages/ConfirmEmailPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
-import GeneratorPage from './pages/GeneratorPage'
 import SourceSelectorPage from './pages/SourceSelectorPage'
 import YouTubeGeneratorPage from './pages/YouTubeGeneratorPage'
 import TwitchGeneratorPage from './pages/TwitchGeneratorPage'
@@ -76,6 +76,7 @@ export default function App() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/confirm-email" element={<ConfirmEmailPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/auth/callback" element={<AuthCallbackPage />} />

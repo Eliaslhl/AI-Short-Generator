@@ -37,8 +37,17 @@ export default function Navbar() {
 
   const platform = user ? getCurrentPlatform(user) : 'youtube'
   const effectivePlan = user ? getPlanForPlatform(user, platform) : 'free'
-  const generationsLeft = user ? getGenerationsLeft(user, platform) : 0
-  const generationLimit = user ? getGenerationLimit(user, platform) : 2
+  
+  // Get counts for YouTube and Twitch
+  const youtubeLeft = user ? getGenerationsLeft(user, 'youtube') : 0
+  const youtubeLimit = user ? getGenerationLimit(user, 'youtube') : 2
+  const twitchLeft = user ? getGenerationsLeft(user, 'twitch') : 0
+  const twitchLimit = user ? getGenerationLimit(user, 'twitch') : 2
+
+  // Determine what to display based on subscription type
+  const subscriptionType = user?.subscription_type
+  const showYouTube = subscriptionType === 'youtube' || subscriptionType === 'combo'
+  const showTwitch = subscriptionType === 'twitch' || subscriptionType === 'combo'
 
   const planBadge = user ? PLAN_BADGE[effectivePlan] : null
 
@@ -61,15 +70,22 @@ export default function Navbar() {
                 </span>
               ) : (
                 <span className="text-xs text-gray-400">
-                  {generationsLeft} free left
+                  {youtubeLeft} free left
                 </span>
               )}
-              {/* Quota counter for all plans */}
+              {/* Quota counter - show platform-specific or both for COMBO */}
               <span className="text-xs text-gray-500">
-                {generationsLeft}
-                {'/'}
-                {generationLimit}
-                {' left'}
+                {showYouTube && (
+                  <>
+                    🎬 YouTube: <span className="text-purple-400">{youtubeLeft}/{youtubeLimit}</span>
+                  </>
+                )}
+                {showYouTube && showTwitch && <span className="mx-1">|</span>}
+                {showTwitch && (
+                  <>
+                    🎮 Twitch: <span className="text-purple-400">{twitchLeft}/{twitchLimit}</span>
+                  </>
+                )}
               </span>
 
               <Link
@@ -162,10 +178,17 @@ export default function Navbar() {
                     {user.full_name ?? user.email}
                   </span>
                   <span className="text-gray-400 text-xs">
-                    {generationsLeft}
-                    {'/'}
-                    {generationLimit}
-                    {' left this month'}
+                    {showYouTube && (
+                      <>
+                        🎬 YT: {youtubeLeft}/{youtubeLimit}
+                      </>
+                    )}
+                    {showYouTube && showTwitch && <span className="mx-0.5">|</span>}
+                    {showTwitch && (
+                      <>
+                        🎮 TW: {twitchLeft}/{twitchLimit}
+                      </>
+                    )}
                   </span>
                 </div>
               </div>

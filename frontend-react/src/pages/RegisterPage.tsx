@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { authApi } from '../api'
 import { type AxiosError } from 'axios'
 import { Film, Mail, Lock, User, Chrome, CheckCircle } from 'lucide-react'
@@ -11,7 +11,8 @@ export default function RegisterPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [registered, setRegistered] = useState(false)
-  const navigate = useNavigate()
+  const [resendLoading, setResendLoading] = useState(false)
+  const [resendMessage, setResendMessage] = useState('')
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault()
@@ -24,15 +25,25 @@ export default function RegisterPage() {
     try {
       await authApi.register(email, password, fullName)
       setRegistered(true)
-      // Redirect to login page after 3 seconds
-      setTimeout(() => {
-        navigate('/login', { state: { registeredEmail: email } })
-      }, 3000)
     } catch (err) {
       const axiosErr = err as AxiosError<{ detail: string }>
       setError(axiosErr.response?.data?.detail ?? "Erreur lors de l'inscription.")
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleResendEmail = async (): Promise<void> => {
+    setResendMessage('')
+    setResendLoading(true)
+    try {
+      await authApi.resendConfirmationEmail(email)
+      setResendMessage('✅ Email de confirmation renvoyé ! Vérifiez votre boîte mail.')
+    } catch (err) {
+      setResendMessage('❌ Erreur lors de l\'envoi de l\'email.')
+      console.error(err)
+    } finally {
+      setResendLoading(false)
     }
   }
 
@@ -46,7 +57,7 @@ export default function RegisterPage() {
             </div>
             <h1 className="text-2xl font-bold text-white">Vérifiez votre email</h1>
             <p className="text-gray-400">
-              Un email de confirmation a été envoyé à <strong>{email}</strong>
+              Un email de confirmation a été envoyé à<br /><strong className="text-white">{email}</strong>
             </p>
             <p className="text-gray-500 text-sm">
               Cliquez sur le lien dans l'email pour confirmer votre adresse et activer votre compte.
@@ -54,7 +65,24 @@ export default function RegisterPage() {
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 text-sm text-blue-300">
               📧 Le lien d'activation expire dans 24 heures.
             </div>
-            <p className="text-gray-400">Redirection vers la page de connexion...</p>
+            
+            {resendMessage && (
+              <div className={`${resendMessage.includes('✅') ? 'bg-green-500/10 border-green-500/30 text-green-300' : 'bg-red-500/10 border-red-500/30 text-red-300'} border rounded-lg p-3 text-sm`}>
+                {resendMessage}
+              </div>
+            )}
+
+            <button
+              onClick={handleResendEmail}
+              disabled={resendLoading}
+              className="w-full py-2 px-4 bg-purple-600/20 hover:bg-purple-600/30 disabled:opacity-50 border border-purple-500/50 rounded-lg text-purple-300 text-sm font-medium transition"
+            >
+              {resendLoading ? 'Envoi en cours...' : '🔄 Renvoyer l\'email'}
+            </button>
+
+            <p className="text-gray-500 text-xs">
+              Vous pouvez vous connecter une fois que vous avez confirmé votre email.
+            </p>
           </div>
         </div>
       </div>

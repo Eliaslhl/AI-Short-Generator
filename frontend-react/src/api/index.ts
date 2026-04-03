@@ -23,6 +23,9 @@ export const authApi = {
     window.location.href = `${client.defaults.baseURL}/auth/google`
   },
 
+  resendConfirmationEmail: (email: string): Promise<AxiosResponse<{ message: string }>> =>
+    client.post('/auth/resend-confirmation-email', { email }),
+
   createCheckout: (priceId: string): Promise<AxiosResponse<CheckoutResponse>> =>
     client.post('/auth/stripe/checkout', { price_id: priceId }),
 

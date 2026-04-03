@@ -70,14 +70,16 @@ export default function DashboardPage() {
   const generationLimit = getGenerationLimit(user, platform)
   const generationsLeft = getGenerationsLeft(user, platform)
   
-  // Get all platform counts for combo display
-  const subscriptionType = user?.subscription_type
-  const showYouTube = subscriptionType === 'youtube' || subscriptionType === 'combo'
-  const showTwitch = subscriptionType === 'twitch' || subscriptionType === 'combo'
+  // Get all platform counts for combo/multi-platform display
   const youtubeLeft = user ? getGenerationsLeft(user, 'youtube') : 0
   const youtubeLimit = user ? getGenerationLimit(user, 'youtube') : 2
   const twitchLeft = user ? getGenerationsLeft(user, 'twitch') : 0
   const twitchLimit = user ? getGenerationLimit(user, 'twitch') : 2
+  
+  // Determine what to show based on subscription_type
+  const subscriptionType = user?.subscription_type
+  const showYouTube = !subscriptionType || subscriptionType === 'youtube' || subscriptionType === 'combo'
+  const showTwitch = subscriptionType === 'twitch' || subscriptionType === 'combo'
   
   const totalClips = history.reduce((acc, j) => acc + (j.clips_count ?? 0), 0)
 
@@ -116,17 +118,17 @@ export default function DashboardPage() {
             <>
               <p className={`text-sm mb-3 ${planConfig.textClass}`}>
                 {showYouTube && (
-                  <>
+                  <span>
                     🎬 YouTube: <span className="text-white font-semibold">{youtubeLeft}</span>/{youtubeLimit}
-                  </>
+                  </span>
                 )}
-                {showYouTube && showTwitch && <span className="mx-1">|</span>}
+                {showYouTube && showTwitch && <span className="mx-2">•</span>}
                 {showTwitch && (
-                  <>
+                  <span>
                     🎮 Twitch: <span className="text-white font-semibold">{twitchLeft}</span>/{twitchLimit}
-                  </>
+                  </span>
                 )}
-                {' videos left this month'}
+                <span className="block mt-2">videos left this month</span>
               </p>
               {/* Cancel subscription */}
               {!cancelConfirm ? (

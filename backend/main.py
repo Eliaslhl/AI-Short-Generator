@@ -157,11 +157,9 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
-# Add security headers middleware
-app.add_middleware(SecurityHeadersMiddleware)
-
 # Allow the frontend dev server and production origins to call the API.
 # NOTE: allow_credentials=True requires explicit origins (not "*").
+# ⚠️  IMPORTANT: CORS middleware MUST be added FIRST (before other middlewares)
 ALLOWED_ORIGINS = [
     "http://localhost:5173",  # Vite dev server
     "http://localhost:4173",  # Vite preview
@@ -188,6 +186,9 @@ app.add_middleware(
     expose_headers=["Content-Length", "Content-Range"],
     max_age=86400,  # Cache CORS preflight for 24 hours
 )
+
+# Add security headers middleware (AFTER CORS)
+app.add_middleware(SecurityHeadersMiddleware)
 
 # ──────────────────────────────────────────────
 #  Static files

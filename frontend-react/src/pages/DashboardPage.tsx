@@ -118,15 +118,14 @@ export default function DashboardPage() {
             <>
               <p className={`text-sm mb-3 ${planConfig.textClass}`}>
                 {showYouTube && (
-                  <span>
+                  <div>
                     🎬 YouTube: <span className="text-white font-semibold">{youtubeLeft}</span>/{youtubeLimit}
-                  </span>
+                  </div>
                 )}
-                {showYouTube && showTwitch && <span className="mx-2">•</span>}
                 {showTwitch && (
-                  <span>
+                  <div>
                     🎮 Twitch: <span className="text-white font-semibold">{twitchLeft}</span>/{twitchLimit}
-                  </span>
+                  </div>
                 )}
                 <span className="block mt-2">videos left this month</span>
               </p>

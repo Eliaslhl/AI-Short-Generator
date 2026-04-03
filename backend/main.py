@@ -30,6 +30,8 @@ from fastapi.responses import Response, JSONResponse  # noqa: E402
 from slowapi import Limiter, _rate_limit_exceeded_handler  # noqa: E402
 from slowapi.util import get_remote_address  # noqa: E402
 from slowapi.errors import RateLimitExceeded  # noqa: E402
+from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
+from starlette.requests import Request  # noqa: E402
 
 from backend.api.routes import router  # noqa: E402
 from backend.auth.router import router as auth_router  # noqa: E402
@@ -51,6 +53,63 @@ logger = logging.getLogger(__name__)
 #  Sensitive routes (login, register) use stricter limits defined inline.
 # ──────────────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
+
+
+# ──────────────────────────────────────────────
+#  Security Headers Middleware
+# ──────────────────────────────────────────────
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses."""
+    
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        
+        # Prevent MIME type sniffing
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        
+        # Enable XSS protection (older browsers)
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        
+        # Prevent clickjacking
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        
+        # Referrer Policy: Only send referrer to same-origin
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        
+        # Permissions Policy (formerly Feature Policy)
+        response.headers["Permissions-Policy"] = (
+            "accelerometer=(), "
+            "ambient-light-sensor=(), "
+            "camera=(), "
+            "geolocation=(), "
+            "gyroscope=(), "
+            "magnetometer=(), "
+            "microphone=(), "
+            "payment=(), "
+            "usb=()"
+        )
+        
+        # Content Security Policy (strict)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "font-src 'self' data:; "
+            "connect-src 'self' https:; "
+            "frame-ancestors 'self'; "
+            "base-uri 'self'; "
+            "form-action 'self'; "
+            "upgrade-insecure-requests"
+        )
+        
+        # Strict Transport Security (HSTS) - 1 year
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains; preload"
+        )
+        
+        return response
+
 
 
 # ──────────────────────────────────────────────
@@ -98,6 +157,9 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
+# Add security headers middleware
+app.add_middleware(SecurityHeadersMiddleware)
+
 # Allow the frontend dev server and production origins to call the API.
 # NOTE: allow_credentials=True requires explicit origins (not "*").
 ALLOWED_ORIGINS = [
@@ -115,8 +177,16 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Explicit methods instead of "*"
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+    ],  # Explicit headers instead of "*"
+    expose_headers=["Content-Length", "Content-Range"],
+    max_age=86400,  # Cache CORS preflight for 24 hours
 )
 
 # ──────────────────────────────────────────────

@@ -105,6 +105,10 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class ConfirmEmailRequest(BaseModel):
+    token: str
+
+
 class UserResponse(BaseModel):
     id: str
     email: str
@@ -167,13 +171,13 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
     logger.info(f"New user registered (awaiting email confirmation): {user.email}")
 
-    # Send confirmation email
+    # Send confirmation email (non-blocking - don't fail if email service down)
     try:
         await send_confirmation_email(user.email, confirmation_token)
     except Exception as exc:
-        logger.error(f"Failed to send confirmation email: {exc}")
-        # Don't block registration if email fails
-        raise HTTPException(status_code=500, detail="Failed to send confirmation email")
+        logger.error(f"Failed to send confirmation email to {user.email}: {exc}")
+        # Continue anyway - user can try resending later
+        # Don't raise exception, registration is still successful
 
     return {
         "message": "Registration successful! Please check your email to confirm your address.",
@@ -217,8 +221,9 @@ async def me(user: User = Depends(get_current_user)):
 
 # ── Confirm Email ─────────────────────────────────────────────────────────────
 @router.post("/confirm-email", response_model=dict)
-async def confirm_email(token: str, db: AsyncSession = Depends(get_db)):
+async def confirm_email(body: ConfirmEmailRequest, db: AsyncSession = Depends(get_db)):
     """Verify email confirmation token and activate user account."""
+    token = body.token
     # Find the confirmation token
     result = await db.execute(
         select(EmailConfirmationToken).where(
@@ -585,6 +590,74 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
             )
 
     return {"status": "ok"}
+
+
+# ── Resend Confirmation Email ─────────────────────────────────────────────────
+class ResendConfirmationRequest(BaseModel):
+    email: EmailStr
+
+
+@router.post("/resend-confirmation-email")
+async def resend_confirmation_email(
+    body: ResendConfirmationRequest, db: AsyncSession = Depends(get_db)
+):
+    """Resend email confirmation link to user."""
+    # Find the user
+    result = await db.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        # Don't reveal if user exists (security best practice)
+        return {
+            "message": "If an account exists, a confirmation email will be sent.",
+            "email": body.email
+        }
+    
+    # If already verified, no need to resend
+    if user.is_verified:
+        return {
+            "message": "Your email is already verified!",
+            "email": body.email
+        }
+    
+    # Create a new confirmation token (invalidating old ones)
+    confirmation_token = secrets.token_urlsafe(48)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+    
+    # Mark old tokens as used
+    result = await db.execute(
+        select(EmailConfirmationToken).where(
+            EmailConfirmationToken.user_id == user.id,
+            ~EmailConfirmationToken.used
+        )
+    )
+    old_tokens = result.scalars().all()
+    for token in old_tokens:
+        token.used = True
+        db.add(token)
+    
+    # Create new token
+    email_token = EmailConfirmationToken(
+        email=body.email,
+        token=confirmation_token,
+        expires_at=expires_at,
+        user_id=user.id,
+        used=False
+    )
+    db.add(email_token)
+    await db.commit()
+    
+    # Send confirmation email
+    try:
+        await send_confirmation_email(body.email, confirmation_token)
+        logger.info(f"Confirmation email resent to: {body.email}")
+    except Exception as exc:
+        logger.error(f"Failed to resend confirmation email: {exc}")
+    
+    return {
+        "message": "If an account exists, a confirmation email will be sent.",
+        "email": body.email
+    }
 
 
 # ── Forgot password ───────────────────────────────────────────────────────────

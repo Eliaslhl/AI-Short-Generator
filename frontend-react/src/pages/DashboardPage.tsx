@@ -76,10 +76,10 @@ export default function DashboardPage() {
   const twitchLeft = user ? getGenerationsLeft(user, 'twitch') : 0
   const twitchLimit = user ? getGenerationLimit(user, 'twitch') : 2
   
-  // Determine what to show based on subscription_type
-  const subscriptionType = user?.subscription_type
-  const showYouTube = !subscriptionType || subscriptionType === 'youtube' || subscriptionType === 'combo'
-  const showTwitch = subscriptionType === 'twitch' || subscriptionType === 'combo'
+  // For paid plans, always show both YouTube and Twitch
+  // For free, only show YouTube
+  const showYouTube = effectivePlan !== 'free'
+  const showTwitch = effectivePlan !== 'free'
   
   const totalClips = history.reduce((acc, j) => acc + (j.clips_count ?? 0), 0)
 

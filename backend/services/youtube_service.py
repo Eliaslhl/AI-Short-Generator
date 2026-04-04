@@ -90,6 +90,8 @@ def _write_cookies_file() -> str | None:
     Returns the path to the cookie file, or None if not configured.
     """
     # Primary single-variable form (preferred)
+    source_mode = "single"
+    part_debug: list[tuple[str, int]] = []
     b64_raw = os.environ.get("YOUTUBE_COOKIES_B64", "")
     b64 = _extract_b64_from_single_env_value(b64_raw)
 
@@ -115,8 +117,10 @@ def _write_cookies_file() -> str | None:
             for _, key, val in parts:
                 v = _sanitize_b64_fragment(val)
                 sanitized_parts.append(v)
+                part_debug.append((key, len(v)))
 
             b64 = "".join(sanitized_parts)
+            source_mode = f"parts:{len(sanitized_parts)}"
 
             # Detect likely-mistake: storing hex hashes instead of raw base64 parts
             # If the concatenated value contains only hex chars and is reasonably long,
@@ -166,7 +170,16 @@ def _write_cookies_file() -> str | None:
             pass
         return tmp.name
     except Exception as exc:
-        logger.warning(f"Could not decode YOUTUBE_COOKIES_B64: {exc}")
+        if part_debug:
+            meta = ", ".join([f"{k}={n}" for k, n in part_debug])
+            logger.warning(
+                f"Could not decode YOUTUBE_COOKIES_B64 (source={source_mode}, total_len={len(b64)}): {exc}. "
+                f"Detected parts: {meta}"
+            )
+        else:
+            logger.warning(
+                f"Could not decode YOUTUBE_COOKIES_B64 (source={source_mode}, total_len={len(b64)}): {exc}"
+            )
         return None
 
 

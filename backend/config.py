@@ -126,6 +126,12 @@ class Settings(BaseSettings):
     # If >0, pass --concurrent-fragments N to yt-dlp (useful for HLS/DASH)
     ytdlp_concurrent_fragments: int = 0
 
+    # Optional outbound proxy for yt-dlp (recommended for strict bot-checks
+    # on datacenter IPs). Example: http://user:pass@host:port
+    ytdlp_proxy_url: str = ""
+    # Force IPv4 for yt-dlp requests (can help on some hosts/networks).
+    ytdlp_force_ipv4: bool = True
+
     # Timeout (seconds) for yt-dlp subprocess downloads. Increase if you
     # regularly download long VODs or slow streams. Default 3600 (1 hour).
     ytdlp_download_timeout: int = 3600

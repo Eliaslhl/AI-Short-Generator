@@ -24,6 +24,56 @@ _YTDLP_BIN = _VENV_BIN / "yt-dlp"
 
 logger = logging.getLogger(__name__)
 
+_IMPERSONATE_TARGET_CACHE: str | None = None
+_IMPERSONATE_TARGET_CHECKED = False
+
+
+def _resolve_impersonate_target() -> str | None:
+    """Return an available yt-dlp impersonation target, or None if unavailable."""
+    global _IMPERSONATE_TARGET_CACHE, _IMPERSONATE_TARGET_CHECKED
+    if _IMPERSONATE_TARGET_CHECKED:
+        return _IMPERSONATE_TARGET_CACHE
+
+    _IMPERSONATE_TARGET_CHECKED = True
+    preferred = os.environ.get("YTDLP_IMPERSONATE_TARGET", "chrome").strip() or "chrome"
+    try:
+        proc = subprocess.run(
+            [str(_YTDLP_BIN), "--list-impersonate-targets"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=8,
+        )
+        output = f"{proc.stdout or ''}\n{proc.stderr or ''}".strip()
+        if proc.returncode != 0 or not output:
+            logger.info("yt-dlp impersonation targets unavailable in current runtime; skipping --impersonate fallbacks.")
+            _IMPERSONATE_TARGET_CACHE = None
+            return None
+
+        # If preferred target appears in output, use it.
+        if preferred.lower() in output.lower():
+            _IMPERSONATE_TARGET_CACHE = preferred
+            logger.info(f"Using yt-dlp impersonation target: {preferred}")
+            return _IMPERSONATE_TARGET_CACHE
+
+        # Fallback: select first plausible token from output lines.
+        for raw in output.splitlines():
+            line = raw.strip()
+            if not line or line.startswith("Available") or line.startswith("-"):
+                continue
+            token = line.split()[0].strip()
+            if re.match(r"^[A-Za-z0-9._-]+$", token):
+                _IMPERSONATE_TARGET_CACHE = token
+                logger.info(f"Using fallback yt-dlp impersonation target: {token}")
+                return _IMPERSONATE_TARGET_CACHE
+
+        _IMPERSONATE_TARGET_CACHE = None
+        return None
+    except Exception as exc:
+        logger.info(f"Could not resolve yt-dlp impersonation targets ({exc}); skipping --impersonate fallbacks.")
+        _IMPERSONATE_TARGET_CACHE = None
+        return None
+
 
 def _has_env_cookies_payload() -> bool:
     """Return True if any env-based cookie payload is configured."""
@@ -513,6 +563,14 @@ def download_video(
     if concurrent_fragments > 0:
         cmd.extend(["--concurrent-fragments", str(concurrent_fragments)])
 
+    # Network-level mitigations for datacenter bot-checks.
+    proxy_url = getattr(settings, "ytdlp_proxy_url", "").strip()
+    if proxy_url:
+        cmd.extend(["--proxy", proxy_url])
+        logger.info("Using yt-dlp outbound proxy for YouTube download")
+    if bool(getattr(settings, "ytdlp_force_ipv4", True)):
+        cmd.append("--force-ipv4")
+
     # Inject YouTube cookies if available (required for datacenter IPs).
     # Support two methods:
     #  - YOUTUBE_COOKIES_FILE: path to a cookies.txt file (preferred)
@@ -603,14 +661,17 @@ def download_video(
     def _retry_botcheck_fallbacks(failed_cmd):
         """Try a few safe yt-dlp variants when YouTube returns bot-check."""
         candidates = []
+        impersonate_target = _resolve_impersonate_target()
 
         # 1) Keep current command and add browser impersonation.
-        candidates.append(("impersonate_chrome", list(failed_cmd) + ["--impersonate", "chrome"]))
+        if impersonate_target:
+            candidates.append((f"impersonate_{impersonate_target}", list(failed_cmd) + ["--impersonate", impersonate_target]))
 
         # 2) If JS flags were enabled, try without them + impersonation.
         no_js = _strip_js_flags(failed_cmd)
         if no_js != list(failed_cmd):
-            candidates.append(("no_js_plus_impersonate_chrome", no_js + ["--impersonate", "chrome"]))
+            if impersonate_target:
+                candidates.append((f"no_js_plus_impersonate_{impersonate_target}", no_js + ["--impersonate", impersonate_target]))
             # 3) Also try no-js without impersonation (some setups behave better).
             candidates.append(("no_js", no_js))
 
@@ -621,13 +682,15 @@ def download_video(
             {"--downloader", "--downloader-args", "--concurrent-fragments", "--js-runtimes", "--remote-components"},
         )
         minimal = _set_flag_value(minimal, "--format", "best[ext=mp4]/best")
-        candidates.append(("minimal_plus_impersonate_chrome", minimal + ["--impersonate", "chrome"]))
+        if impersonate_target:
+            candidates.append((f"minimal_plus_impersonate_{impersonate_target}", minimal + ["--impersonate", impersonate_target]))
 
         # 5) Try forcing mobile-like player clients (often more permissive on DC IPs).
         botcheck_clients = getattr(settings, "ytdlp_botcheck_player_clients", "android,web").strip() or "android,web"
         minimal_mobile = list(minimal)
         minimal_mobile.extend(["--extractor-args", f"youtube:player_client={botcheck_clients}"])
-        candidates.append(("minimal_mobile_clients_plus_impersonate", minimal_mobile + ["--impersonate", "chrome"]))
+        if impersonate_target:
+            candidates.append((f"minimal_mobile_clients_plus_impersonate_{impersonate_target}", minimal_mobile + ["--impersonate", impersonate_target]))
 
         # 6) Last local attempt: minimal mobile clients without impersonation.
         candidates.append(("minimal_mobile_clients", minimal_mobile))
@@ -653,6 +716,7 @@ def download_video(
 
     result = None
     tried_impersonate = False
+    direct_impersonate_target = _resolve_impersonate_target()
     try:
         try:
             # If policy is "on_error" and we didn't pre-enable JS flags, attempt
@@ -737,17 +801,22 @@ def download_video(
                                     )
                         if not cookies_file and not tried_impersonate:
                             tried_impersonate = True
-                            logger.info(
-                                "Retrying yt-dlp once with --impersonate chrome to bypass simple bot checks"
-                            )
-                            try:
-                                retry_cmd = base_cmd + ["--impersonate", "chrome"]
-                                result = _run_cmd(retry_cmd)
-                            except subprocess.CalledProcessError as e2:
-                                logger.error(f"yt-dlp retry stderr: {e2.stderr}")
-                                logger.error(f"yt-dlp retry stdout: {e2.stdout}")
+                            if direct_impersonate_target:
+                                logger.info(
+                                    f"Retrying yt-dlp once with --impersonate {direct_impersonate_target} to bypass simple bot checks"
+                                )
+                                try:
+                                    retry_cmd = base_cmd + ["--impersonate", direct_impersonate_target]
+                                    result = _run_cmd(retry_cmd)
+                                except subprocess.CalledProcessError as e2:
+                                    logger.error(f"yt-dlp retry stderr: {e2.stderr}")
+                                    logger.error(f"yt-dlp retry stdout: {e2.stdout}")
+                                    raise RuntimeError(
+                                        f"yt-dlp failed (exit {e2.returncode}): {e2.stderr.strip() or e2.stdout.strip()}"
+                                    )
+                            else:
                                 raise RuntimeError(
-                                    f"yt-dlp failed (exit {e2.returncode}): {e2.stderr.strip() or e2.stdout.strip()}"
+                                    f"yt-dlp failed (exit {e.returncode}): {e.stderr.strip() or e.stdout.strip()}"
                                 )
                         else:
                             raise RuntimeError(
@@ -810,17 +879,22 @@ def download_video(
             # (they should be preferred).
             if not cookies_file and not tried_impersonate:
                 tried_impersonate = True
-                logger.info(
-                    "Retrying yt-dlp once with --impersonate chrome to bypass simple bot checks"
-                )
-                try:
-                    retry_cmd = cmd + ["--impersonate", "chrome"]
-                    result = _run_cmd(retry_cmd)
-                except subprocess.CalledProcessError as e2:
-                    logger.error(f"yt-dlp retry stderr: {e2.stderr}")
-                    logger.error(f"yt-dlp retry stdout: {e2.stdout}")
+                if direct_impersonate_target:
+                    logger.info(
+                        f"Retrying yt-dlp once with --impersonate {direct_impersonate_target} to bypass simple bot checks"
+                    )
+                    try:
+                        retry_cmd = cmd + ["--impersonate", direct_impersonate_target]
+                        result = _run_cmd(retry_cmd)
+                    except subprocess.CalledProcessError as e2:
+                        logger.error(f"yt-dlp retry stderr: {e2.stderr}")
+                        logger.error(f"yt-dlp retry stdout: {e2.stdout}")
+                        raise RuntimeError(
+                            f"yt-dlp failed (exit {e2.returncode}): {e2.stderr.strip() or e2.stdout.strip()}"
+                        )
+                else:
                     raise RuntimeError(
-                        f"yt-dlp failed (exit {e2.returncode}): {e2.stderr.strip() or e2.stdout.strip()}"
+                        f"yt-dlp failed (exit {e.returncode}): {e.stderr.strip() or e.stdout.strip()}"
                     )
             else:
                 # Not a bot/blocking message we recognized and no retry available

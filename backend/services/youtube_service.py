@@ -145,6 +145,18 @@ def _write_cookies_file() -> str | None:
             b64 += "=" * (4 - missing_padding)
 
         decoded_bytes = base64.b64decode(b64, validate=False)
+
+        # Optional integrity check: if provided, ensure decoded cookies payload
+        # matches expected sha256 before using it.
+        expected_sha = os.environ.get("YOUTUBE_COOKIES_SHA256", "").strip().lower()
+        if expected_sha:
+            actual_sha = hashlib.sha256(decoded_bytes).hexdigest().lower()
+            if actual_sha != expected_sha:
+                raise ValueError(
+                    "decoded cookies sha256 mismatch "
+                    f"(expected={expected_sha}, actual={actual_sha})"
+                )
+
         content = decoded_bytes.decode("utf-8")
         # Quick sanity check: expected Netscape cookie format.
         if "\t" not in content or "youtube.com" not in content:
@@ -549,6 +561,96 @@ def download_video(
     def _run_cmd(cmd_list):
         return subprocess.run(cmd_list, capture_output=True, text=True, check=True)
 
+    def _strip_js_flags(cmd_list):
+        """Return command without --js-runtimes/--remote-components pairs."""
+        stripped = []
+        i = 0
+        while i < len(cmd_list):
+            token = cmd_list[i]
+            if token in ("--js-runtimes", "--remote-components"):
+                i += 2  # skip flag + value
+                continue
+            stripped.append(token)
+            i += 1
+        return stripped
+
+    def _strip_flags_with_values(cmd_list, flags):
+        """Remove known <flag value> pairs from a yt-dlp command list."""
+        stripped = []
+        i = 0
+        while i < len(cmd_list):
+            token = cmd_list[i]
+            if token in flags:
+                i += 2
+                continue
+            stripped.append(token)
+            i += 1
+        return stripped
+
+    def _set_flag_value(cmd_list, flag, value):
+        """Set or append a <flag value> pair in command list."""
+        out = list(cmd_list)
+        try:
+            idx = out.index(flag)
+            if idx + 1 < len(out):
+                out[idx + 1] = value
+            else:
+                out.append(value)
+        except ValueError:
+            out.extend([flag, value])
+        return out
+
+    def _retry_botcheck_fallbacks(failed_cmd):
+        """Try a few safe yt-dlp variants when YouTube returns bot-check."""
+        candidates = []
+
+        # 1) Keep current command and add browser impersonation.
+        candidates.append(("impersonate_chrome", list(failed_cmd) + ["--impersonate", "chrome"]))
+
+        # 2) If JS flags were enabled, try without them + impersonation.
+        no_js = _strip_js_flags(failed_cmd)
+        if no_js != list(failed_cmd):
+            candidates.append(("no_js_plus_impersonate_chrome", no_js + ["--impersonate", "chrome"]))
+            # 3) Also try no-js without impersonation (some setups behave better).
+            candidates.append(("no_js", no_js))
+
+        # 4) Minimal network/profile variant: remove aggressive downloader flags
+        # and simplify format to reduce challenge-triggering behavior.
+        minimal = _strip_flags_with_values(
+            no_js,
+            {"--downloader", "--downloader-args", "--concurrent-fragments", "--js-runtimes", "--remote-components"},
+        )
+        minimal = _set_flag_value(minimal, "--format", "best[ext=mp4]/best")
+        candidates.append(("minimal_plus_impersonate_chrome", minimal + ["--impersonate", "chrome"]))
+
+        # 5) Try forcing mobile-like player clients (often more permissive on DC IPs).
+        botcheck_clients = getattr(settings, "ytdlp_botcheck_player_clients", "android,web").strip() or "android,web"
+        minimal_mobile = list(minimal)
+        minimal_mobile.extend(["--extractor-args", f"youtube:player_client={botcheck_clients}"])
+        candidates.append(("minimal_mobile_clients_plus_impersonate", minimal_mobile + ["--impersonate", "chrome"]))
+
+        # 6) Last local attempt: minimal mobile clients without impersonation.
+        candidates.append(("minimal_mobile_clients", minimal_mobile))
+
+        seen = set()
+        deduped = []
+        for name, c in candidates:
+            key = tuple(c)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append((name, c))
+
+        for idx, (name, c) in enumerate(deduped, start=1):
+            logger.info(f"Bot-check fallback attempt {idx}/{len(deduped)}: {name}")
+            try:
+                return _run_cmd(c)
+            except subprocess.CalledProcessError as e_fb:
+                logger.error(f"yt-dlp fallback stderr ({name}): {e_fb.stderr}")
+                logger.error(f"yt-dlp fallback stdout ({name}): {e_fb.stdout}")
+
+        raise RuntimeError("Bot-check persisted after impersonation/JS fallback attempts.")
+
     result = None
     tried_impersonate = False
     try:
@@ -599,37 +701,40 @@ def download_video(
                             "cookies",
                         ]
                         if any(m in stderr or m in stdout for m in bot_block_msgs):
-                            # Bot-check detected. Try to auto-refresh cookies and retry
-                            # (if Playwright refresher is available and rate-limit allows).
+                            # Bot-check detected. Try local yt-dlp fallbacks first,
+                            # then auto-refresh if enabled.
                             try:
-                                if _is_auto_refresh_enabled():
-                                    logger.info(f"Bot-check detected; attempting auto-refresh and retry for job {job_id}")
-                                    result = _auto_refresh_and_retry_download(base_cmd, job_id, youtube_url)
-                                else:
-                                    raise RuntimeError(
-                                        "Bot-check detected and auto-refresh is disabled. "
-                                        "Please configure valid YouTube cookies."
-                                    )
+                                result = _retry_botcheck_fallbacks(base_cmd)
                             except RuntimeError as auto_refresh_err:
-                                # Auto-refresh failed or was rate-limited. Provide helpful error message.
-                                help_msg = (
-                                    "yt-dlp a renvoyé une erreur indiquant que YouTube demande une vérification ("
-                                    "'Sign in to confirm you're not a bot'). Cela arrive souvent depuis des IP de datacenter ou "
-                                    "lorsque YouTube exige une session authentifiée."
-                                )
-                                suggestions = (
-                                    "Options pour résoudre le problème:\n"
-                                    '  1) Fournir des cookies YouTube exportés depuis votre navigateur via la variable d\'environnement "YOUTUBE_COOKIES_B64".\n'
-                                    "     - Exportez (ex: via l'extension 'EditThisCookie' ou 'cookies.txt') puis encodez en base64: \n"
-                                    "         cat cookies.txt | base64 | pbcopy  # macOS (copie dans le presse-papier)\n"
-                                    "       Puis définissez la variable d'environnement avant de démarrer le service:\n"
-                                    '         export YOUTUBE_COOKIES_B64="<contenu_base64>"\n'
-                                    "  2) Activer le rafraîchissement automatique des cookies via Playwright (YOUTUBE_ENABLE_AUTO_REFRESH=true).\n"
-                                    "  3) Voir la doc yt-dlp pour passer des cookies: https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp\n"
-                                )
-                                raise RuntimeError(
-                                    f"yt-dlp failed and auto-refresh failed: {str(auto_refresh_err)}\n\n{help_msg}\n\n{suggestions}"
-                                )
+                                try:
+                                    if _is_auto_refresh_enabled():
+                                        logger.info(f"Bot-check detected; attempting auto-refresh and retry for job {job_id}")
+                                        result = _auto_refresh_and_retry_download(base_cmd, job_id, youtube_url)
+                                    else:
+                                        raise RuntimeError(
+                                            "Bot-check detected and auto-refresh is disabled. "
+                                            "Please configure valid YouTube cookies."
+                                        )
+                                except RuntimeError as refresh_err:
+                                    # Fallback + auto-refresh failed (or disabled): provide actionable message.
+                                    help_msg = (
+                                        "yt-dlp a renvoyé une erreur indiquant que YouTube demande une vérification ("
+                                        "'Sign in to confirm you're not a bot'). Cela arrive souvent depuis des IP de datacenter ou "
+                                        "lorsque YouTube exige une session authentifiée."
+                                    )
+                                    suggestions = (
+                                        "Options pour résoudre le problème:\n"
+                                        '  1) Fournir des cookies YouTube exportés depuis votre navigateur via la variable d\'environnement "YOUTUBE_COOKIES_B64".\n'
+                                        "     - Exportez (ex: via l'extension 'EditThisCookie' ou 'cookies.txt') puis encodez en base64: \n"
+                                        "         cat cookies.txt | base64 | pbcopy  # macOS (copie dans le presse-papier)\n"
+                                        "       Puis définissez la variable d'environnement avant de démarrer le service:\n"
+                                        '         export YOUTUBE_COOKIES_B64="<contenu_base64>"\n'
+                                        "  2) Activer le rafraîchissement automatique des cookies via Playwright (YOUTUBE_ENABLE_AUTO_REFRESH=true).\n"
+                                        "  3) Voir la doc yt-dlp pour passer des cookies: https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp\n"
+                                    )
+                                    raise RuntimeError(
+                                        f"yt-dlp failed after bot-check fallbacks ({str(auto_refresh_err)}) and auto-refresh failed: {str(refresh_err)}\n\n{help_msg}\n\n{suggestions}"
+                                    )
                         if not cookies_file and not tried_impersonate:
                             tried_impersonate = True
                             logger.info(
@@ -665,37 +770,40 @@ def download_video(
                 "cookies",
             ]
             if any(m in stderr or m in stdout for m in bot_block_msgs):
-                # Bot-check detected. Try to auto-refresh cookies and retry
-                # (if Playwright refresher is available and rate-limit allows).
+                # Bot-check detected. Try local yt-dlp fallbacks first,
+                # then auto-refresh if enabled.
                 try:
-                    if _is_auto_refresh_enabled():
-                        logger.info(f"Bot-check detected; attempting auto-refresh and retry for job {job_id}")
-                        result = _auto_refresh_and_retry_download(cmd, job_id, youtube_url)
-                    else:
-                        raise RuntimeError(
-                            "Bot-check detected and auto-refresh is disabled. "
-                            "Please configure valid YouTube cookies."
-                        )
+                    result = _retry_botcheck_fallbacks(cmd)
                 except RuntimeError as auto_refresh_err:
-                    # Auto-refresh failed or was rate-limited. Provide helpful error message.
-                    help_msg = (
-                        "yt-dlp a renvoyé une erreur indiquant que YouTube demande une vérification ("
-                        "'Sign in to confirm you're not a bot'). Cela arrive souvent depuis des IP de datacenter ou "
-                        "lorsque YouTube exige une session authentifiée."
-                    )
-                    suggestions = (
-                        "Options pour résoudre le problème:\n"
-                        '  1) Fournir des cookies YouTube exportés depuis votre navigateur via la variable d\'environnement "YOUTUBE_COOKIES_B64".\n'
-                        "     - Exportez (ex: via l'extension 'EditThisCookie' ou 'cookies.txt') puis encodez en base64: \n"
-                        "         cat cookies.txt | base64 | pbcopy  # macOS (copie dans le presse-papier)\n"
-                        "       Puis définissez la variable d'environnement avant de démarrer le service:\n"
-                        '         export YOUTUBE_COOKIES_B64="<contenu_base64>"\n'
-                        "  2) Activer le rafraîchissement automatique des cookies via Playwright (YOUTUBE_ENABLE_AUTO_REFRESH=true).\n"
-                        "  3) Voir la doc yt-dlp pour passer des cookies: https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp\n"
-                    )
-                    raise RuntimeError(
-                        f"yt-dlp failed and auto-refresh failed: {str(auto_refresh_err)}\n\n{help_msg}\n\n{suggestions}"
-                    )
+                    try:
+                        if _is_auto_refresh_enabled():
+                            logger.info(f"Bot-check detected; attempting auto-refresh and retry for job {job_id}")
+                            result = _auto_refresh_and_retry_download(cmd, job_id, youtube_url)
+                        else:
+                            raise RuntimeError(
+                                "Bot-check detected and auto-refresh is disabled. "
+                                "Please configure valid YouTube cookies."
+                            )
+                    except RuntimeError as refresh_err:
+                        # Fallback + auto-refresh failed (or disabled): provide actionable message.
+                        help_msg = (
+                            "yt-dlp a renvoyé une erreur indiquant que YouTube demande une vérification ("
+                            "'Sign in to confirm you're not a bot'). Cela arrive souvent depuis des IP de datacenter ou "
+                            "lorsque YouTube exige une session authentifiée."
+                        )
+                        suggestions = (
+                            "Options pour résoudre le problème:\n"
+                            '  1) Fournir des cookies YouTube exportés depuis votre navigateur via la variable d\'environnement "YOUTUBE_COOKIES_B64".\n'
+                            "     - Exportez (ex: via l'extension 'EditThisCookie' ou 'cookies.txt') puis encodez en base64: \n"
+                            "         cat cookies.txt | base64 | pbcopy  # macOS (copie dans le presse-papier)\n"
+                            "       Puis définissez la variable d'environnement avant de démarrer le service:\n"
+                            '         export YOUTUBE_COOKIES_B64="<contenu_base64>"\n'
+                            "  2) Activer le rafraîchissement automatique des cookies via Playwright (YOUTUBE_ENABLE_AUTO_REFRESH=true).\n"
+                            "  3) Voir la doc yt-dlp pour passer des cookies: https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp\n"
+                        )
+                        raise RuntimeError(
+                            f"yt-dlp failed after bot-check fallbacks ({str(auto_refresh_err)}) and auto-refresh failed: {str(refresh_err)}\n\n{help_msg}\n\n{suggestions}"
+                        )
 
             # Otherwise attempt a single retry with impersonation which can help
             # for some extractor blocks. Don't do this if user provided cookies

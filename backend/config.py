@@ -111,6 +111,11 @@ class Settings(BaseSettings):
     #                       JS-challenge-related error is detected
     ytdlp_enable_js: str = "when_cookies"
 
+    # Fallback player clients to try when YouTube returns bot-check.
+    # Passed as: --extractor-args "youtube:player_client=<value>"
+    # Example values: "android,web" or "ios,android,web"
+    ytdlp_botcheck_player_clients: str = "android,web"
+
     # ---------- yt-dlp download tuning (performance) ----------
     # External downloader to use with yt-dlp (e.g. "aria2c"). Leave empty
     # to use yt-dlp internal downloader. Using aria2c (with tuned args)

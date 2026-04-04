@@ -43,13 +43,55 @@ def _is_auto_refresh_enabled() -> bool:
     )
 
 
+def _sanitize_b64_fragment(raw: str) -> str:
+    """Sanitize a base64 fragment pasted from env UIs."""
+    v = (raw or "").strip()
+    if not v:
+        return ""
+    if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+        v = v[1:-1]
+    if v.lower().startswith("base64:"):
+        v = v.split(":", 1)[1]
+    # Handle accidental KEY=VALUE paste
+    if "=" in v and ("YOUTUBE_COOKIES_B64" in v or "YOUTUBE_COOKIES_B64_PART_" in v):
+        v = v.split("=", 1)[1].strip()
+    return v
+
+
+def _extract_b64_from_single_env_value(raw_value: str) -> str:
+    """Extract base64 from YOUTUBE_COOKIES_B64 value, including malformed pasted blobs."""
+    v = _sanitize_b64_fragment(raw_value)
+    if not v:
+        return ""
+
+    # If user pasted a block containing PART_n lines inside one variable,
+    # rebuild by sorting extracted PART numbers.
+    if "YOUTUBE_COOKIES_B64_PART_" in v:
+        matches = re.findall(
+            r"YOUTUBE_COOKIES_B64_PART_(\d+)\s*=\s*([A-Za-z0-9+/=]+)",
+            v,
+            flags=re.IGNORECASE,
+        )
+        if matches:
+            matches.sort(key=lambda t: int(t[0]))
+            return "".join(_sanitize_b64_fragment(val) for _, val in matches)
+
+    # If user pasted "YOUTUBE_COOKIES_B64=<value>" inside the variable.
+    m = re.search(r"YOUTUBE_COOKIES_B64\s*=\s*([A-Za-z0-9+/=]+)", v, flags=re.IGNORECASE)
+    if m:
+        return m.group(1)
+
+    return v
+
+
 def _write_cookies_file() -> str | None:
     """
     Decode the YOUTUBE_COOKIES_B64 env var and write to a temp file.
     Returns the path to the cookie file, or None if not configured.
     """
     # Primary single-variable form (preferred)
-    b64 = os.environ.get("YOUTUBE_COOKIES_B64", "").strip()
+    b64_raw = os.environ.get("YOUTUBE_COOKIES_B64", "")
+    b64 = _extract_b64_from_single_env_value(b64_raw)
 
     # Support Rails-like platforms that limit env var size by allowing the
     # cookie file to be split across multiple smaller env vars named
@@ -71,12 +113,7 @@ def _write_cookies_file() -> str | None:
             # Sanitize parts: remove accidental surrounding quotes and whitespace
             sanitized_parts = []
             for _, key, val in parts:
-                v = val.strip()
-                if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
-                    v = v[1:-1]
-                # remove common prefixes (in case someone pasted "base64:" prefix)
-                if v.lower().startswith("base64:"):
-                    v = v.split("base64:", 1)[1]
+                v = _sanitize_b64_fragment(val)
                 sanitized_parts.append(v)
 
             b64 = "".join(sanitized_parts)
@@ -94,7 +131,7 @@ def _write_cookies_file() -> str | None:
     if not b64:
         return None
     try:
-        # Normalize accidental whitespace/newlines and keep only base64 chars.
+    # Normalize accidental whitespace/newlines and keep only base64 chars.
         # This helps when values were pasted with formatting artifacts.
         b64 = re.sub(r"\s+", "", b64)
         b64 = re.sub(r"[^A-Za-z0-9+/=]", "", b64)

@@ -35,6 +35,14 @@ def _has_env_cookies_payload() -> bool:
     return False
 
 
+def _is_auto_refresh_enabled() -> bool:
+    return os.environ.get("YOUTUBE_ENABLE_AUTO_REFRESH", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
 def _write_cookies_file() -> str | None:
     """
     Decode the YOUTUBE_COOKIES_B64 env var and write to a temp file.
@@ -251,6 +259,12 @@ def _auto_refresh_and_retry_download(
     
     Returns the result of the retry yt-dlp run, or raises RuntimeError if refresh/retry fails.
     """
+    if not _is_auto_refresh_enabled():
+        raise RuntimeError(
+            "Auto-refresh is disabled (YOUTUBE_ENABLE_AUTO_REFRESH is not true). "
+            "Provide valid YOUTUBE_COOKIES_B64/YOUTUBE_COOKIES_B64_PART_* cookies instead."
+        )
+
     # Rate-limit: check if we've attempted auto-refresh for this job recently
     last_refresh = _AUTOREFRESH_RATELIMIT_CACHE.get(job_id, 0)
     now = time.time()
@@ -538,8 +552,14 @@ def download_video(
                             # Bot-check detected. Try to auto-refresh cookies and retry
                             # (if Playwright refresher is available and rate-limit allows).
                             try:
-                                logger.info(f"Bot-check detected; attempting auto-refresh and retry for job {job_id}")
-                                result = _auto_refresh_and_retry_download(base_cmd, job_id, youtube_url)
+                                if _is_auto_refresh_enabled():
+                                    logger.info(f"Bot-check detected; attempting auto-refresh and retry for job {job_id}")
+                                    result = _auto_refresh_and_retry_download(base_cmd, job_id, youtube_url)
+                                else:
+                                    raise RuntimeError(
+                                        "Bot-check detected and auto-refresh is disabled. "
+                                        "Please configure valid YouTube cookies."
+                                    )
                             except RuntimeError as auto_refresh_err:
                                 # Auto-refresh failed or was rate-limited. Provide helpful error message.
                                 help_msg = (
@@ -598,8 +618,14 @@ def download_video(
                 # Bot-check detected. Try to auto-refresh cookies and retry
                 # (if Playwright refresher is available and rate-limit allows).
                 try:
-                    logger.info(f"Bot-check detected; attempting auto-refresh and retry for job {job_id}")
-                    result = _auto_refresh_and_retry_download(cmd, job_id, youtube_url)
+                    if _is_auto_refresh_enabled():
+                        logger.info(f"Bot-check detected; attempting auto-refresh and retry for job {job_id}")
+                        result = _auto_refresh_and_retry_download(cmd, job_id, youtube_url)
+                    else:
+                        raise RuntimeError(
+                            "Bot-check detected and auto-refresh is disabled. "
+                            "Please configure valid YouTube cookies."
+                        )
                 except RuntimeError as auto_refresh_err:
                     # Auto-refresh failed or was rate-limited. Provide helpful error message.
                     help_msg = (

@@ -85,18 +85,20 @@ def download_video(twitch_url: str, job_id: str) -> tuple[Path, str]:
     try:
         # Build yt-dlp command
         # Prefer a capped-resolution video to avoid downloading huge VODs
-        # (e.g. 1080p60 -> many GB). Use processing_max_height from settings
-        # to choose a reasonable default (usually 480).
-        # Decide format selection: either capped by processing_max_height
+        # (e.g. 1080p60 -> many GB). Use twitch_processing_max_height from settings
+        # to choose a reasonable default (usually 360p for quick processing).
+        # Decide format selection: either capped by twitch_processing_max_height
         # (default behaviour) or allow full-VOD if explicitly enabled in settings.
         if getattr(settings, "ytdlp_allow_full_vod", False):
             # Full VOD: request best video + best audio and let yt-dlp
             # merge them (may be large). We prefer mp4 ext where possible.
             fmt = "bestvideo[ext=mp4]+bestaudio/best[ext=mp4]/best"
         else:
+            # Use Twitch-specific resolution for fast VOD processing
+            max_height = getattr(settings, "twitch_processing_max_height", settings.processing_max_height)
             fmt = (
-                f"bestvideo[ext=mp4][height<={settings.processing_max_height}]"
-                f"+bestaudio/best[ext=mp4][height<={settings.processing_max_height}]/best[ext=mp4]"
+                f"bestvideo[ext=mp4][height<={max_height}]"
+                f"+bestaudio/best[ext=mp4][height<={max_height}]/best[ext=mp4]"
             )
 
         cmd = [str(_YTDLP_BIN), "--quiet", "-f", fmt, "-o", str(output_template), "--no-warnings"]

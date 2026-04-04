@@ -368,7 +368,9 @@ def download_video(
     if audio_only:
         fmt = "bestaudio"
     else:
-        fmt = f"bestvideo[height<={settings.processing_max_height}]+bestaudio/best"
+        # Use YouTube-specific resolution for high quality shorts
+        max_height = getattr(settings, "youtube_processing_max_height", settings.processing_max_height)
+        fmt = f"bestvideo[height<={max_height}]+bestaudio/best"
 
     cmd = [
         str(_YTDLP_BIN),

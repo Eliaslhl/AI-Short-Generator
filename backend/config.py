@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     # (height in pixels). This speeds decoding and reduces I/O. Keep
     # the original for final exports if you need full quality.
     processing_max_height: int = 480
+    
+    # Platform-specific resolutions for optimal quality/speed tradeoffs:
+    # - YouTube: high quality (1080p) for crisp shorts
+    # - Twitch: lower resolution (360p) to handle huge VODs quickly
+    youtube_processing_max_height: int = 1080
+    twitch_processing_max_height: int = 360
 
     # Two-pass transcription: small/faster model for coarse pass, then
     # a larger model (or same) for refined word-timestamps on candidates.

@@ -287,6 +287,7 @@ export default function GeneratorPage() {
     try {
       const res = await generatorApi.generate(url, maxClips, language, subtitleStyle)
       setStatus({ status: 'pending', progress: 0, step: 'Queued...', clips: [] })
+      void refreshUser()
       localStorage.setItem('has_generated', '1')
       setShowTip(false)
       startPolling(res.data.job_id)

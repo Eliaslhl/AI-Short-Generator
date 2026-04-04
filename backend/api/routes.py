@@ -24,7 +24,7 @@ from sqlalchemy import select
 
 from backend.database import get_db
 from backend.models.user import User, Job
-from backend.auth.dependencies import get_current_user, require_can_generate
+from backend.auth.dependencies import get_current_user
 from backend.services.youtube_service import download_video as download_youtube, _get_cookies_file
 from backend.services.twitch_service import download_video as download_twitch
 from backend.services.twitch_api_client import TwitchAPIClient
@@ -41,6 +41,84 @@ router = APIRouter()
 
 # ── In-memory job store (progress tracking) ─────────────────────────────────
 jobs: Dict[str, Dict[str, Any]] = {}
+
+
+def _detect_platform_from_url(url: str) -> str:
+    return "twitch" if "twitch.tv" in (url or "").lower() else "youtube"
+
+
+def _get_platform_plan(user: User, platform: str):
+    if platform == "twitch":
+        return user.plan_twitch or user.plan
+    return user.plan_youtube or user.plan
+
+
+def _get_platform_limit(user: User, platform: str) -> int:
+    return user.twitch_limit if platform == "twitch" else user.youtube_limit
+
+
+def _get_platform_usage(user: User, platform: str) -> int:
+    return (
+        int(user.twitch_generations_month or 0)
+        if platform == "twitch"
+        else int(user.youtube_generations_month or 0)
+    )
+
+
+def _increment_platform_usage(user: User, platform: str) -> None:
+    if platform == "twitch":
+        user.twitch_generations_month = int(user.twitch_generations_month or 0) + 1
+    else:
+        user.youtube_generations_month = int(user.youtube_generations_month or 0) + 1
+        # Keep legacy field aligned with YouTube for backward compatibility
+        user.generations_this_month = int(user.youtube_generations_month or 0)
+
+
+def _decrement_platform_usage(user: User, platform: str) -> bool:
+    if platform == "twitch":
+        cur = int(user.twitch_generations_month or 0)
+        if cur <= 0:
+            return False
+        user.twitch_generations_month = cur - 1
+        return True
+
+    cur = int(user.youtube_generations_month or 0)
+    if cur <= 0:
+        return False
+    user.youtube_generations_month = cur - 1
+    user.generations_this_month = int(user.youtube_generations_month or 0)
+    return True
+
+
+async def _reset_platform_counter_if_new_month(user: User, db: AsyncSession, platform: str) -> None:
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    last_reset = user.twitch_plan_reset_date if platform == "twitch" else user.youtube_plan_reset_date
+    if last_reset is None:
+        if platform == "twitch":
+            user.twitch_plan_reset_date = now
+        else:
+            user.youtube_plan_reset_date = now
+            user.plan_reset_date = now
+        await db.commit()
+        await db.refresh(user)
+        return
+
+    if last_reset.tzinfo is None:
+        last_reset = last_reset.replace(tzinfo=timezone.utc)
+
+    if (now.year, now.month) > (last_reset.year, last_reset.month):
+        if platform == "twitch":
+            user.twitch_generations_month = 0
+            user.twitch_plan_reset_date = now
+        else:
+            user.youtube_generations_month = 0
+            user.youtube_plan_reset_date = now
+            user.generations_this_month = 0
+            user.plan_reset_date = now
+        await db.commit()
+        await db.refresh(user)
 
 
 def _normalize_clip_for_response(clip: dict, job_id: str) -> dict:
@@ -166,6 +244,7 @@ async def run_pipeline(
     transcription_mode: str | None = None,
 ):
     """Full async pipeline: download → transcribe → score → render."""
+    platform = _detect_platform_from_url(youtube_url)
 
     async def update(progress: int, step: str):
         """Update in-memory status and persist progress to DB.
@@ -318,8 +397,12 @@ async def run_pipeline(
                         # refund credit
                         user_result = await db.execute(select(User).where(User.id == user_id))
                         user_record = user_result.scalar_one_or_none()
-                        if user_record and user_record.generations_this_month > 0:
-                            user_record.generations_this_month -= 1
+                        if user_record:
+                            refunded = _decrement_platform_usage(user_record, platform)
+                            if refunded:
+                                logger.info(
+                                    f"Refunded {platform} generation credit for user {user_id} (job {job_id} failed during render)"
+                                )
                         await db.commit()
                 raise
 
@@ -388,11 +471,12 @@ async def run_pipeline(
                 # ── Refund the generation credit on failure ──────────────────
                 user_result = await db.execute(select(User).where(User.id == user_id))
                 user_record = user_result.scalar_one_or_none()
-                if user_record and user_record.generations_this_month > 0:
-                    user_record.generations_this_month -= 1
-                    logger.info(
-                        f"Refunded generation credit for user {user_id} (job {job_id} failed)"
-                    )
+                if user_record:
+                    refunded = _decrement_platform_usage(user_record, platform)
+                    if refunded:
+                        logger.info(
+                            f"Refunded {platform} generation credit for user {user_id} (job {job_id} failed)"
+                        )
                 await db.commit()
 
 
@@ -428,14 +512,40 @@ async def run_pipeline(
 async def generate(
     request: GenerateRequest,
     background_tasks: BackgroundTasks,
-    user: User = Depends(require_can_generate),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Start a generation job. Requires auth + quota check."""
     job_id = str(uuid.uuid4())[:8]
 
+    platform = _detect_platform_from_url(request.youtube_url)
+    await _reset_platform_counter_if_new_month(user, db, platform)
+
+    usage = _get_platform_usage(user, platform)
+    limit = _get_platform_limit(user, platform)
+    if usage >= limit:
+        plan_obj = _get_platform_plan(user, platform)
+        plan_name = plan_obj.value if hasattr(plan_obj, "value") else str(plan_obj)
+        source_label = "Twitch" if platform == "twitch" else "YouTube"
+        message = (
+            f"You've used all {limit} of your {plan_name} plan generations this month "
+            f"for {source_label}."
+        )
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "error": "quota_exceeded",
+                "message": message,
+                "platform": platform,
+                "limit": limit,
+                "used": usage,
+                "upgrade_url": "/pricing",
+            },
+        )
+
     # Enforce max_clips per plan server-side
-    plan = user.plan.value
+    plan_obj = _get_platform_plan(user, platform)
+    plan = plan_obj.value if hasattr(plan_obj, "value") else str(plan_obj)
     if plan == "proplus":
         allowed_clips = max(1, min(request.max_clips, 20))
     elif plan == "pro":
@@ -456,7 +566,7 @@ async def generate(
     db.add(job_record)
 
     # Increment generation counter
-    user.generations_this_month += 1
+    _increment_platform_usage(user, platform)
     await db.commit()
 
     # Init in-memory progress tracker

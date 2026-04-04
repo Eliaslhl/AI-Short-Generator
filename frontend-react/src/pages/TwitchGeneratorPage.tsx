@@ -237,6 +237,7 @@ export default function TwitchGeneratorPage() {
         subtitleStyle,
         includeSubtitles
       )
+      await refreshUser()
 
       const jobId = response.data.job_id
       localStorage.setItem('has_generated', 'true')

@@ -13,6 +13,8 @@ slowapi==0.1.9
 
 # YouTube download
 yt-dlp==2026.3.3
+# Required by yt-dlp for --impersonate targets in many environments
+curl-cffi==0.7.4
 
 # Audio transcription (local, no API key)
 faster-whisper==1.1.1

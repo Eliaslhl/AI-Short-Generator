@@ -145,7 +145,6 @@ async def send_confirmation_email_safe(email: str, token: str) -> None:
 async def register(
     body: RegisterRequest,
     db: AsyncSession = Depends(get_db),
-    background_tasks: BackgroundTasks = BackgroundTasks()
 ):
     # Check if email already exists
     result = await db.execute(select(User).where(User.email == body.email))
@@ -157,43 +156,29 @@ async def register(
             status_code=400, detail="Password must be at least 8 characters"
         )
 
-    # Create user with is_verified=False (requires email confirmation)
+    # Create user with is_verified=True (account active immediately)
+    # TODO: Re-enable email verification in feature/email-verification branch
     user = User(
         email=body.email,
         hashed_password=hash_password(body.password),
         full_name=body.full_name,
-        is_verified=False,  # Email must be confirmed before using account
+        is_verified=True,  # Account is active immediately (email verification disabled for now)
     )
     db.add(user)
     await db.commit()
     await db.refresh(user)
 
-    # Create confirmation token (24 hours expiry)
-    confirmation_token = secrets.token_urlsafe(48)
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
-    
-    email_token = EmailConfirmationToken(
-        email=body.email,
-        token=confirmation_token,
-        expires_at=expires_at,
-        user_id=user.id,
-        used=False
-    )
-    db.add(email_token)
-    await db.commit()
+    logger.info(f"New user registered: {user.email}")
 
-    logger.info(f"New user registered (awaiting email confirmation): {user.email}")
-
-    # Send confirmation email in background (non-blocking)
-    background_tasks.add_task(
-        send_confirmation_email_safe,
-        user.email,
-        confirmation_token
-    )
+    # Generate JWT token for immediate login
+    token = create_access_token(user.id, user.email)
 
     return {
-        "message": "Registration successful! Please check your email to confirm your address.",
-        "email": user.email
+        "message": "Registration successful! Welcome to AI Shorts Generator.",
+        "email": user.email,
+        "access_token": token,
+        "token_type": "bearer",
+        "user": _user_dict(user)
     }
 
 

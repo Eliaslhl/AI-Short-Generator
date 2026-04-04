@@ -1,18 +1,19 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import { authApi } from '../api'
 import { type AxiosError } from 'axios'
-import { Film, Mail, Lock, User, Chrome, CheckCircle } from 'lucide-react'
+import { Film, Mail, Lock, User, Chrome } from 'lucide-react'
 
 // Auto-login after registration enabled
 export default function RegisterPage() {
   const navigate = useNavigate()
+  const { register: authRegister } = useAuth()
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [registered, setRegistered] = useState(false)
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault()
@@ -23,42 +24,16 @@ export default function RegisterPage() {
     }
     setLoading(true)
     try {
-      const response = await authApi.register(email, password, fullName)
-      // Email verification is now disabled - account is immediately active
-      // If access_token is returned, auto-login the user
-      if (response.data?.access_token) {
-        localStorage.setItem('token', response.data.access_token)
-        // Redirect to dashboard
-        navigate('/dashboard')
-      } else {
-        // Fallback: show success and redirect to login
-        setRegistered(true)
-        setTimeout(() => navigate('/login'), 2000)
-      }
+      // Use the AuthContext register which handles token + user state
+      await authRegister(email, password, fullName)
+      // Navigate to dashboard immediately (user state is already set)
+      navigate('/dashboard')
     } catch (err) {
       const axiosErr = err as AxiosError<{ detail: string }>
       setError(axiosErr.response?.data?.detail ?? "Erreur lors de l'inscription.")
     } finally {
       setLoading(false)
     }
-  }
-
-  if (registered) {
-    return (
-      <div className="min-h-[calc(100vh-64px)] flex items-center justify-center px-4">
-        <div className="w-full max-w-md">
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-8 text-center space-y-4">
-            <div className="flex justify-center">
-              <CheckCircle className="w-16 h-16 text-green-400" />
-            </div>
-            <h1 className="text-2xl font-bold text-white">Bienvenue!</h1>
-            <p className="text-gray-400">
-              Votre compte a été créé avec succès.<br/>Redirection en cours...
-            </p>
-          </div>
-        </div>
-      </div>
-    )
   }
 
   return (

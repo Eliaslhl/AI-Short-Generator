@@ -575,6 +575,8 @@ def download_video(
     proxy_url = getattr(settings, "ytdlp_proxy_url", "").strip()
     if proxy_url:
         cmd.extend(["--proxy", proxy_url])
+        # Some proxies (e.g., Brightdata) use self-signed SSL certificates
+        cmd.append("--no-check-certificates")
         logger.info("Using yt-dlp outbound proxy for YouTube download")
     if bool(getattr(settings, "ytdlp_force_ipv4", True)):
         cmd.append("--force-ipv4")

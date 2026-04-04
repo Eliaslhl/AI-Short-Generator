@@ -22,27 +22,13 @@ def upgrade() -> None:
     """Remove unique constraint from email_confirmation_tokens.email"""
     # Drop unique constraint if it exists (PostgreSQL)
     with op.batch_alter_table('email_confirmation_tokens', schema=None) as batch_op:
-        try:
-            batch_op.drop_constraint('email_confirmation_tokens_email_key', type_='unique')
-        except:
-            pass  # Constraint might not exist in all environments
-        
-        # Ensure email column still has an index for performance
-        try:
-            batch_op.create_index('ix_email_confirmation_tokens_email', ['email'])
-        except:
-            pass  # Index might already exist
+        batch_op.drop_constraint('email_confirmation_tokens_email_key', type_='unique')
+        # Note: Index ix_email_confirmation_tokens_email may already exist
+        # so we don't recreate it
 
 
 def downgrade() -> None:
     """Restore unique constraint on email_confirmation_tokens.email"""
     with op.batch_alter_table('email_confirmation_tokens', schema=None) as batch_op:
-        try:
-            batch_op.drop_index('ix_email_confirmation_tokens_email')
-        except:
-            pass
-        
-        try:
-            batch_op.create_unique_constraint('email_confirmation_tokens_email_key', ['email'])
-        except:
-            pass
+        # Note: We don't need to drop the index as it will be replaced by the unique constraint
+        batch_op.create_unique_constraint('email_confirmation_tokens_email_key', ['email'])

@@ -4,6 +4,7 @@ import { authApi } from '../api'
 import { type AxiosError } from 'axios'
 import { Film, Mail, Lock, User, Chrome, CheckCircle } from 'lucide-react'
 
+// Auto-login after registration enabled
 export default function RegisterPage() {
   const navigate = useNavigate()
   const [fullName, setFullName] = useState('')

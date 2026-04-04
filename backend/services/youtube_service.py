@@ -25,6 +25,16 @@ _YTDLP_BIN = _VENV_BIN / "yt-dlp"
 logger = logging.getLogger(__name__)
 
 
+def _has_env_cookies_payload() -> bool:
+    """Return True if any env-based cookie payload is configured."""
+    if os.environ.get("YOUTUBE_COOKIES_B64", "").strip():
+        return True
+    for k in os.environ.keys():
+        if k.startswith("YOUTUBE_COOKIES_B64_PART_"):
+            return True
+    return False
+
+
 def _write_cookies_file() -> str | None:
     """
     Decode the YOUTUBE_COOKIES_B64 env var and write to a temp file.
@@ -76,7 +86,21 @@ def _write_cookies_file() -> str | None:
     if not b64:
         return None
     try:
-        content = base64.b64decode(b64).decode("utf-8")
+        # Normalize accidental whitespace/newlines and keep only base64 chars.
+        # This helps when values were pasted with formatting artifacts.
+        b64 = re.sub(r"\s+", "", b64)
+        b64 = re.sub(r"[^A-Za-z0-9+/=]", "", b64)
+        # Add missing padding if needed (Railway/UI copy-paste sometimes strips it).
+        missing_padding = len(b64) % 4
+        if missing_padding:
+            b64 += "=" * (4 - missing_padding)
+
+        decoded_bytes = base64.b64decode(b64, validate=False)
+        content = decoded_bytes.decode("utf-8")
+        # Quick sanity check: expected Netscape cookie format.
+        if "\t" not in content or "youtube.com" not in content:
+            raise ValueError("decoded payload is not a valid Netscape YouTube cookies file")
+
         tmp = tempfile.NamedTemporaryFile(
             mode="w", suffix=".txt", delete=False, prefix="yt_cookies_"
         )
@@ -121,9 +145,20 @@ def _get_cookies_file() -> tuple[str | None, bool]:
             logger.warning(f"YOUTUBE_COOKIES_FILE set but file not found: {path}")
 
     # 2) base64-encoded cookies in env var
+    env_payload_present = _has_env_cookies_payload()
     tmp = _write_cookies_file()
     if tmp:
         return tmp, True
+    if env_payload_present:
+        # Important: if env cookies are present but malformed, do NOT silently
+        # fall back to auto-refresh because that frequently writes session
+        # cookies with expires=-1 and causes hard-to-debug failures.
+        logger.error(
+            "YouTube env cookies are present but invalid/undecodable. "
+            "Skipping Playwright auto-refresh fallback. "
+            "Please re-paste YOUTUBE_COOKIES_B64 or YOUTUBE_COOKIES_B64_PART_* values."
+        )
+        return None, False
     
     # If environment allows, attempt an automatic refresh using the
     # Playwright-based refresher script (scripts/refresh_youtube_cookies.py).

@@ -134,6 +134,11 @@ class Settings(BaseSettings):
     ytdlp_proxy_url: str = ""
     # Force IPv4 for yt-dlp requests (can help on some hosts/networks).
     ytdlp_force_ipv4: bool = True
+    # Network resilience settings for yt-dlp (especially useful with home proxies)
+    ytdlp_socket_timeout: int = 60
+    ytdlp_retries: int = 8
+    ytdlp_extractor_retries: int = 6
+    ytdlp_retry_sleep_seconds: int = 3
 
     # Timeout (seconds) for yt-dlp subprocess downloads. Increase if you
     # regularly download long VODs or slow streams. Default 3600 (1 hour).

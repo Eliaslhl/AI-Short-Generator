@@ -579,6 +579,26 @@ def download_video(
     if bool(getattr(settings, "ytdlp_force_ipv4", True)):
         cmd.append("--force-ipv4")
 
+    # Network resilience for slow/unstable links (e.g. home proxy tunnel)
+    socket_timeout = int(getattr(settings, "ytdlp_socket_timeout", 60) or 60)
+    retries = int(getattr(settings, "ytdlp_retries", 8) or 8)
+    extractor_retries = int(getattr(settings, "ytdlp_extractor_retries", 6) or 6)
+    retry_sleep_seconds = int(getattr(settings, "ytdlp_retry_sleep_seconds", 3) or 3)
+    cmd.extend(
+        [
+            "--socket-timeout",
+            str(max(10, socket_timeout)),
+            "--retries",
+            str(max(1, retries)),
+            "--extractor-retries",
+            str(max(1, extractor_retries)),
+            "--retry-sleep",
+            f"http:{max(1, retry_sleep_seconds)}",
+        ]
+    )
+    if int(getattr(settings, "ytdlp_fragment_retries", 0) or 0) > 0:
+        cmd.extend(["--fragment-retries", str(int(settings.ytdlp_fragment_retries))])
+
     # Inject YouTube cookies if available (required for datacenter IPs).
     # Support two methods:
     #  - YOUTUBE_COOKIES_FILE: path to a cookies.txt file (preferred)
@@ -633,7 +653,13 @@ def download_video(
     logger.info(f"Running yt-dlp for job {job_id}: {youtube_url}")
 
     def _run_cmd(cmd_list):
-        return subprocess.run(cmd_list, capture_output=True, text=True, check=True)
+        return subprocess.run(
+            cmd_list,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=int(getattr(settings, "ytdlp_download_timeout", 3600) or 3600),
+        )
 
     def _strip_js_flags(cmd_list):
         """Return command without --js-runtimes/--remote-components pairs."""

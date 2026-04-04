@@ -719,6 +719,18 @@ def download_video(
         # 6) Last local attempt: minimal mobile clients without impersonation.
         candidates.append(("minimal_mobile_clients", minimal_mobile))
 
+        # 7) Public access fallback: remove cookies entirely (can bypass
+        # account/session-specific denials for public videos).
+        no_cookies = _strip_flags_with_values(minimal_mobile, {"--cookies"})
+        candidates.append(("public_no_cookies_mobile_clients", no_cookies))
+
+        # 8) Alternate clients + missing_pot formats fallback for strict 403s.
+        alt_clients = getattr(settings, "ytdlp_botcheck_player_clients_alt", "tv,android,web").strip() or "tv,android,web"
+        alt = _strip_flags_with_values(no_cookies, {"--extractor-args"})
+        alt.extend(["--extractor-args", f"youtube:player_client={alt_clients}"])
+        alt.extend(["--extractor-args", "youtube:formats=missing_pot"])
+        candidates.append(("public_no_cookies_alt_clients_missing_pot", alt))
+
         seen = set()
         deduped = []
         for name, c in candidates:

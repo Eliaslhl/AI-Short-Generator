@@ -123,6 +123,20 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI):
     # ── startup ──
     await create_tables()
+    
+    # Log email configuration for debugging
+    print("\n" + "=" * 60)
+    print("EMAIL CONFIGURATION AT STARTUP")
+    print("=" * 60)
+    print(f"MAIL_USERNAME:     {os.getenv('MAIL_USERNAME', 'NOT SET')}")
+    print(f"MAIL_FROM:         {os.getenv('MAIL_FROM', 'NOT SET')}")
+    print(f"MAIL_SERVER:       {os.getenv('MAIL_SERVER', 'NOT SET')}")
+    print(f"MAIL_PORT:         {os.getenv('MAIL_PORT', 'NOT SET')}")
+    print(f"MAIL_STARTTLS:     {os.getenv('MAIL_STARTTLS', 'NOT SET')}")
+    print(f"MAIL_SSL_TLS:      {os.getenv('MAIL_SSL_TLS', 'NOT SET')}")
+    print(f"MAIL_SUPPRESS_SEND: {os.getenv('MAIL_SUPPRESS_SEND', 'NOT SET')}")
+    print("=" * 60 + "\n")
+    
     logger.info("AI Shorts Generator is ready 🚀")
     yield
     # ── shutdown ──

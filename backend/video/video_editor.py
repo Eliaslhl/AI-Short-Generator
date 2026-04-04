@@ -606,24 +606,14 @@ def _render_with_ffmpeg(
             except Exception:
                 # fallback to SRT if conversion fails
                 subtitle_path_for_filter = str(srt_path)
-        # 3) Build filter graph: scale DOWN + pad smartly to preserve ALL content
-        # Strategy: reduce to fit 1080×1920 (no crop), then pad with BLURRED background
-        # This shows the FULL source video with a blurred copy of itself as background
-        
-        # Create blurred background by scaling up (allowing crop) then blurring
-        # Then overlay the properly scaled+padded content on top at center
-        # This creates a nice visual effect of the video with a blurred version of itself behind
+        # 3) Build filter graph: sharp scale + pad (no blur)
+        # NOTE: previous implementation introduced a global boxblur in some branches,
+        # which made exported shorts look blurry. Keep rendering crisp by avoiding
+        # any blur pass on the final video.
         blur_filter_base = (
             "[0:v]"
-            "scale=1080:1920:force_original_aspect_ratio=increase,"  # Fill frame (will crop)
-            "boxblur=20[blurred];"  # Apply blur
-            "[blurred]"
-            "scale=1080:1920:force_original_aspect_ratio=decrease,"  # Now scale down properly (no crop)
-            "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black[bg];"  # Pad with black as fallback
-            "[0:v]"
-            "scale=1080:1920:force_original_aspect_ratio=decrease,"  # Scale down original
-            "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black[main];"  # Pad it
-            "[bg][main]overlay=0:0"  # Composite main on top of blurred bg
+            "scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos,"
+            "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black"
         )
 
         filter_complex = None
@@ -654,11 +644,7 @@ def _render_with_ffmpeg(
             fd3, subbed_tmp = tempfile.mkstemp(suffix=".mp4", prefix="subbed_")
             os.close(fd3)
             tmp_files.append(subbed_tmp)
-            # IMPORTANT: Apply subtitles BEFORE blur so they stay sharp and centered
-            # Then apply blur as background. Filter order:
-            # 1. scale/pad to portrait format
-            # 2. Apply subtitles (sharp text on clean video)
-            # 3. Apply blur effect (creates blurred background effect on the final composite)
+            # Apply subtitles over a sharp portrait-converted frame (no blur).
             cmd_sub = [
                 "ffmpeg",
                 "-y",
@@ -669,7 +655,7 @@ def _render_with_ffmpeg(
                 "-i",
                 str(video_path),
                 "-vf",
-                f"scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,subtitles=filename={p},scale=1080:1920:force_original_aspect_ratio=increase,boxblur=20,scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black",
+                f"scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,subtitles=filename={p}",
                 "-c:v",
                 "libx264",
                 "-preset",
@@ -750,8 +736,7 @@ def _render_with_ffmpeg(
             # map the filtered video output explicitly
             cmd += ["-map", "[vout]"]
         else:
-            # No complex filter: use blur background filter
-            # Build a filter_complex that creates blurred background + overlays clean video on top
+            # No complex filter: apply sharp portrait conversion only.
             cmd += ["-filter_complex", f"{blur_filter_base}[vout]"]
             cmd += ["-map", "[vout]"]
 

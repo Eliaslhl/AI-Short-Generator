@@ -76,11 +76,6 @@ export default function DashboardPage() {
   const twitchLeft = user ? getGenerationsLeft(user, 'twitch') : 0
   const twitchLimit = user ? getGenerationLimit(user, 'twitch') : 2
   
-  // For paid plans, always show both YouTube and Twitch
-  // For free, only show YouTube
-  const showYouTube = effectivePlan !== 'free'
-  const showTwitch = effectivePlan !== 'free'
-  
   const totalClips = history.reduce((acc, j) => acc + (j.clips_count ?? 0), 0)
 
   return (
@@ -104,8 +99,17 @@ export default function DashboardPage() {
           </div>
           {effectivePlan === 'free' ? (
             <>
-              <p className="text-gray-400 text-sm mb-3">
-                <span className="text-white font-semibold">{generationsLeft}</span>/{generationLimit} generations this month
+              <div className="text-gray-400 text-sm mb-3 space-y-1">
+                <div>
+                  🎬 YouTube: <span className="text-white font-semibold">{youtubeLeft}</span>/{youtubeLimit}
+                </div>
+                <div>
+                  🎮 Twitch: <span className="text-white font-semibold">{twitchLeft}</span>/{twitchLimit}
+                </div>
+                <span className="block mt-2">videos left this month</span>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">
+                Current page: <span className="text-white">{platform}</span> · {generationsLeft}/{generationLimit}
               </p>
               <button
                 onClick={() => void handleUpgrade()}
@@ -117,16 +121,12 @@ export default function DashboardPage() {
           ) : (
             <>
               <p className={`text-sm mb-3 ${planConfig.textClass}`}>
-                {showYouTube && (
-                  <div>
-                    🎬 YouTube: <span className="text-white font-semibold">{youtubeLeft}</span>/{youtubeLimit}
-                  </div>
-                )}
-                {showTwitch && (
-                  <div>
-                    🎮 Twitch: <span className="text-white font-semibold">{twitchLeft}</span>/{twitchLimit}
-                  </div>
-                )}
+                <div>
+                  🎬 YouTube: <span className="text-white font-semibold">{youtubeLeft}</span>/{youtubeLimit}
+                </div>
+                <div>
+                  🎮 Twitch: <span className="text-white font-semibold">{twitchLeft}</span>/{twitchLimit}
+                </div>
                 <span className="block mt-2">videos left this month</span>
               </p>
               {/* Cancel subscription */}

@@ -44,11 +44,6 @@ export default function Navbar() {
   const twitchLeft = user ? getGenerationsLeft(user, 'twitch') : 0
   const twitchLimit = user ? getGenerationLimit(user, 'twitch') : 2
 
-  // Determine what to display based on subscription type
-  const subscriptionType = user?.subscription_type
-  const showYouTube = subscriptionType === 'youtube' || subscriptionType === 'combo'
-  const showTwitch = subscriptionType === 'twitch' || subscriptionType === 'combo'
-
   const planBadge = user ? PLAN_BADGE[effectivePlan] : null
 
   return (
@@ -70,22 +65,14 @@ export default function Navbar() {
                 </span>
               ) : (
                 <span className="text-xs text-gray-400">
-                  {youtubeLeft} free left
+                  FREE
                 </span>
               )}
-              {/* Quota counter - show platform-specific or both for COMBO */}
+              {/* Quota counters - always show both platforms */}
               <span className="text-xs text-gray-500">
-                {showYouTube && (
-                  <>
-                    🎬 YouTube: <span className="text-purple-400">{youtubeLeft}/{youtubeLimit}</span>
-                  </>
-                )}
-                {showYouTube && showTwitch && <span className="mx-1">|</span>}
-                {showTwitch && (
-                  <>
-                    🎮 Twitch: <span className="text-purple-400">{twitchLeft}/{twitchLimit}</span>
-                  </>
-                )}
+                🎬 YouTube: <span className="text-purple-400">{youtubeLeft}/{youtubeLimit}</span>
+                <span className="mx-1">|</span>
+                🎮 Twitch: <span className="text-purple-400">{twitchLeft}/{twitchLimit}</span>
               </span>
 
               <Link
@@ -178,17 +165,9 @@ export default function Navbar() {
                     {user.full_name ?? user.email}
                   </span>
                   <span className="text-gray-400 text-xs">
-                    {showYouTube && (
-                      <>
-                        🎬 YT: {youtubeLeft}/{youtubeLimit}
-                      </>
-                    )}
-                    {showYouTube && showTwitch && <span className="mx-0.5">|</span>}
-                    {showTwitch && (
-                      <>
-                        🎮 TW: {twitchLeft}/{twitchLimit}
-                      </>
-                    )}
+                    🎬 YT: {youtubeLeft}/{youtubeLimit}
+                    <span className="mx-0.5">|</span>
+                    🎮 TW: {twitchLeft}/{twitchLimit}
                   </span>
                 </div>
               </div>

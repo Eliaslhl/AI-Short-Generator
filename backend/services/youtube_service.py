@@ -370,6 +370,7 @@ def download_video(
     else:
         # Use YouTube-specific resolution for high quality shorts
         max_height = getattr(settings, "youtube_processing_max_height", settings.processing_max_height)
+        logger.info(f"YouTube processing max height: {max_height}p")
         fmt = f"bestvideo[height<={max_height}]+bestaudio/best"
 
     cmd = [

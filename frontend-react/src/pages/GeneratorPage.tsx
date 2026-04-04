@@ -168,14 +168,26 @@ function VideoModal({ clip, index, total, onClose, onPrev, onNext }: VideoModalP
           </div>
         </div>
 
-        {/* Video — portrait 9:16, max height 85vh */}
-        <video
-          src={`${API_BASE}${clip.file}`}
-          className="rounded-xl max-h-[80vh] w-auto"
-          style={{ aspectRatio: '9/16' }}
-          controls
-          autoPlay
-        />
+        {/* Video — desktop-friendly frame with blurred fill + sharp portrait center */}
+        <div className="relative w-[min(92vw,1100px)] aspect-video rounded-xl overflow-hidden bg-black">
+          <video
+            src={`${API_BASE}${clip.file}`}
+            className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-55"
+            aria-hidden="true"
+            muted
+            playsInline
+            preload="metadata"
+          />
+          <div className="absolute inset-0 bg-black/35" />
+          <video
+            src={`${API_BASE}${clip.file}`}
+            className="relative z-10 h-full max-h-[80vh] mx-auto object-contain"
+            style={{ aspectRatio: '9/16' }}
+            controls
+            autoPlay
+            playsInline
+          />
+        </div>
 
         {/* Title + Hook + Hashtags */}
         {clip.title && (

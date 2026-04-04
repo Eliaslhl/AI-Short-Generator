@@ -113,15 +113,26 @@ function VideoModal({ clip, index, total, onClose, onPrev, onNext }: VideoModalP
             </button>
           </div>
 
-          {/* Video */}
-          <video
-            src={`${API_BASE}${clip.file}`}
-            className="w-full bg-black"
-            controls
-            autoPlay
-            playsInline
-            style={{ aspectRatio: '9/16', objectFit: 'contain', maxHeight: '70vh' }}
-          />
+          {/* Video — desktop-friendly frame with blurred fill + sharp portrait center */}
+          <div className="relative w-full aspect-video bg-black overflow-hidden">
+            <video
+              src={`${API_BASE}${clip.file}`}
+              className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-55"
+              aria-hidden="true"
+              muted
+              playsInline
+              preload="metadata"
+            />
+            <div className="absolute inset-0 bg-black/35" />
+            <video
+              src={`${API_BASE}${clip.file}`}
+              className="relative z-10 h-full max-h-[70vh] mx-auto object-contain"
+              controls
+              autoPlay
+              playsInline
+              style={{ aspectRatio: '9/16' }}
+            />
+          </div>
 
           {/* Footer */}
           <div className="p-4 border-t border-white/10 space-y-3">

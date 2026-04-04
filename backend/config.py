@@ -117,7 +117,7 @@ class Settings(BaseSettings):
     ytdlp_botcheck_player_clients: str = "android,web"
     # If True, add --impersonate <target> to the first yt-dlp attempt when
     # impersonation support is available in the runtime.
-    ytdlp_impersonate_default: bool = True
+    ytdlp_impersonate_default: bool = False
 
     # ---------- yt-dlp download tuning (performance) ----------
     # External downloader to use with yt-dlp (e.g. "aria2c"). Leave empty

@@ -28,6 +28,14 @@ _IMPERSONATE_TARGET_CACHE: str | None = None
 _IMPERSONATE_TARGET_CHECKED = False
 
 
+def _disable_impersonation_runtime(reason: str) -> None:
+    """Disable impersonation for current process after a definitive runtime failure."""
+    global _IMPERSONATE_TARGET_CACHE, _IMPERSONATE_TARGET_CHECKED
+    _IMPERSONATE_TARGET_CACHE = None
+    _IMPERSONATE_TARGET_CHECKED = True
+    logger.warning(f"Disabling yt-dlp impersonation at runtime: {reason}")
+
+
 def _resolve_impersonate_target() -> str | None:
     """Return an available yt-dlp impersonation target, or None if unavailable."""
     global _IMPERSONATE_TARGET_CACHE, _IMPERSONATE_TARGET_CHECKED
@@ -721,12 +729,16 @@ def download_video(
             deduped.append((name, c))
 
         for idx, (name, c) in enumerate(deduped, start=1):
+            if "impersonate" in name and _IMPERSONATE_TARGET_CACHE is None:
+                continue
             logger.info(f"Bot-check fallback attempt {idx}/{len(deduped)}: {name}")
             try:
                 return _run_cmd(c)
             except subprocess.CalledProcessError as e_fb:
                 logger.error(f"yt-dlp fallback stderr ({name}): {e_fb.stderr}")
                 logger.error(f"yt-dlp fallback stdout ({name}): {e_fb.stdout}")
+                if _is_impersonate_unavailable(e_fb.stderr or "", e_fb.stdout or ""):
+                    _disable_impersonation_runtime("impersonate target unavailable during fallback")
 
         raise RuntimeError("Bot-check persisted after impersonation/JS fallback attempts.")
 
@@ -750,6 +762,7 @@ def download_video(
                     # If impersonation is unsupported at runtime, retry once
                     # without --impersonate before other branches.
                     if _is_impersonate_unavailable(e.stderr or "", e.stdout or ""):
+                        _disable_impersonation_runtime("impersonate target unavailable on primary attempt")
                         retry_no_imp = _strip_impersonate_flag(base_cmd)
                         if retry_no_imp != base_cmd:
                             logger.warning(
@@ -872,6 +885,7 @@ def download_video(
 
             # If impersonation is unsupported at runtime, retry once without it.
             if _is_impersonate_unavailable(e.stderr or "", e.stdout or ""):
+                _disable_impersonation_runtime("impersonate target unavailable on exception path")
                 retry_no_imp = _strip_impersonate_flag(cmd)
                 if retry_no_imp != cmd:
                     logger.warning(

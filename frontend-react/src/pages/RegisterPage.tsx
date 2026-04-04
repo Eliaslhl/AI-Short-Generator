@@ -25,8 +25,8 @@ export default function RegisterPage() {
       const response = await authApi.register(email, password, fullName)
       // Email verification is now disabled - account is immediately active
       // If access_token is returned, auto-login the user
-      if (response.access_token) {
-        localStorage.setItem('token', response.access_token)
+      if (response.data?.access_token) {
+        localStorage.setItem('token', response.data.access_token)
         // Redirect to dashboard
         navigate('/dashboard')
       } else {

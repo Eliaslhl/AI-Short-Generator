@@ -614,6 +614,14 @@ def download_video(
     if should_pass_js_now:
         cmd = _with_js_flags(base_cmd)
 
+    # Add impersonation by default (when available) to improve first-attempt
+    # success rate on datacenter IPs.
+    if bool(getattr(settings, "ytdlp_impersonate_default", True)):
+        default_impersonate_target = _resolve_impersonate_target()
+        if default_impersonate_target:
+            base_cmd.extend(["--impersonate", default_impersonate_target])
+            cmd.extend(["--impersonate", default_impersonate_target])
+
     logger.info(f"Running yt-dlp for job {job_id}: {youtube_url}")
 
     def _run_cmd(cmd_list):
@@ -763,6 +771,10 @@ def download_video(
                             "confirm you",
                             "use --cookies",
                             "cookies",
+                            "http error 403",
+                            "403: forbidden",
+                            "forbidden",
+                            "unable to download video data",
                         ]
                         if any(m in stderr or m in stdout for m in bot_block_msgs):
                             # Bot-check detected. Try local yt-dlp fallbacks first,
@@ -837,6 +849,10 @@ def download_video(
                 "confirm you",
                 "use --cookies",
                 "cookies",
+                "http error 403",
+                "403: forbidden",
+                "forbidden",
+                "unable to download video data",
             ]
             if any(m in stderr or m in stdout for m in bot_block_msgs):
                 # Bot-check detected. Try local yt-dlp fallbacks first,

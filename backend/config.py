@@ -115,6 +115,9 @@ class Settings(BaseSettings):
     # Passed as: --extractor-args "youtube:player_client=<value>"
     # Example values: "android,web" or "ios,android,web"
     ytdlp_botcheck_player_clients: str = "android,web"
+    # If True, add --impersonate <target> to the first yt-dlp attempt when
+    # impersonation support is available in the runtime.
+    ytdlp_impersonate_default: bool = True
 
     # ---------- yt-dlp download tuning (performance) ----------
     # External downloader to use with yt-dlp (e.g. "aria2c"). Leave empty

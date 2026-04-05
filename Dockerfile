@@ -30,14 +30,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright for YouTube cookie refresh
-# Only install chromium (not firefox/webkit) to reduce image size
-RUN pip install playwright && \
-    playwright install chromium && \
-    playwright install-deps chromium
-
 # Download spaCy model
 RUN python -m spacy download en_core_web_sm
+
+# Install Playwright browsers for YouTube cookie auto-refresh
+RUN python -m playwright install chromium
 
 # Pre-download Whisper tiny model so first request isn't slow
 RUN python -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"

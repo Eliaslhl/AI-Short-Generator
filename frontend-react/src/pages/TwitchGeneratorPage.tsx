@@ -520,6 +520,37 @@ export default function TwitchGeneratorPage() {
             </div>
           )}
 
+          {/* Include Subtitles Toggle */}
+          <div className="p-4 rounded-xl mb-4 bg-slate-800/50 border border-slate-700/50">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="include-subtitles"
+                  checked={includeSubtitles}
+                  onChange={(e) => setIncludeSubtitles(e.target.checked)}
+                  disabled={isLoading}
+                  className="w-4 h-4 rounded accent-purple-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+                <label htmlFor="include-subtitles" className="text-sm font-medium text-white cursor-pointer hover:text-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed flex-1">
+                  Include Subtitles
+                </label>
+              </div>
+              <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                includeSubtitles 
+                  ? 'bg-green-500/20 text-green-400' 
+                  : 'bg-gray-500/20 text-gray-400'
+              }`}>
+                {includeSubtitles ? 'ON' : 'OFF'}
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              {includeSubtitles 
+                ? '✓ Captions and emojis will be added to your shorts (slower, larger files)'
+                : '✗ No captions or emojis (faster processing, smaller files)'}
+            </p>
+          </div>
+
           {/* Error message */}
           {error && (
             <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-sm text-red-300">

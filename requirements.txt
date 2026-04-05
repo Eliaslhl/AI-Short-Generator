@@ -64,6 +64,3 @@ rq>=1.13.0                # RQ job queue (simple alternative to Celery)
 librosa>=0.10.0           # Audio feature extraction
 scipy>=1.11.0             # Required by librosa
 scikit-learn>=1.3.0       # For advanced audio analysis
-
-# Browser automation for YouTube cookie auto-refresh
-playwright>=1.40.0        # Required for YOUTUBE_ENABLE_AUTO_REFRESH

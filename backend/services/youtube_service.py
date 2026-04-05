@@ -94,11 +94,17 @@ def _has_env_cookies_payload() -> bool:
 
 
 def _is_auto_refresh_enabled() -> bool:
-    return os.environ.get("YOUTUBE_ENABLE_AUTO_REFRESH", "").lower() in (
-        "1",
-        "true",
-        "yes",
-    )
+    """Check if auto-refresh is enabled AND Playwright is available."""
+    if os.environ.get("YOUTUBE_ENABLE_AUTO_REFRESH", "").lower() not in ("1", "true", "yes"):
+        return False
+    
+    # Check if Playwright is actually installed
+    try:
+        import playwright  # noqa: F401
+        return True
+    except ImportError:
+        logger.warning("YOUTUBE_ENABLE_AUTO_REFRESH=true but Playwright not installed. Auto-refresh disabled.")
+        return False
 
 
 def _sanitize_b64_fragment(raw: str) -> str:

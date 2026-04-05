@@ -1,6 +1,9 @@
 #!/bin/sh
 set -e
 
+echo "=== Ensuring Playwright browsers are installed ==="
+python -m playwright install chromium 2>/dev/null || echo "WARNING: Playwright chromium install skipped or failed (may auto-install on first use)"
+
 if [ "${MIGRATE_ON_START:-true}" = "true" ]; then
     echo "=== Running Alembic migrations ==="
     alembic upgrade head || echo "WARNING: Alembic migration failed, continuing anyway..."

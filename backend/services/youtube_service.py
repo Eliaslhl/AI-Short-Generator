@@ -220,10 +220,36 @@ def _write_cookies_file() -> str | None:
         if "\t" not in content or "youtube.com" not in content:
             raise ValueError("decoded payload is not a valid Netscape YouTube cookies file")
 
+        # Filter out cookies with invalid expires (-1 or negative values)
+        # These cause yt-dlp warnings and should be skipped
+        lines = content.split("\n")
+        filtered_lines = []
+        for line in lines:
+            if line.startswith("#"):
+                # Keep comment lines
+                filtered_lines.append(line)
+            elif line.strip():
+                # Parse the line to check expires field
+                fields = line.split("\t")
+                if len(fields) >= 5:
+                    try:
+                        expires = int(fields[4])
+                        if expires < 0:
+                            # Skip session cookies with negative expires
+                            logger.debug(f"Skipping cookie with invalid expires={expires}: {fields[5] if len(fields) > 5 else 'unknown'}")
+                            continue
+                    except (ValueError, IndexError):
+                        pass
+                filtered_lines.append(line)
+        
+        filtered_content = "\n".join(filtered_lines)
+        if not filtered_content.strip():
+            raise ValueError("No valid cookies after filtering out invalid expires")
+
         tmp = tempfile.NamedTemporaryFile(
             mode="w", suffix=".txt", delete=False, prefix="yt_cookies_"
         )
-        tmp.write(content)
+        tmp.write(filtered_content)
         tmp.flush()
         tmp.close()
         logger.info(f"YouTube cookies written to {tmp.name}")

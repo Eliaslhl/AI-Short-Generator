@@ -21,9 +21,15 @@ from typing import List, Optional, Tuple
 def write_netscape_cookies(cookies: List[dict], out_path: str, meta_comment: str = "") -> None:
     """Write cookies in Netscape cookies.txt format used by wget/yt-dlp.
     
-    Filters out cookies with invalid or negative expiration times to avoid
-    yt-dlp warnings about "invalid expires at -1".
+    Fixes cookies with invalid or negative expiration times by:
+    - Skipping cookies with expires=-1 (session cookies) - THESE WONT WORK ANYWAY
+    - Replacing invalid expires with a future date (365 days from now)
     """
+    import time as time_module
+    
+    # Generate a future expiration (365 days from now)
+    future_expires = int(time_module.time()) + (365 * 24 * 60 * 60)
+    
     header = [
         "# Netscape HTTP Cookie File",
         f"# Generated: {time.asctime()}",
@@ -32,6 +38,9 @@ def write_netscape_cookies(cookies: List[dict], out_path: str, meta_comment: str
         header.append(f"# {meta_comment}")
 
     lines: List[str] = header + [""]
+    skipped_count = 0
+    fixed_count = 0
+    
     for c in cookies:
         # Playwright cookie fields: name, value, domain, path, expires, httpOnly, secure, sameSite
         domain = c.get("domain", "")
@@ -39,17 +48,25 @@ def write_netscape_cookies(cookies: List[dict], out_path: str, meta_comment: str
         path = c.get("path", "/")
         secure = "TRUE" if c.get("secure", False) else "FALSE"
         
-        # Parse and validate expires: skip cookies with negative or invalid expires
+        # Parse and fix expires
         expires_raw = c.get("expires")
         expires = 0
+        
         if expires_raw is not None:
             try:
                 expires = int(expires_raw)
-                # Skip session cookies (expires=-1) and other invalid values
-                if expires < 0:
-                    continue
             except (ValueError, TypeError):
                 expires = 0
+        
+        # SESSION COOKIES (expires=-1) MUST BE SKIPPED - they won't work in cookies.txt
+        if expires < 0:
+            skipped_count += 1
+            continue
+        
+        # If expires is 0 or missing, use future date
+        if expires == 0:
+            expires = future_expires
+            fixed_count += 1
         
         name = c.get("name", "")
         value = c.get("value", "")
@@ -60,6 +77,8 @@ def write_netscape_cookies(cookies: List[dict], out_path: str, meta_comment: str
         
         lines.append("\t".join([domain, include_subdomains, path, secure, str(expires), name, value]))
 
+    print(f"[REFRESH] Cookie summary: {len(cookies)} total, {skipped_count} skipped (expires<0), {fixed_count} fixed (expires=0->future)", flush=True)
+    
     content = "\n".join(lines) + "\n"
     with open(out_path, "w", newline="\n") as f:
         f.write(content)

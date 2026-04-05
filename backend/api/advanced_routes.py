@@ -15,8 +15,8 @@ from pydantic import BaseModel
 
 from backend.auth.dependencies import get_current_user
 from backend.models.user import User
-from backend.queue.redis_queue import get_queue
-from backend.queue.worker import process_twitch_video
+from backend.task_queue.redis_queue import get_queue
+from backend.task_queue.worker import process_twitch_video
 
 logger = logging.getLogger(__name__)
 advanced_router = APIRouter()

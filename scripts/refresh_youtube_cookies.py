@@ -19,7 +19,11 @@ from typing import List, Optional, Tuple
 
 
 def write_netscape_cookies(cookies: List[dict], out_path: str, meta_comment: str = "") -> None:
-    """Write cookies in Netscape cookies.txt format used by wget/yt-dlp."""
+    """Write cookies in Netscape cookies.txt format used by wget/yt-dlp.
+    
+    Filters out cookies with invalid or negative expiration times to avoid
+    yt-dlp warnings about "invalid expires at -1".
+    """
     header = [
         "# Netscape HTTP Cookie File",
         f"# Generated: {time.asctime()}",
@@ -34,9 +38,26 @@ def write_netscape_cookies(cookies: List[dict], out_path: str, meta_comment: str
         include_subdomains = "TRUE" if domain.startswith(".") or domain.count(".") > 1 else "FALSE"
         path = c.get("path", "/")
         secure = "TRUE" if c.get("secure", False) else "FALSE"
-        expires = int(c.get("expires", 0) or 0)
+        
+        # Parse and validate expires: skip cookies with negative or invalid expires
+        expires_raw = c.get("expires")
+        expires = 0
+        if expires_raw is not None:
+            try:
+                expires = int(expires_raw)
+                # Skip session cookies (expires=-1) and other invalid values
+                if expires < 0:
+                    continue
+            except (ValueError, TypeError):
+                expires = 0
+        
         name = c.get("name", "")
         value = c.get("value", "")
+        
+        # Skip cookies with empty names
+        if not name:
+            continue
+        
         lines.append("\t".join([domain, include_subdomains, path, secure, str(expires), name, value]))
 
     content = "\n".join(lines) + "\n"
@@ -120,10 +141,26 @@ def main(argv: Optional[List[str]] = None) -> int:
             browser_ctx = context
 
         # simple heuristic (not used further here) — kept for future logging/alerts
-        _ = any(c.get("name", "").lower() in ("sapisid", "ssid", "sid", "ytid") for c in cookies)
+        has_session_cookies = any(c.get("name", "").lower() in ("sapisid", "ssid", "sid", "ytid") for c in cookies)
+        
+        # Filter and clean cookies before writing
+        filtered_cookies = []
+        for c in cookies:
+            # Skip session cookies with invalid expires
+            expires_raw = c.get("expires")
+            if expires_raw is not None:
+                try:
+                    expires_val = int(expires_raw)
+                    if expires_val < 0:  # Skip negative expiry (session cookies marked as -1)
+                        continue
+                except (ValueError, TypeError):
+                    pass
+            filtered_cookies.append(c)
+        
+        print(f"[REFRESH] Filtered {len(cookies)} cookies -> {len(filtered_cookies)} valid cookies", flush=True)
 
         print(f"[REFRESH] Writing cookies to {out_path}", flush=True)
-        write_netscape_cookies(cookies, out_path, meta_comment="exported-by-refresh_youtube_cookies.py")
+        write_netscape_cookies(filtered_cookies, out_path, meta_comment="exported-by-refresh_youtube_cookies.py")
         sha = sha256_of_file(out_path)
         size = size_of_file(out_path)
         print(f"WROTE {out_path} size={size} sha256={sha}")

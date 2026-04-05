@@ -655,7 +655,6 @@ def download_video(
             cmd.extend(["--impersonate", default_impersonate_target])
 
     logger.info(f"Running yt-dlp for job {job_id}: {youtube_url}")
-    logger.debug(f"yt-dlp base_cmd (first 20 elements): {base_cmd[:20]}")
 
     def _run_cmd(cmd_list):
         return subprocess.run(

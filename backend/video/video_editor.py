@@ -315,7 +315,8 @@ def render_clip(
     # "ai_title" = Pro+ generated title; "title" = clip_selector first-sentence fallback
     ai_title = segment.get("ai_title") or segment.get("title", f"Clip {clip_index + 1}")
     hashtags = segment.get("hashtags")  # Pro+ only
-    include_subtitles = segment.get("include_subtitles", True)  # Default to True
+    # Use the config default for include_subtitles, but allow segment-level override
+    include_subtitles = segment.get("include_subtitles", getattr(settings, "include_subtitles_by_default", True))
 
     output_path = _make_output_path(job_id, clip_index)
 

@@ -185,6 +185,7 @@ class GenerateRequest(BaseModel):
     language: str = ""  # "" = auto-detect; ISO-639-1 code for PRO (e.g. "fr")
     subtitle_style: str = "default"  # PRO: default | bold | outlined | neon | minimal
     transcription_mode: str = ""  # optional: "FAST" (default) or "QUALITY" (Pro+ only)
+    include_subtitles: bool = False  # NEW: Whether to include subtitles in generated shorts (default: False)
 
 
 class GenerateResponse(BaseModel):
@@ -242,6 +243,7 @@ async def run_pipeline(
     subtitle_style: str = "default",
     is_proplus: bool = False,
     transcription_mode: str | None = None,
+    include_subtitles: bool = False,
 ):
     """Full async pipeline: download → transcribe → score → render."""
     platform = _detect_platform_from_url(youtube_url)
@@ -359,13 +361,24 @@ async def run_pipeline(
                     generate_hashtags, seg["text"]
                 )
 
-        await update(65, "Building emoji captions…")
+        # Only build captions if they will be used
+        if include_subtitles:
+            await update(65, "Building emoji captions…")
+            for seg in top_segments:
+                seg["captions"] = await asyncio.to_thread(
+                    build_captions,
+                    seg["text"],
+                    seg.get("words"),  # word-level timestamps for accurate sync
+                )
+        else:
+            # Skip caption building to save time
+            await update(65, "Skipping caption generation…")
+            for seg in top_segments:
+                seg["captions"] = []
+        
+        # Set include_subtitles flag for each segment
         for seg in top_segments:
-            seg["captions"] = await asyncio.to_thread(
-                build_captions,
-                seg["text"],
-                seg.get("words"),  # word-level timestamps for accurate sync
-            )
+            seg["include_subtitles"] = include_subtitles
 
         clips = []
         total = len(top_segments)
@@ -597,6 +610,8 @@ async def generate(
             language,
             subtitle_style,
             plan == "proplus",
+            request.transcription_mode,
+            request.include_subtitles,
         )
     )
     return GenerateResponse(job_id=job_id, message="Job started.")
@@ -972,3 +987,113 @@ async def debug_job(job_id: str, user: User = Depends(get_current_user)):
         db_row = None
 
     return JSONResponse({"in_memory": in_memory, "db": db_row})
+
+
+# ── TEST ENDPOINT (local development only) ──────────────────────────────────
+@router.post("/test/generate-subtitles")
+async def test_generate_subtitles(
+    request: GenerateRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    [TEST ONLY] Generate clips WITHOUT requiring authentication.
+    ONLY for testing the subtitles feature locally.
+    """
+    # Check if test mode is enabled
+    if os.environ.get("TEST_MODE", "").lower() not in ("1", "true", "yes"):
+        raise HTTPException(status_code=403, detail="Test endpoint disabled")
+    
+    logger.info(f"[TEST] Generating clips for URL: {request.youtube_url}")
+    logger.info(f"[TEST] include_subtitles: {request.include_subtitles}")
+    
+    job_id = str(uuid.uuid4())[:8]
+    
+    # Create a test user for this job
+    test_user = User(
+        id=f"test-user-{job_id}",
+        email=f"test-{job_id}@example.com",
+        hashed_password="test",
+        is_active=True,
+        is_verified=True,
+    )
+    db.add(test_user)
+    await db.commit()
+    await db.refresh(test_user)
+    
+    # Init in-memory progress tracker (IMPORTANT!)
+    jobs[job_id] = {
+        "status": "pending",
+        "progress": 0,
+        "step": "Queued",
+        "clips": [],
+        "user_id": test_user.id,
+    }
+    
+    # Start background pipeline
+    background_tasks.add_task(
+        run_pipeline,
+        job_id=job_id,
+        youtube_url=request.youtube_url,
+        user_id=test_user.id,
+        max_clips=request.max_clips,
+        language=getattr(request, "language", ""),
+        subtitle_style=getattr(request, "subtitle_style", "default"),
+        is_proplus=False,
+        transcription_mode=None,
+        include_subtitles=request.include_subtitles,
+    )
+    
+    return GenerateResponse(
+        job_id=job_id,
+        status="pending",
+        message=f"[TEST] Generation started with subtitles={'enabled' if request.include_subtitles else 'disabled'}"
+    )
+
+
+@router.get("/test/status/{job_id}")
+async def test_get_status(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    [TEST ONLY] Get job status WITHOUT requiring authentication.
+    ONLY for testing the subtitles feature locally.
+    """
+    import json
+    
+    # Check if test mode is enabled
+    if os.environ.get("TEST_MODE", "").lower() not in ("1", "true", "yes"):
+        raise HTTPException(status_code=403, detail="Test endpoint disabled")
+    
+    logger.info(f"[TEST] Checking status for job: {job_id}")
+    
+    # Fast path: job still in memory
+    if job_id in jobs:
+        job = jobs[job_id]
+        raw_clips = job.get("clips", []) or []
+        normalized = [_normalize_clip_for_response(c, job_id) for c in raw_clips]
+        return StatusResponse(
+            job_id=job_id,
+            status=job["status"],
+            progress=job["progress"],
+            step=job["step"],
+            clips=normalized,
+        )
+    
+    # Fallback: job lost from memory — reload from DB
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job_record = result.scalar_one_or_none()
+    if not job_record:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    clips = json.loads(job_record.clips_json) if job_record.clips_json else []
+    normalized = [_normalize_clip_for_response(c, job_id) for c in clips]
+    
+    return StatusResponse(
+        job_id=job_id,
+        status=job_record.status,
+        progress=job_record.progress,
+        step=job_record.step or "unknown",
+        clips=normalized,
+    )

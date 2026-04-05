@@ -157,6 +157,12 @@ class Settings(BaseSettings):
     max_clips: int = 10
     min_clip_duration: int = 20  # seconds — min to have enough content
     max_clip_duration: int = 60  # seconds — 1 min max for shorts
+    
+    # ---------- Subtitle options ----------
+    # Whether to include subtitles/captions in generated shorts by default
+    # Set to False to generate clips without subtitles; users can still enable
+    # them per-request via API parameter
+    include_subtitles_by_default: bool = False
 
     # ---------- Video output ----------
     output_width: int = 1080

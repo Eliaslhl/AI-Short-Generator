@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Film, Zap, Clock, Download, Star, ArrowRight, CheckCircle, Crown, Sparkles, Rocket } from '../components/icons'
 import { useAuth } from '../context/AuthContext'
 import { authApi } from '../api'
+import { useSeoTags } from '../hooks/useSeoTags'
 
 const features = [
   {
@@ -287,6 +288,17 @@ export default function LandingPage() {
   const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly')
   const [platform, setPlatform] = useState<'youtube' | 'twitch' | 'combo'>('youtube')
   const [loadingKey, setLoadingKey] = useState<string | null>(null)
+
+  useSeoTags({
+    title: 'AI Shorts Generator - Turn YouTube Videos Into Viral Short Clips',
+    description: 'Convert YouTube and Twitch videos into engaging short-form content for TikTok, Instagram Reels & YouTube Shorts. AI-powered video clipping in seconds with automatic captions.',
+    keywords: 'YouTube shorts generator, TikTok shorts, Instagram Reels, video editing AI, short clips, viral content, YouTube to TikTok',
+    ogTitle: 'Generate Viral Short Clips from Any YouTube Video',
+    ogDescription: 'Turn long YouTube videos into engaging short clips instantly. No editing skills needed.',
+    ogImage: 'https://aishortsgenerators.com/og-image.jpg',
+    ogUrl: 'https://aishortsgenerators.com',
+    ogType: 'website',
+  })
 
   const handleUpgrade = async (planKey: string) => {
     if (!user) { window.location.href = '/register'; return }

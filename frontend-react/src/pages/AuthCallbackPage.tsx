@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
+import { useSeoTags } from '../hooks/useSeoTags'
 
 // Handles the redirect from Google OAuth: /auth/callback?token=XXX
 export default function AuthCallbackPage() {
@@ -10,6 +11,22 @@ export default function AuthCallbackPage() {
   const { refreshUser } = useAuth()
   const { showToast } = useToast()
   const handled = useRef(false)
+
+  useSeoTags({
+    title: 'Auth Callback - AI Shorts Generator',
+    description: 'Processing authentication...',
+  })
+
+  // Add noindex meta tag
+  useEffect(() => {
+    let robotsMeta = document.querySelector('meta[name="robots"]')
+    if (!robotsMeta) {
+      robotsMeta = document.createElement('meta')
+      robotsMeta.setAttribute('name', 'robots')
+      document.head.appendChild(robotsMeta)
+    }
+    robotsMeta.setAttribute('content', 'noindex, nofollow')
+  }, [])
 
   useEffect(() => {
     if (handled.current) return

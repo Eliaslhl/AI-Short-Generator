@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { generatorApi, authApi } from '../api'
+import { useSeoTags } from '../hooks/useSeoTags'
 import type { Job, JobStatus } from '../types'
 import { Crown, Sparkles, Rocket, Clock, CheckCircle, AlertCircle, Film, TrendingUp } from 'lucide-react'
 import { getPlanForPlatform, getGenerationLimit, getGenerationsLeft, getCurrentPlatform } from '../utils/planUtils'
@@ -26,6 +27,23 @@ export default function DashboardPage() {
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState(false)
   const [cancelConfirm, setCancelConfirm] = useState(false)
+
+  // Block indexing for this internal page
+  useSeoTags({
+    title: 'Dashboard - AI Shorts Generator',
+    description: 'View your video generation history and manage your account.',
+  })
+
+  // Add noindex meta tag
+  useEffect(() => {
+    let robotsMeta = document.querySelector('meta[name="robots"]')
+    if (!robotsMeta) {
+      robotsMeta = document.createElement('meta')
+      robotsMeta.setAttribute('name', 'robots')
+      document.head.appendChild(robotsMeta)
+    }
+    robotsMeta.setAttribute('content', 'noindex, nofollow')
+  }, [])
 
   useEffect(() => {
     generatorApi

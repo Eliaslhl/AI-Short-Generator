@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Film, Lock, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react'
 import { type AxiosError } from 'axios'
+import { useSeoTags } from '../hooks/useSeoTags'
 import client from '../api/client'
 
 export default function ResetPasswordPage() {
@@ -15,6 +16,22 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
+
+  useSeoTags({
+    title: 'Reset Password - AI Shorts Generator',
+    description: 'Create a new password for your account.',
+  })
+
+  // Add noindex meta tag
+  useEffect(() => {
+    let robotsMeta = document.querySelector('meta[name="robots"]')
+    if (!robotsMeta) {
+      robotsMeta = document.createElement('meta')
+      robotsMeta.setAttribute('name', 'robots')
+      document.head.appendChild(robotsMeta)
+    }
+    robotsMeta.setAttribute('content', 'noindex, nofollow')
+  }, [])
 
   const strengthScore = (() => {
     let s = 0

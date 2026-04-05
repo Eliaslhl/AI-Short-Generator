@@ -5,10 +5,27 @@
  * with different sizes, variants, and configurations.
  */
 
+import { useEffect } from 'react'
+import { useSeoTags } from '../hooks/useSeoTags'
 import { AnimatedProgressBar } from '../components/AnimatedProgressBar'
 import { CircularProgress } from '../components/CircularProgress'
 
 export const ProgressBarShowcase = () => {
+  useSeoTags({
+    title: 'Progress Bar Showcase - AI Shorts Generator',
+    description: 'Progress bar component examples and demonstrations.',
+  })
+
+  // Add noindex meta tag
+  useEffect(() => {
+    let robotsMeta = document.querySelector('meta[name="robots"]')
+    if (!robotsMeta) {
+      robotsMeta = document.createElement('meta')
+      robotsMeta.setAttribute('name', 'robots')
+      document.head.appendChild(robotsMeta)
+    }
+    robotsMeta.setAttribute('content', 'noindex, nofollow')
+  }, [])
   return (
     <div className="p-8 space-y-16 bg-black/20 rounded-lg">
       <h2 className="text-2xl font-bold text-white mb-8">Progress Bar Showcase</h2>

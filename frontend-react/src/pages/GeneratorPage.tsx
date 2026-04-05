@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { generatorApi } from '../api'
+import { useSeoTags } from '../hooks/useSeoTags'
 import { type AxiosError } from 'axios'
 import type { StatusResponse, Clip } from '../types'
 import { Link2, Sparkles, Download, Crown, CheckCircle, Clock, AlertCircle, SlidersHorizontal, Expand, X, Lightbulb, Globe, Type } from 'lucide-react'
@@ -244,6 +245,18 @@ export default function GeneratorPage() {
   const [maxClips, setMaxClips] = useState(3)
   const [language, setLanguage] = useState('')
   const [subtitleStyle, setSubtitleStyle] = useState('default')
+  
+  useSeoTags({
+    title: 'AI Shorts Generator - Create YouTube Shorts',
+    description: 'Generate viral short-form videos from YouTube content instantly. AI detects the best moments and creates engagement-ready clips with captions.',
+    keywords: 'YouTube shorts generator, AI video clipping, short form video, viral clips',
+    ogTitle: 'Create Viral YouTube Shorts with AI',
+    ogDescription: 'Convert long-form YouTube videos into engaging short clips automatically.',
+    ogImage: 'https://aishortsgenerators.com/og-youtube-shorts.jpg',
+    ogUrl: 'https://aishortsgenerators.com/generate',
+    ogType: 'website',
+  })
+  
   // Onboarding banner — hidden once user has generated at least once
   const [showTip, setShowTip] = useState(() => !localStorage.getItem('has_generated'))
 

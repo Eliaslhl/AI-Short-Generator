@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { authApi } from '../api'
+import { useSeoTags } from '../hooks/useSeoTags'
 import { type AxiosError } from 'axios'
 import { Film, Mail, Lock, User, Chrome } from 'lucide-react'
 
@@ -14,6 +15,15 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useSeoTags({
+    title: 'Sign Up - AI Shorts Generator',
+    description: 'Create your account and get 2 free video generations. No credit card required.',
+    keywords: 'sign up, register, free trial, AI video generator',
+    ogTitle: 'Start Creating Viral Shorts for Free',
+    ogDescription: 'Join thousands of creators using AI to generate short-form video content.',
+    ogUrl: 'https://aishortsgenerators.com/register',
+  })
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault()

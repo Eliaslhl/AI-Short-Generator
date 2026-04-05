@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Film, Mail, ArrowLeft, CheckCircle } from 'lucide-react'
 import { type AxiosError } from 'axios'
+import { useSeoTags } from '../hooks/useSeoTags'
 import client from '../api/client'
 
 export default function ForgotPasswordPage() {
@@ -9,6 +10,22 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
+
+  useSeoTags({
+    title: 'Forgot Password - AI Shorts Generator',
+    description: 'Reset your password to regain access to your account.',
+  })
+
+  // Add noindex meta tag
+  useEffect(() => {
+    let robotsMeta = document.querySelector('meta[name="robots"]')
+    if (!robotsMeta) {
+      robotsMeta = document.createElement('meta')
+      robotsMeta.setAttribute('name', 'robots')
+      document.head.appendChild(robotsMeta)
+    }
+    robotsMeta.setAttribute('content', 'noindex, nofollow')
+  }, [])
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault()

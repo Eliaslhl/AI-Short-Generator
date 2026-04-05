@@ -2,6 +2,7 @@ import { useState, useEffect, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { authApi } from '../api'
+import { useSeoTags } from '../hooks/useSeoTags'
 import { type AxiosError } from 'axios'
 import { Film, Mail, Lock, Chrome, AlertTriangle } from 'lucide-react'
 
@@ -14,6 +15,15 @@ export default function LoginPage() {
   const [loginAttempted, setLoginAttempted] = useState(false)
   const { login } = useAuth()
   const navigate = useNavigate()
+
+  useSeoTags({
+    title: 'Sign In - AI Shorts Generator',
+    description: 'Log in to your AI Shorts Generator account and start creating viral short clips.',
+    keywords: 'login, sign in, AI video generator',
+    ogTitle: 'Sign In to AI Shorts Generator',
+    ogDescription: 'Access your account and create engaging short-form videos.',
+    ogUrl: 'https://aishortsgenerators.com/login',
+  })
 
   // Persist login error to survive odd re-renders/unmounts
   useEffect(() => {

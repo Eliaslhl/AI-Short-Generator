@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { generatorApi } from '../api'
+import { useSeoTags } from '../hooks/useSeoTags'
 import type { Clip, JobStatus } from '../types'
 import apiClient from '../api/client'
 
@@ -10,6 +11,23 @@ export default function JobDetailPage() {
   const [status, setStatus] = useState<JobStatus | null>(null)
   const [videoTitle, setVideoTitle] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Block indexing for this internal page
+  useSeoTags({
+    title: 'Job Details - AI Shorts Generator',
+    description: 'View generated clips and job status.',
+  })
+
+  // Add noindex meta tag
+  useEffect(() => {
+    let robotsMeta = document.querySelector('meta[name="robots"]')
+    if (!robotsMeta) {
+      robotsMeta = document.createElement('meta')
+      robotsMeta.setAttribute('name', 'robots')
+      document.head.appendChild(robotsMeta)
+    }
+    robotsMeta.setAttribute('content', 'noindex, nofollow')
+  }, [])
 
   useEffect(() => {
     if (!jobId) return

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { generatorApi } from '../api'
+import { useSeoTags } from '../hooks/useSeoTags'
 import type { StatusResponse, Clip } from '../types'
 import { LANGUAGES, SUBTITLE_STYLES } from '../components/GeneratorForm'
 import { Download, Expand, X, Link2, SlidersHorizontal, Globe, Type, Sparkles } from 'lucide-react'
@@ -185,6 +186,17 @@ export default function YouTubeGeneratorPage() {
   const [language, setLanguage] = useState('')
   const [subtitleStyle, setSubtitleStyle] = useState('default')
   const [includeSubtitles, setIncludeSubtitles] = useState(true)
+
+  useSeoTags({
+    title: 'YouTube to Shorts Converter - AI-Powered Video Clipping',
+    description: 'Convert YouTube videos to viral short clips automatically. AI analyzes content, detects engaging moments, and exports in seconds with captions.',
+    keywords: 'YouTube shorts, video converter, AI clipping, viral content, YouTube to TikTok',
+    ogTitle: 'Convert YouTube Videos to Viral Shorts',
+    ogDescription: 'Use AI to automatically create short-form video clips from any YouTube video.',
+    ogImage: 'https://aishortsgenerators.com/og-youtube-converter.jpg',
+    ogUrl: 'https://aishortsgenerators.com/youtube-generator',
+    ogType: 'website',
+  })
 
   const [status, setStatus] = useState<StatusResponse | null>(null)
   const [error, setError] = useState('')

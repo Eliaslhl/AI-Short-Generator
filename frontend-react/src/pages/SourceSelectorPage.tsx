@@ -1,10 +1,27 @@
 import { useNavigate } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { PlayCircle, TrendingUp, ArrowRight } from 'lucide-react'
+import { useSeoTags } from '../hooks/useSeoTags'
 
 export default function SourceSelectorPage() {
   const navigate = useNavigate()
   const [hoveredSource, setHoveredSource] = useState<'youtube' | 'twitch' | null>(null)
+
+  useSeoTags({
+    title: 'Choose Video Source - AI Shorts Generator',
+    description: 'Select YouTube or Twitch to start generating viral short-form videos.',
+  })
+
+  // Add noindex meta tag
+  useEffect(() => {
+    let robotsMeta = document.querySelector('meta[name="robots"]')
+    if (!robotsMeta) {
+      robotsMeta = document.createElement('meta')
+      robotsMeta.setAttribute('name', 'robots')
+      document.head.appendChild(robotsMeta)
+    }
+    robotsMeta.setAttribute('content', 'noindex, nofollow')
+  }, [])
 
   const sources = [
     {

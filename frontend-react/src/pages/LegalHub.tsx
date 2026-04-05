@@ -1,4 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
+import { useEffect } from 'react'
+import { useSeoTags } from '../hooks/useSeoTags'
 import MentionsLegales from './MentionsLegales'
 import CGU from './CGU'
 import PrivacyPolicy from './PrivacyPolicy'
@@ -33,6 +35,23 @@ function renderSection(key?: string) {
 export default function LegalHub() {
   const params = useParams()
   const page = params.page || 'mentions'
+
+  useSeoTags({
+    title: 'Legal Information - AI Shorts Generator',
+    description: 'Terms of service, privacy policy, legal notices, and cookies policy for AI Shorts Generator.',
+    ogType: 'website',
+  })
+
+  // Add noindex meta tag for legal hub
+  useEffect(() => {
+    let robotsMeta = document.querySelector('meta[name="robots"]')
+    if (!robotsMeta) {
+      robotsMeta = document.createElement('meta')
+      robotsMeta.setAttribute('name', 'robots')
+      document.head.appendChild(robotsMeta)
+    }
+    robotsMeta.setAttribute('content', 'noindex, follow')
+  }, [])
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-12">

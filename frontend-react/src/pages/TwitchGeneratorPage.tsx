@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { generatorApi } from '../api'
+import { useSeoTags } from '../hooks/useSeoTags'
 import type { StatusResponse, Clip } from '../types'
 import { LANGUAGES, SUBTITLE_STYLES } from '../components/GeneratorForm'
 import TwitchVodPickerModal from '../components/TwitchVodPickerModal'
@@ -197,6 +198,17 @@ export default function TwitchGeneratorPage() {
   const [language, setLanguage] = useState('')
   const [subtitleStyle, setSubtitleStyle] = useState('default')
   const [includeSubtitles, setIncludeSubtitles] = useState(true)
+
+  useSeoTags({
+    title: 'Twitch VOD to Clips - AI Video Generator',
+    description: 'Turn Twitch VODs into viral short clips automatically. AI detects highlights, creates captions, and exports ready-to-upload content.',
+    keywords: 'Twitch clips, VOD editor, AI video clipping, Twitch to TikTok, stream highlights',
+    ogTitle: 'Convert Twitch VODs to Viral Clips',
+    ogDescription: 'Extract the best moments from Twitch streams and convert them into shareable short clips.',
+    ogImage: 'https://aishortsgenerators.com/og-twitch-clips.jpg',
+    ogUrl: 'https://aishortsgenerators.com/twitch-generator',
+    ogType: 'website',
+  })
 
   const [status, setStatus] = useState<StatusResponse | null>(null)
   const [error, setError] = useState('')

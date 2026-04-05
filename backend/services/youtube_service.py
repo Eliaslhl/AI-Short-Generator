@@ -47,6 +47,7 @@ def _resolve_impersonate_target() -> str | None:
     try:
         proc = subprocess.run(
             [str(_YTDLP_BIN), "--list-impersonate-targets"],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             check=False,
@@ -659,6 +660,7 @@ def download_video(
     def _run_cmd(cmd_list):
         return subprocess.run(
             cmd_list,
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             check=True,

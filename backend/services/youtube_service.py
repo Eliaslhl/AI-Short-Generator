@@ -540,7 +540,9 @@ def download_video(
         # Use YouTube-specific resolution for high quality shorts
         max_height = getattr(settings, "youtube_processing_max_height", settings.processing_max_height)
         logger.info(f"YouTube processing max height: {max_height}p")
-        fmt = f"bestvideo[height<={max_height}]+bestaudio/best"
+        # Prefer single-stream format for YouTube - faster than DASH with aria2c
+        # because YouTube rate-limits individual stream fragments
+        fmt = f"best[height<={max_height}][ext=mp4]/best[ext=mp4]/best"
 
     cmd = [
         str(_YTDLP_BIN),
@@ -653,6 +655,7 @@ def download_video(
             cmd.extend(["--impersonate", default_impersonate_target])
 
     logger.info(f"Running yt-dlp for job {job_id}: {youtube_url}")
+    logger.debug(f"yt-dlp base_cmd (first 20 elements): {base_cmd[:20]}")
 
     def _run_cmd(cmd_list):
         return subprocess.run(

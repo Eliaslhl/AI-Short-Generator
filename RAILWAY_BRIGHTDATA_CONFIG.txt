@@ -1,0 +1,39 @@
+# ============================================================================
+# Railway Configuration for Brightdata Proxy
+# ============================================================================
+
+# Set these environment variables on Railway:
+
+YTDLP_PROXY_URL=http://brd-customer-hl_9efbdc9e-zone-residential_proxy1:fftko9fdu2t6@brd.superproxy.io:33335
+
+# Optional: Adjust timeout if needed (in seconds)
+YTDLP_SOCKET_TIMEOUT=60
+YTDLP_RETRIES=8
+YTDLP_EXTRACTOR_RETRIES=6
+YTDLP_RETRY_SLEEP_SECONDS=3
+YTDLP_FRAGMENT_RETRIES=5
+
+# These settings allow yt-dlp to:
+# - Route all requests through Brightdata residential proxy (different IP)
+# - Retry 8 times if connections fail
+# - Use socket timeout of 60 seconds
+# - Skip SSL certificate verification (Brightdata uses self-signed certs)
+# - Automatically disable impersonation if unavailable
+
+# ============================================================================
+# Steps to configure on Railway:
+# ============================================================================
+# 1. Go to https://railway.app/dashboard
+# 2. Select your project
+# 3. Click on the service (AI-Shorts-Generator)
+# 4. Go to "Variables" tab
+# 5. Click "Raw Editor"
+# 6. Add the variables above
+# 7. Deploy
+
+# ============================================================================
+# Verification:
+# ============================================================================
+# After deployment, test with:
+# curl -x 'http://brd-customer-hl_9efbdc9e-zone-residential_proxy1:fftko9fdu2t6@brd.superproxy.io:33335' https://api.ipify.org
+# Should return an IP like 87.132.8.69 (not 176.170.116.202)

@@ -220,7 +220,35 @@ def select_top_segments(
     logger.info(f"Merged into {len(chunks)} scorable chunks.")
 
     if not chunks:
-        logger.warning("No valid chunks produced from transcript.")
+        logger.warning("No valid chunks produced from transcript. Generating visual-only clips (no subtitles).")
+        # If no speech detected, generate clips from the entire video duration
+        # These will be "music + visuals" without text overlays
+        if video_duration > 0:
+            # Generate N clips evenly distributed across the video
+            n_clips_requested = max(1, (max_clips if max_clips is not None else settings.max_clips))
+            chunk_duration = min_dur
+            step = max(chunk_duration, video_duration / max(1, n_clips_requested))
+            
+            visual_chunks = []
+            for i in range(n_clips_requested):
+                start = i * step
+                if start >= video_duration:
+                    break
+                end = min(start + chunk_duration, video_duration)
+                if end - start >= min_dur / 2:  # Allow slightly shorter clips for visual-only
+                    visual_chunks.append({
+                        "start": start,
+                        "end": end,
+                        "text": "[Visual-only: No speech detected]",
+                        "viral_score": 0.5,  # Neutral score for visual clips
+                        "keywords": [],
+                        "title": f"Clip {i+1} (Music & Visuals)"
+                    })
+            
+            if visual_chunks:
+                logger.info(f"Generated {len(visual_chunks)} visual-only clips (no speech detected).")
+                return visual_chunks
+        
         return []
 
     # ── 2. Score each chunk ───────────────────────────────────────────────

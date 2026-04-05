@@ -9,7 +9,7 @@ export default function MentionsLegales() {
     <main className="max-w-4xl mx-auto px-6 py-16 text-white">
       <h1 className="text-3xl font-bold mb-4">Legal Notice</h1>
 
-      <p className="text-gray-300 mb-4"><strong>AI Shorts Generator</strong><br/>Address: 1 Example Street, 75000 Paris<br/>SIRET: 000 000 000<br/>Contact: <a href="mailto:aishortsgenerators@gmail.com" className="text-purple-300 underline">aishortsgenerators@gmail.com</a></p>
+      <p className="text-gray-300 mb-4"><strong>AI Shorts Generator</strong><br/>Address: 4 rue des marronniers, Coutevroult 77580<br/>Phone: <a href="tel:+33669741360" className="text-purple-300 underline">06 69 74 13 60</a><br/>Contact: <a href="mailto:aishortsgenerators@gmail.com" className="text-purple-300 underline">aishortsgenerators@gmail.com</a></p>
 
       <h2 className="text-xl font-semibold mt-6 mb-2">Publisher</h2>
       <p className="text-gray-300 mb-4">This site is published by AI Shorts Generator, represented by its publication director.</p>

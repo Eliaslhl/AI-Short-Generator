@@ -15,7 +15,7 @@ export default function PrivacyPolicy() {
       <p className="text-gray-300 mb-4">This privacy policy explains how <strong>AI Shorts Generator</strong> collects, uses and protects your personal data when you use our service. We are committed to complying with applicable data protection laws, such as the GDPR for users in the European Union.</p>
 
       <h2 className="text-xl font-semibold mt-6 mb-2">1. Data controller</h2>
-      <p className="text-gray-300 mb-4">Controller: AI Shorts Generator<br/>Contact: <a href="mailto:aishortsgenerators@gmail.com" className="text-purple-300 underline">aishortsgenerators@gmail.com</a><br/>Address: 1 Example Street, 75000 Paris</p>
+      <p className="text-gray-300 mb-4">Controller: AI Shorts Generator<br/>Contact: <a href="mailto:aishortsgenerators@gmail.com" className="text-purple-300 underline">aishortsgenerators@gmail.com</a><br/>Phone: <a href="tel:+33669741360" className="text-purple-300 underline">06 69 74 13 60</a><br/>Address: 4 rue des marronniers, Coutevroult 77580</p>
 
       <h2 className="text-xl font-semibold mt-6 mb-2">2. Data collected and purposes</h2>
       <ul className="list-disc ml-6 text-gray-300 mb-4">

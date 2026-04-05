@@ -44,8 +44,8 @@ export default function RegisterPage() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-purple-600/20 mb-4">
             <Film className="w-7 h-7 text-purple-400" />
           </div>
-          <h1 className="text-2xl font-bold text-white">Créer un compte</h1>
-          <p className="text-gray-400 mt-1">2 générations gratuites offertes</p>
+          <h1 className="text-2xl font-bold text-white">Create Account</h1>
+          <p className="text-gray-400 mt-1">2 free generations included</p>
         </div>
 
         {/* Card */}
@@ -62,26 +62,26 @@ export default function RegisterPage() {
             className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-white/20 rounded-lg text-white hover:bg-white/10 transition text-sm font-medium"
           >
             <Chrome className="w-4 h-4" />
-            Continuer avec Google
+            Continue with Google
           </button>
 
           <div className="flex items-center gap-3">
             <div className="flex-1 h-px bg-white/10" />
-            <span className="text-gray-500 text-xs">ou</span>
+            <span className="text-gray-500 text-xs">or</span>
             <div className="flex-1 h-px bg-white/10" />
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Full name */}
             <div>
-              <label className="block text-sm text-gray-400 mb-1.5">Nom complet</label>
+              <label className="block text-sm text-gray-400 mb-1.5">Full Name</label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                 <input
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Jean Dupont"
+                  placeholder="John Doe"
                   className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition text-sm"
                 />
               </div>
@@ -96,7 +96,7 @@ export default function RegisterPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="jean@exemple.com"
+                  placeholder="john@example.com"
                   required
                   className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition text-sm"
                 />
@@ -105,14 +105,14 @@ export default function RegisterPage() {
 
             {/* Password */}
             <div>
-              <label className="block text-sm text-gray-400 mb-1.5">Mot de passe</label>
+              <label className="block text-sm text-gray-400 mb-1.5">Password</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="8 caractères minimum"
+                  placeholder="At least 8 characters"
                   required
                   className="w-full pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition text-sm"
                 />
@@ -124,14 +124,14 @@ export default function RegisterPage() {
               disabled={loading}
               className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition text-sm"
             >
-              {loading ? 'Création...' : 'Créer mon compte'}
+              {loading ? 'Creating...' : 'Create Account'}
             </button>
           </form>
 
           <p className="text-center text-sm text-gray-400">
-            Déjà un compte ?{' '}
+            Already have an account?{' '}
             <Link to="/login" className="text-purple-400 hover:text-purple-300 transition">
-              Se connecter
+              Sign in
             </Link>
           </p>
         </div>

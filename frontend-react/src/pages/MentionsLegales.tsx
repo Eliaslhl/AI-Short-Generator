@@ -15,7 +15,7 @@ export default function MentionsLegales() {
       <p className="text-gray-300 mb-4">This site is published by AI Shorts Generator, represented by its publication director.</p>
 
       <h2 className="text-xl font-semibold mt-6 mb-2">Hosting</h2>
-      <p className="text-gray-300 mb-4">Host: Example Host<br/>Address: 123 Hosting Street<br/>Phone: +33 1 23 45 67 89</p>
+      <p className="text-gray-300 mb-4">This service is hosted on cloud infrastructure. For hosting inquiries, contact: <a href="mailto:aishortsgenerators@gmail.com" className="text-purple-300 underline">aishortsgenerators@gmail.com</a></p>
 
       <h2 className="text-xl font-semibold mt-6 mb-2">Intellectual property</h2>
       <p className="text-gray-300 mb-4">All site content (text, logos, images, code) is the property of AI Shorts Generator or its partners and is protected by intellectual property law. Reproduction is prohibited without express permission.</p>

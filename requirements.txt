@@ -61,6 +61,3 @@ groq>=1.1.0
 # Queue & Job Processing (Advanced Twitch)
 redis>=4.5.0              # Redis client
 rq>=1.13.0                # RQ job queue (simple alternative to Celery)
-librosa>=0.10.0           # Audio feature extraction
-scipy>=1.11.0,<1.12.0    # Required by librosa - pinned for compatibility
-scikit-learn>=1.3.0,<1.4.0 # For advanced audio analysis - pinned for compatibility

@@ -148,6 +148,84 @@ def _extract_b64_from_single_env_value(raw_value: str) -> str:
     return v
 
 
+def _sanitize_netscape_cookie_content(content: str) -> str:
+    """Return a yt-dlp-safe Netscape cookies content.
+
+    Rules:
+    - Keep comments/headers.
+    - Treat '#HttpOnly_' lines as cookie entries.
+    - Drop cookie entries with negative expires (e.g. -1).
+    - Replace expires=0 or missing/invalid expires with a near-future timestamp.
+    """
+    now = int(time.time())
+    default_expires = now + 365 * 24 * 60 * 60
+    out_lines: list[str] = []
+
+    for raw in content.splitlines():
+        line = raw.rstrip("\n")
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        # Comments are normally preserved, except '#HttpOnly_' cookie records
+        # which are actual Netscape cookie entries.
+        is_httponly_cookie = stripped.startswith("#HttpOnly_")
+        if stripped.startswith("#") and not is_httponly_cookie:
+            out_lines.append(line)
+            continue
+
+        parse_line = line
+        httponly_prefix = ""
+        if is_httponly_cookie:
+            httponly_prefix = "#HttpOnly_"
+            parse_line = line.replace("#HttpOnly_", "", 1)
+
+        fields = parse_line.split("\t")
+        if len(fields) < 7:
+            # Keep unknown lines as-is to avoid over-filtering.
+            out_lines.append(line)
+            continue
+
+        # Netscape fields:
+        # 0 domain, 1 include_subdomains, 2 path, 3 secure, 4 expires, 5 name, 6 value
+        try:
+            expires = int(float(fields[4]))
+        except Exception:
+            expires = 0
+
+        if expires < 0:
+            # Session/invalid cookie -> do not pass to yt-dlp cookie file.
+            continue
+
+        if expires == 0:
+            fields[4] = str(default_expires)
+
+        safe_line = "\t".join(fields)
+        if httponly_prefix:
+            safe_line = f"{httponly_prefix}{safe_line}"
+        out_lines.append(safe_line)
+
+    return "\n".join(out_lines) + "\n"
+
+
+def _sanitize_cookie_file_to_temp(src_path: str, prefix: str = "yt_cookies_safe_") -> str:
+    """Sanitize any Netscape cookies file and return a temporary safe path."""
+    with open(src_path, "r", encoding="utf-8", errors="ignore") as fh:
+        content = fh.read()
+
+    sanitized = _sanitize_netscape_cookie_content(content)
+    if not sanitized.strip():
+        raise ValueError("No valid cookies after sanitization")
+
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".txt", delete=False, prefix=prefix
+    )
+    tmp.write(sanitized)
+    tmp.flush()
+    tmp.close()
+    return tmp.name
+
+
 def _write_cookies_file() -> str | None:
     """
     Decode the YOUTUBE_COOKIES_B64 env var and write to a temp file.
@@ -226,29 +304,7 @@ def _write_cookies_file() -> str | None:
         if "\t" not in content or "youtube.com" not in content:
             raise ValueError("decoded payload is not a valid Netscape YouTube cookies file")
 
-        # Filter out cookies with invalid expires (-1 or negative values)
-        # These cause yt-dlp warnings and should be skipped
-        lines = content.split("\n")
-        filtered_lines = []
-        for line in lines:
-            if line.startswith("#"):
-                # Keep comment lines
-                filtered_lines.append(line)
-            elif line.strip():
-                # Parse the line to check expires field
-                fields = line.split("\t")
-                if len(fields) >= 5:
-                    try:
-                        expires = int(fields[4])
-                        if expires < 0:
-                            # Skip session cookies with negative expires
-                            logger.debug(f"Skipping cookie with invalid expires={expires}: {fields[5] if len(fields) > 5 else 'unknown'}")
-                            continue
-                    except (ValueError, IndexError):
-                        pass
-                filtered_lines.append(line)
-        
-        filtered_content = "\n".join(filtered_lines)
+        filtered_content = _sanitize_netscape_cookie_content(content)
         if not filtered_content.strip():
             raise ValueError("No valid cookies after filtering out invalid expires")
 
@@ -299,8 +355,15 @@ def _get_cookies_file() -> tuple[str | None, bool]:
     path = os.environ.get("YOUTUBE_COOKIES_FILE", "").strip()
     if path:
         if os.path.exists(path):
-            logger.info(f"Using user-provided YouTube cookies file: {path}")
-            return path, False
+            try:
+                sanitized_path = _sanitize_cookie_file_to_temp(path)
+                logger.info(
+                    f"Using user-provided YouTube cookies file (sanitized): {path} -> {sanitized_path}"
+                )
+                return sanitized_path, True
+            except Exception as exc:
+                logger.warning(f"Failed to sanitize YOUTUBE_COOKIES_FILE at {path}: {exc}")
+                return None, False
         else:
             logger.warning(f"YOUTUBE_COOKIES_FILE set but file not found: {path}")
 
@@ -380,10 +443,22 @@ def _get_cookies_file() -> tuple[str | None, bool]:
             # Log safe metadata
             logger.info(f"[YTC AUTOREFRESH] wrote {refreshed_path} size={size} sha256={sha}")
             if os.path.exists(refreshed_path):
-                return refreshed_path
+                try:
+                    return _sanitize_cookie_file_to_temp(
+                        refreshed_path, prefix="yt_cookies_refreshed_safe_"
+                    )
+                except Exception as exc:
+                    logger.warning(f"Could not sanitize refreshed cookies file {refreshed_path}: {exc}")
+                    return None
             # If script reported path but file missing, try configured out_path
             if os.path.exists(out_path):
-                return out_path
+                try:
+                    return _sanitize_cookie_file_to_temp(
+                        out_path, prefix="yt_cookies_refreshed_safe_"
+                    )
+                except Exception as exc:
+                    logger.warning(f"Could not sanitize refreshed cookies file {out_path}: {exc}")
+                    return None
             return None
         except Exception as exc:
             logger.exception("Auto-refresh attempt failed: %s", exc)
@@ -503,6 +578,13 @@ def _auto_refresh_and_retry_download(
         
         if not os.path.exists(refreshed_path):
             raise RuntimeError(f"Refreshed cookies file not found at {refreshed_path}")
+
+        try:
+            refreshed_path = _sanitize_cookie_file_to_temp(
+                refreshed_path, prefix="yt_cookies_autorefresh_safe_"
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Refreshed cookies sanitization failed: {exc}")
         
         # Record this refresh in rate-limit cache
         _AUTOREFRESH_RATELIMIT_CACHE[job_id] = now

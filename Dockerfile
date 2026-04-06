@@ -3,7 +3,7 @@
 #  Base: Python 3.11 slim + ffmpeg + system fonts for MoviePy/TextClip
 # ──────────────────────────────────────────────────────────────────────────────
 
-FROM python:3.11-slim
+FROM python:3.11-bullseye
 
 # System deps: ffmpeg (video), fonts (MoviePy TextClip), build tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -29,6 +29,9 @@ WORKDIR /app
 # Install Python deps first (better Docker layer caching)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Pre-download Whisper tiny model so first request isn't slow
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"
 
 # Copy application code
 COPY backend/ ./backend/

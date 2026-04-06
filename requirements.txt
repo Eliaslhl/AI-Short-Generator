@@ -24,8 +24,7 @@ moviepy==2.1.1
 ffmpeg-python==0.2.0
 
 # AI / NLP
-spacy>=3.0.0
-# After install run: python -m spacy download en_core_web_sm
+# REMOVED: spacy (causing Docker build timeout)
 requests==2.31.0          # Ollama HTTP calls
 
 # Utilities

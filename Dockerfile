@@ -5,23 +5,12 @@
 
 FROM python:3.11-bullseye
 
-# System deps: ffmpeg (video), fonts (MoviePy TextClip), build tools
+# System deps: keep only runtime essentials for faster/more reliable Railway builds
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     fonts-liberation \
     fonts-dejavu-core \
-    gcc \
-    g++ \
-    libpq-dev \
     curl \
-    pkg-config \
-    libavformat-dev \
-    libavcodec-dev \
-    libavdevice-dev \
-    libavutil-dev \
-    libswscale-dev \
-    libswresample-dev \
-    libavfilter-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -30,8 +19,14 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download Whisper tiny model so first request isn't slow
-RUN python -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"
+# Optional: pre-download Whisper tiny model during build.
+# Disabled by default to avoid build failures/timeouts on constrained CI builders.
+ARG PRELOAD_WHISPER=0
+RUN if [ "$PRELOAD_WHISPER" = "1" ]; then \
+            python -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"; \
+        else \
+            echo "Skipping Whisper pre-download (PRELOAD_WHISPER=$PRELOAD_WHISPER)"; \
+        fi
 
 # Copy application code
 COPY backend/ ./backend/

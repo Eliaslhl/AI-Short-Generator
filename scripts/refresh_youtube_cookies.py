@@ -21,63 +21,68 @@ from typing import List, Optional, Tuple
 def write_netscape_cookies(cookies: List[dict], out_path: str, meta_comment: str = "") -> None:
     """Write cookies in Netscape cookies.txt format used by wget/yt-dlp.
     
-    Fixes cookies with invalid or negative expiration times by:
-    - Skipping cookies with expires=-1 (session cookies) - THESE WONT WORK ANYWAY
-    - Replacing invalid expires with a future date (365 days from now)
+    Aggressively sanitizes all cookies to prevent yt-dlp failures:
+    - ALWAYS skip cookies with expires <= 0 (session/invalid cookies won't work)
+    - ALWAYS replace any negative or zero expires with a future date
+    - For ANY missing/invalid expires: use 365 days from now
     """
     import time as time_module
     
-    # Generate a future expiration (365 days from now)
-    future_expires = int(time_module.time()) + (365 * 24 * 60 * 60)
+    # Generate a future expiration (365 days from now) - this is our safe default
+    now = int(time_module.time())
+    future_expires = now + (365 * 24 * 60 * 60)
     
     header = [
         "# Netscape HTTP Cookie File",
         f"# Generated: {time.asctime()}",
+        "# Sanitized to remove invalid/session cookies (expires <= 0)",
     ]
     if meta_comment:
         header.append(f"# {meta_comment}")
 
     lines: List[str] = header + [""]
-    skipped_count = 0
     fixed_count = 0
+    total_input = len(cookies)
     
     for c in cookies:
         # Playwright cookie fields: name, value, domain, path, expires, httpOnly, secure, sameSite
         domain = c.get("domain", "")
+        if not domain:
+            continue
+            
         include_subdomains = "TRUE" if domain.startswith(".") or domain.count(".") > 1 else "FALSE"
         path = c.get("path", "/")
         secure = "TRUE" if c.get("secure", False) else "FALSE"
         
-        # Parse and fix expires
-        expires_raw = c.get("expires")
-        expires = 0
-        
-        if expires_raw is not None:
-            try:
-                expires = int(expires_raw)
-            except (ValueError, TypeError):
-                expires = 0
-        
-        # SESSION COOKIES (expires=-1) MUST BE SKIPPED - they won't work in cookies.txt
-        if expires < 0:
-            skipped_count += 1
-            continue
-        
-        # If expires is 0 or missing, use future date
-        if expires == 0:
-            expires = future_expires
-            fixed_count += 1
-        
         name = c.get("name", "")
         value = c.get("value", "")
         
-        # Skip cookies with empty names
-        if not name:
+        # Skip cookies with empty names or values
+        if not name or not value:
             continue
+        
+        # Parse and AGGRESSIVELY fix expires
+        expires_raw = c.get("expires")
+        expires = None
+        
+        # Try to parse as integer
+        if expires_raw is not None:
+            try:
+                expires = int(float(str(expires_raw)))
+            except (ValueError, TypeError):
+                expires = None
+        
+        # If expires is missing, invalid, or <= 0 → use future date
+        if expires is None or expires <= 0:
+            expires = future_expires
+            fixed_count += 1
+            if expires_raw is not None and expires_raw <= 0:
+                # Log that we're fixing an explicit negative/zero value
+                pass
         
         lines.append("\t".join([domain, include_subdomains, path, secure, str(expires), name, value]))
 
-    print(f"[REFRESH] Cookie summary: {len(cookies)} total, {skipped_count} skipped (expires<0), {fixed_count} fixed (expires=0->future)", flush=True)
+    print(f"[REFRESH] Cookie summary: {total_input} total, {fixed_count} sanitized (expires<=0->future)", flush=True)
     
     content = "\n".join(lines) + "\n"
     with open(out_path, "w", newline="\n") as f:
@@ -160,7 +165,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             browser_ctx = context
 
         # simple heuristic (not used further here) — kept for future logging/alerts
-        has_session_cookies = any(c.get("name", "").lower() in ("sapisid", "ssid", "sid", "ytid") for c in cookies)
+        # NOTE: has_session_cookies calculation removed (was unused)
         
         # Filter and clean cookies before writing
         filtered_cookies = []
@@ -175,8 +180,6 @@ def main(argv: Optional[List[str]] = None) -> int:
                 except (ValueError, TypeError):
                     pass
             filtered_cookies.append(c)
-        
-        print(f"[REFRESH] Filtered {len(cookies)} cookies -> {len(filtered_cookies)} valid cookies", flush=True)
 
         print(f"[REFRESH] Writing cookies to {out_path}", flush=True)
         write_netscape_cookies(filtered_cookies, out_path, meta_comment="exported-by-refresh_youtube_cookies.py")

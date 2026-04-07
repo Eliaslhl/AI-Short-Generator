@@ -1,5 +1,5 @@
 """
-audio_processor.py – Real audio extraction and processing using librosa.
+audio_processor.py – Real audio extraction and processing using _get_librosa().
 
 Features:
 - Extract audio from video files
@@ -11,13 +11,34 @@ Features:
 import logging
 import numpy as np
 from typing import Tuple, Optional
-import librosa
 
 logger = logging.getLogger(__name__)
 
+# Lazy import: librosa is only loaded when actually needed
+# This avoids startup failures if librosa is not installed
+_librosa = None
+
+def _get_librosa():
+    """Lazy-load librosa on first use."""
+    global _librosa
+    if _librosa is None:
+        try:
+            import librosa
+            _librosa = librosa
+        except ImportError:
+            logger.error(
+                "librosa is not installed but is required for audio processing. "
+                "Install with: pip install librosa"
+            )
+            raise RuntimeError(
+                "Audio processing (librosa) not available. This feature is disabled "
+                "if librosa was not in requirements.txt at build time."
+            )
+    return _librosa
+
 
 class RealAudioProcessor:
-    """Real audio processing using librosa."""
+    """Real audio processing using _get_librosa()."""
     
     def __init__(self, sample_rate: int = 22050):
         self.sample_rate = sample_rate
@@ -36,7 +57,7 @@ class RealAudioProcessor:
             logger.info(f"🎵 Loading audio from: {file_path}")
             
             # librosa can load audio from video files too
-            audio, sr = librosa.load(file_path, sr=self.sample_rate, mono=True)
+            audio, sr = _get_librosa().load(file_path, sr=self.sample_rate, mono=True)
             
             logger.info(f"✅ Loaded {len(audio)} samples at {sr} Hz")
             return audio, sr
@@ -66,11 +87,11 @@ class RealAudioProcessor:
             logger.info("🔊 Computing RMS energy...")
             
             # Compute RMS energy using librosa
-            S = librosa.feature.melspectrogram(y=audio, sr=self.sample_rate)
-            rms_energy = librosa.feature.rms(S=S)[0]
+            S = _get_librosa().feature.melspectrogram(y=audio, sr=self.sample_rate)
+            rms_energy = _get_librosa().feature.rms(S=S)[0]
             
             # Convert frame indices to time
-            times = librosa.frames_to_time(np.arange(len(rms_energy)), sr=self.sample_rate)
+            times = _get_librosa().frames_to_time(np.arange(len(rms_energy)), sr=self.sample_rate)
             
             # Normalize to 0-1
             rms_normalized = rms_energy / (np.max(rms_energy) + 1e-6)
@@ -139,7 +160,7 @@ class RealAudioProcessor:
         try:
             logger.info("🎼 Extracting MFCC features...")
             
-            mfcc = librosa.feature.mfcc(y=audio, sr=self.sample_rate, n_mfcc=n_mfcc)
+            mfcc = _get_librosa().feature.mfcc(y=audio, sr=self.sample_rate, n_mfcc=n_mfcc)
             
             logger.info(f"✅ Extracted MFCC: shape={mfcc.shape}")
             return mfcc
@@ -165,17 +186,17 @@ class RealAudioProcessor:
             logger.info("🎵 Extracting spectral features...")
             
             # Compute spectrogram
-            D = librosa.stft(audio)
+            D = _get_librosa().stft(audio)
             magnitude = np.abs(D)
             
             # Spectral centroid (brightness)
-            spectral_centroid = librosa.feature.spectral_centroid(y=audio, sr=self.sample_rate)[0]
+            spectral_centroid = _get_librosa().feature.spectral_centroid(y=audio, sr=self.sample_rate)[0]
             
             # Spectral rolloff (where most energy is below)
-            spectral_rolloff = librosa.feature.spectral_rolloff(y=audio, sr=self.sample_rate)[0]
+            spectral_rolloff = _get_librosa().feature.spectral_rolloff(y=audio, sr=self.sample_rate)[0]
             
             # Zero crossing rate (noisiness)
-            zcr = librosa.feature.zero_crossing_rate(audio)[0]
+            zcr = _get_librosa().feature.zero_crossing_rate(audio)[0]
             
             logger.info("✅ Extracted spectral features")
             

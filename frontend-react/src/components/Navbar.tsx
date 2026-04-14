@@ -51,8 +51,11 @@ export default function Navbar() {
       <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
 
     {/* Logo */}
-    <Link to="/" className="flex items-center shrink-0 mr-auto md:mr-0">
-      <img src="/logoshort.png" alt="AI Shorts Generator" className="h-20 max-h-16 w-auto object-contain" />
+    <Link to="/" className="flex items-center shrink-0 mr-auto md:mr-0 gap-2">
+      <svg className="h-5 w-5 sm:h-7 sm:w-7 text-purple-400 flex-shrink-0" fill="currentColor" viewBox="0 0 40 40">
+        <path d="M20 2C10.6 2 3 9.6 3 19s7.6 17 17 17 17-7.6 17-17S29.4 2 20 2zm0 30c-7.2 0-13-5.8-13-13s5.8-13 13-13 13 5.8 13 13-5.8 13-13 13zm-1-20h2v10h-2zm6 4h2v6h-2zm-12 0h2v6h-2z"/>
+      </svg>
+      <span className="text-sm sm:text-base font-semibold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent leading-tight">AI Shorts</span>
     </Link>
 
         {/* Desktop right */}

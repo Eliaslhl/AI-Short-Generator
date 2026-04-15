@@ -11,6 +11,7 @@ auth/router.py – Authentication routes:
   POST /auth/stripe/webhook     – Stripe webhook for subscription updates
 """
 
+import asyncio
 import logging
 import os
 import secrets
@@ -156,13 +157,12 @@ async def register(
             status_code=400, detail="Password must be at least 8 characters"
         )
 
-    # Create user with is_verified=True (account active immediately)
-    # TODO: Re-enable email verification in feature/email-verification branch
+    # Create user with is_verified=False (requires email confirmation)
     user = User(
         email=body.email,
         hashed_password=hash_password(body.password),
         full_name=body.full_name,
-        is_verified=True,  # Account is active immediately (email verification disabled for now)
+        is_verified=False,  # Requires email confirmation before account is active
     )
     db.add(user)
     await db.commit()
@@ -170,15 +170,20 @@ async def register(
 
     logger.info(f"New user registered: {user.email}")
 
-    # Generate JWT token for immediate login
-    token = create_access_token(user.id, user.email)
+    # Generate confirmation token
+    confirmation_token_obj = EmailConfirmationToken.create_token(user.id, user.email)
+    db.add(confirmation_token_obj)
+    await db.commit()
+
+    # Send confirmation email (non-blocking with background task)
+    asyncio.create_task(
+        send_confirmation_email_safe(user.email, confirmation_token_obj.token)
+    )
 
     return {
-        "message": "Registration successful! Welcome to AI Shorts Generator.",
+        "message": "Registration successful! Please check your email to confirm your account.",
         "email": user.email,
-        "access_token": token,
-        "token_type": "bearer",
-        "user": _user_dict(user)
+        "requires_email_confirmation": True,
     }
 
 
@@ -198,6 +203,9 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 
         if not user.is_active:
             raise HTTPException(status_code=403, detail="Account disabled")
+
+        if not user.is_verified:
+            raise HTTPException(status_code=403, detail="Email not confirmed. Please check your inbox and confirm your email address.")
 
         token = create_access_token(user.id, user.email)
         # Return token and user object
@@ -221,6 +229,8 @@ async def me(user: User = Depends(get_current_user)):
 async def confirm_email(body: ConfirmEmailRequest, db: AsyncSession = Depends(get_db)):
     """Verify email confirmation token and activate user account."""
     token = body.token
+    logger.info(f"[DEBUG] Confirm email called with token: {token[:20]}...")
+    
     # Find the confirmation token
     result = await db.execute(
         select(EmailConfirmationToken).where(
@@ -228,6 +238,7 @@ async def confirm_email(body: ConfirmEmailRequest, db: AsyncSession = Depends(ge
         )
     )
     email_token = result.scalar_one_or_none()
+    logger.info(f"[DEBUG] Token found: {email_token is not None}")
     
     if not email_token:
         raise HTTPException(status_code=400, detail="Invalid confirmation token")
@@ -235,8 +246,9 @@ async def confirm_email(body: ConfirmEmailRequest, db: AsyncSession = Depends(ge
     if email_token.used:
         raise HTTPException(status_code=400, detail="Confirmation token already used")
     
-    # Check if token has expired
-    if email_token.expires_at < datetime.now(timezone.utc):
+    # Check if token has expired (handle both aware and naive datetimes)
+    now = datetime.now(timezone.utc) if email_token.expires_at.tzinfo else datetime.now()
+    if email_token.expires_at < now:
         raise HTTPException(status_code=400, detail="Confirmation token has expired")
     
     # Find the user and verify email
@@ -244,6 +256,7 @@ async def confirm_email(body: ConfirmEmailRequest, db: AsyncSession = Depends(ge
         select(User).where(User.id == email_token.user_id)
     )
     user = result.scalar_one_or_none()
+    logger.info(f"[DEBUG] User found: {user is not None}, email={user.email if user else 'N/A'}")
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -256,6 +269,7 @@ async def confirm_email(body: ConfirmEmailRequest, db: AsyncSession = Depends(ge
     db.add(email_token)
     await db.commit()
     await db.refresh(user)
+    logger.info(f"[DEBUG] User marked verified and token marked used")
     
     # Create access token for immediate login
     access_token = create_access_token(user.id, user.email)
@@ -264,9 +278,11 @@ async def confirm_email(body: ConfirmEmailRequest, db: AsyncSession = Depends(ge
     
     # Send welcome email now that they're verified
     try:
+        logger.info(f"[DEBUG] Sending welcome email to {user.email}")
         await send_welcome_email(user.email, user.full_name or "")
+        logger.info(f"[DEBUG] Welcome email sent successfully")
     except Exception as exc:
-        logger.error(f"Failed to send welcome email: {exc}")
+        logger.error(f"Failed to send welcome email: {exc}", exc_info=True)
     
     return {
         "access_token": access_token,

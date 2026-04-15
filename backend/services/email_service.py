@@ -121,8 +121,8 @@ async def send_welcome_email(to_email: str, full_name: str = "") -> None:
       <div style="background:#1a1a2e;border:1px solid #7c3aed33;border-radius:8px;padding:16px;margin-bottom:24px">
         <p style="margin:0;font-size:14px;color:#a78bfa;font-weight:600">🎁 Your free plan includes:</p>
         <ul style="color:#d1d5db;font-size:14px;margin:8px 0 0 0;padding-left:20px">
-          <li>1 video per month</li>
-          <li>3 shorts per video</li>
+          <li>2 videos per month for YouTube</li>
+          <li>2 videos per month for Twitch</li>
           <li>1080p export</li>
           <li>Auto captions</li>
         </ul>
@@ -170,11 +170,13 @@ async def send_confirmation_email(to_email: str, confirmation_token: str) -> Non
       <p style="color:#9ca3af;margin-bottom:24px">
         Thanks for signing up! Click the button below to confirm your email and activate your account.
       </p>
-      <a href="{confirmation_url}"
-         style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#7c3aed,#db2777);color:#fff;font-weight:600;border-radius:8px;text-decoration:none">
-        Confirm email
-      </a>
-      <p style="margin-top:24px;font-size:12px;color:#6b7280">
+      <div style="text-align:center;margin-bottom:24px">
+        <a href="{confirmation_url}"
+           style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#7c3aed,#db2777);color:#fff;font-weight:600;border-radius:8px;text-decoration:none">
+          Confirm email
+        </a>
+      </div>
+      <p style="margin-top:24px;font-size:12px;color:#6b7280;text-align:center">
         This link expires in <strong style="color:#fff">24 hours</strong>.<br>
         Link: <a href="{confirmation_url}" style="color:#a78bfa;word-break:break-all">{confirmation_url}</a>
       </p>

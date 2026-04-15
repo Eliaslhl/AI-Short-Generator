@@ -36,7 +36,7 @@ const PLANS_BY_PLATFORM = {
       style: 'default' as const,
       badge: null as null,
       features: [
-        '1 video / month',
+        '2 videos / month for YouTube',
         '3 shorts per video',
         'Export 1080p',
         'Auto captions',
@@ -118,8 +118,7 @@ const PLANS_BY_PLATFORM = {
       style: 'default' as const,
       badge: null as null,
       features: [
-        '1 VOD / month',
-        '3 clips per VOD',
+        '2 VODs / month',
         'Export 1080p',
         'Auto captions',
         'Watermark on exports',

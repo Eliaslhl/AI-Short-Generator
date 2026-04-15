@@ -6,7 +6,7 @@ import { useSeoTags } from '../hooks/useSeoTags'
 import { type AxiosError } from 'axios'
 import { Film, Mail, Lock, User, Chrome } from 'lucide-react'
 
-// Auto-login after registration enabled
+// Email verification required on registration
 export default function RegisterPage() {
   const navigate = useNavigate()
   const { register: authRegister } = useAuth()
@@ -15,6 +15,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showConfirmationPrompt, setShowConfirmationPrompt] = useState(false)
 
   useSeoTags({
     title: 'Sign Up - AI Shorts Generator',
@@ -34,10 +35,19 @@ export default function RegisterPage() {
     }
     setLoading(true)
     try {
-      // Use the AuthContext register which handles token + user state
-      await authRegister(email, password, fullName)
-      // Navigate to dashboard immediately (user state is already set)
-      navigate('/dashboard')
+      // Direct API call to handle email verification response
+      const res = await authApi.register(email, password, fullName)
+      
+      // Check if requires email confirmation
+      if ((res.data as any).requires_email_confirmation) {
+        setShowConfirmationPrompt(true)
+        setFullName('')
+        setPassword('')
+      } else {
+        // Old flow - if backend still returns access_token
+        await authRegister(email, password, fullName)
+        navigate('/dashboard')
+      }
     } catch (err) {
       const axiosErr = err as AxiosError<{ detail: string }>
       setError(axiosErr.response?.data?.detail ?? "Erreur lors de l'inscription.")
@@ -49,6 +59,30 @@ export default function RegisterPage() {
   return (
     <div className="min-h-[calc(100vh-64px)] flex items-center justify-center px-4">
       <div className="w-full max-w-md">
+        {/* Email Confirmation Prompt */}
+        {showConfirmationPrompt && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center px-4 z-50">
+            <div className="bg-slate-900 border border-purple-500/30 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-500/20 mb-4">
+                <Mail className="w-8 h-8 text-green-400" />
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-2">Check Your Email</h2>
+              <p className="text-gray-200 mb-6">
+                We've sent a confirmation link to <strong className="text-purple-400">{email}</strong>. Click the link to verify your email and activate your account.
+              </p>
+              <p className="text-sm text-gray-400 mb-6">
+                The link will expire in 24 hours. Don't see the email? Check your spam folder.
+              </p>
+              <button
+                onClick={() => navigate('/login')}
+                className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold rounded-lg transition"
+              >
+                Go to Login
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-purple-600/20 mb-4">

@@ -242,3 +242,20 @@ class EmailConfirmationToken(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     user: Mapped["User | None"] = relationship("User")
+
+    @classmethod
+    def create_token(cls, user_id: str, email: str = "") -> "EmailConfirmationToken":
+        """Generate a unique confirmation token and return the token object."""
+        import secrets
+        from datetime import timedelta
+        token = secrets.token_urlsafe(32)
+        # Token expires in 24 hours
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+        # Create and return the token object
+        return cls(
+            user_id=user_id,
+            email=email,
+            token=token,
+            expires_at=expires_at,
+            used=False,
+        )

@@ -36,11 +36,14 @@ client clears its user state and the old `token`, `access_token`, and
 state and reports failure; JavaScript never attempts to delete the HttpOnly
 cookie itself.
 
-## CSRF boundary and deferred work
+## CSRF boundary
 
 Credentialed requests make cookie-authenticated mutating routes CSRF-relevant.
-Current backend origin validation protects logout, while CORS and SameSite form
-the existing boundary for other routes. A general CSRF strategy and any
-cookie-only API policy are intentionally deferred to PR3.5. JWT rotation,
-advanced session revocation, and removal of transitional backend Bearer support
-are also deferred.
+The backend requires an exact trusted `Origin` for every cookie-authenticated
+`POST`, `PUT`, `PATCH`, or `DELETE`; the browser supplies this header for
+cross-origin fetch/XHR requests. It rejects missing or duplicate Origin headers;
+hostname case and default ports are canonicalized consistently with CORS.
+Bearer-only API clients, including the one-time `POST /auth/session` conversion,
+remain Origin-exempt for backwards compatibility. See [CSRF protection](CSRF_PROTECTION.md)
+for the allowlist and deployment requirements. JWT rotation, advanced session
+revocation, and removal of transitional backend Bearer support remain deferred.

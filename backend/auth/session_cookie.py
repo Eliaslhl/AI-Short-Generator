@@ -1,32 +1,11 @@
 """Centralized, safe cookie policy for opaque web sessions."""
 
-import os
 from typing import Any
 
 from fastapi import HTTPException, Request, Response, status
 
 from backend.config import settings
-
-
-_LOCAL_ORIGINS = (
-    "http://localhost:5173",
-    "http://localhost:4173",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:4173",
-)
-
-
-def allowed_origins() -> list[str]:
-    """Return the exact explicit origins accepted by CORS and cookie CSRF checks."""
-    origins = [] if settings.app_environment == "production" else list(_LOCAL_ORIGINS)
-    frontend_url = settings.frontend_url or os.getenv("FRONTEND_URL", "")
-    if frontend_url and frontend_url not in origins:
-        origins.append(frontend_url)
-    if frontend_url.startswith("https://"):
-        www_origin = frontend_url.replace("https://", "https://www.", 1)
-        if www_origin not in origins:
-            origins.append(www_origin)
-    return origins
+from backend.auth.origin_policy import allowed_origins, require_trusted_origin_for_cookie_auth
 
 
 def _cookie_options() -> dict[str, Any]:
@@ -62,11 +41,33 @@ def validate_session_cookie_configuration() -> None:
 
 def read_session_cookie(request: Request) -> str | None:
     """Read opaque cookie material without logging or transforming it."""
-    return request.cookies.get(settings.session_cookie_name)
+    values = _session_cookie_values(request)
+    return values[0] if len(values) == 1 else None
 
 
 def session_cookie_present(request: Request) -> bool:
-    return settings.session_cookie_name in request.cookies
+    return bool(_session_cookie_values(request))
+
+
+def reject_ambiguous_session_cookie(request: Request) -> None:
+    """Fail closed rather than letting Starlette select a duplicate cookie value."""
+    if len(_session_cookie_values(request)) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+def _session_cookie_values(request: Request) -> list[str]:
+    """Extract only the configured auth cookie from raw Cookie headers."""
+    values: list[str] = []
+    for header in request.headers.getlist("cookie"):
+        for item in header.split(";"):
+            name, separator, value = item.strip().partition("=")
+            if name == settings.session_cookie_name:
+                values.append(value if separator else "")
+    return values
 
 
 def set_session_cookie(response: Response, token: str) -> None:
@@ -88,10 +89,5 @@ def delete_session_cookie(response: Response) -> None:
 
 
 def require_allowed_origin(request: Request) -> None:
-    """Apply a narrow CSRF boundary to cookie-authenticated state changes."""
-    origin = request.headers.get("origin")
-    if origin not in allowed_origins():
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Origin not allowed",
-        )
+    """Compatibility wrapper for the shared cookie-CSRF Origin policy."""
+    require_trusted_origin_for_cookie_auth(request)

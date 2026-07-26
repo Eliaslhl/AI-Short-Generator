@@ -35,6 +35,9 @@ def _routes_for(environment: str) -> set[str]:
         "DATABASE_URL": "sqlite+aiosqlite:///./data/app.db.test",
         "MIGRATE_ON_START": "false",
     }
+    if environment == "production":
+        # Exercise the secure production default: no implicit localhost origin.
+        env.pop("FRONTEND_URL", None)
     command = [
         sys.executable,
         "-c",

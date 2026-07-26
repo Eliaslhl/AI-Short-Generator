@@ -24,7 +24,6 @@ if os.getenv("APP_ENVIRONMENT") in {"development", "test"}:
         load_dotenv()
 
 from fastapi import FastAPI  # noqa: E402
-from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastapi.responses import Response, JSONResponse  # noqa: E402
 from slowapi import Limiter, _rate_limit_exceeded_handler  # noqa: E402
@@ -39,6 +38,7 @@ configure_logging()
 
 from backend.api.routes import router  # noqa: E402
 from backend.auth.router import router as auth_router  # noqa: E402
+from backend.auth.origin_policy import CanonicalCORSMiddleware  # noqa: E402
 from backend.auth.session_cookie import allowed_origins, validate_session_cookie_configuration  # noqa: E402
 from backend.api.advanced_routes import advanced_router  # noqa: E402
 from backend.database import create_tables  # noqa: E402
@@ -179,7 +179,7 @@ validate_session_cookie_configuration()
 ALLOWED_ORIGINS = allowed_origins()
 
 app.add_middleware(
-    CORSMiddleware,
+    CanonicalCORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Explicit methods instead of "*"

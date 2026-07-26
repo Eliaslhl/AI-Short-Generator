@@ -35,6 +35,7 @@ from backend.auth.session_cookie import (
     read_session_cookie,
     require_allowed_origin,
     session_cookie_present,
+    reject_ambiguous_session_cookie,
     set_session_cookie,
 )
 from backend.database import get_db
@@ -257,6 +258,7 @@ async def create_session(
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(request: Request, db: AsyncSession = Depends(get_db)):
     """Idempotently revoke the opaque cookie session; JWTs remain stateless."""
+    reject_ambiguous_session_cookie(request)
     has_cookie = session_cookie_present(request)
     if has_cookie:
         require_allowed_origin(request)

@@ -12,7 +12,12 @@ from sqlalchemy import select
 from backend.database import get_db
 from backend.models.user import User
 from backend.auth.jwt import decode_token
-from backend.auth.session_cookie import read_session_cookie, session_cookie_present
+from backend.auth.origin_policy import require_trusted_origin_for_cookie_auth
+from backend.auth.session_cookie import (
+    read_session_cookie,
+    reject_ambiguous_session_cookie,
+    session_cookie_present,
+)
 from backend.services.session_service import session_service
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -77,11 +82,13 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """Cookie-first dual boundary; a present invalid cookie never falls back to JWT."""
+    reject_ambiguous_session_cookie(request)
     if session_cookie_present(request):
         cookie_user = await resolve_user_from_session_cookie(request, db)
         bearer_user = await resolve_user_from_bearer_token(credentials, db)
         if bearer_user is not None and bearer_user.id != cookie_user.id:
             raise _authentication_failed()
+        require_trusted_origin_for_cookie_auth(request)
         return cookie_user
 
     if credentials is None:

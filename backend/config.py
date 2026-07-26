@@ -44,6 +44,17 @@ class Settings(BaseSettings):
     # Set APP_ENVIRONMENT=development explicitly for local diagnostics.
     app_environment: Literal["development", "test", "production"] = "production"
     session_hash_key: str = ""
+    session_cookie_name: str = (
+        "__Host-ai_shorts_session"
+        if _runtime_environment == "production"
+        else "session"
+    )
+    session_cookie_secure: bool = False
+    session_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+    session_cookie_domain: str | None = None
+    session_cookie_path: str = "/"
+    session_cookie_max_age: int = 60 * 60 * 24 * 30
+    frontend_url: str = ""
 
     # ---------- Database ----------
     database_url: str = (

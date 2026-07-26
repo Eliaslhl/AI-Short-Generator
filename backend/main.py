@@ -39,6 +39,7 @@ configure_logging()
 
 from backend.api.routes import router  # noqa: E402
 from backend.auth.router import router as auth_router  # noqa: E402
+from backend.auth.session_cookie import allowed_origins, validate_session_cookie_configuration  # noqa: E402
 from backend.api.advanced_routes import advanced_router  # noqa: E402
 from backend.database import create_tables  # noqa: E402
 
@@ -174,21 +175,8 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # ty
 # Allow the frontend dev server and production origins to call the API.
 # NOTE: allow_credentials=True requires explicit origins (not "*").
 # ⚠️  IMPORTANT: CORS middleware MUST be added FIRST (before other middlewares)
-ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Vite dev server
-    "http://localhost:4173",  # Vite preview
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:4173",
-]
-
-_frontend_url = os.getenv("FRONTEND_URL", "")
-if _frontend_url:
-    if _frontend_url not in ALLOWED_ORIGINS:
-        ALLOWED_ORIGINS.append(_frontend_url)
-    # Also add www version
-    www_frontend_url = _frontend_url.replace("https://", "https://www.")
-    if www_frontend_url not in ALLOWED_ORIGINS and www_frontend_url != _frontend_url:
-        ALLOWED_ORIGINS.append(www_frontend_url)
+validate_session_cookie_configuration()
+ALLOWED_ORIGINS = allowed_origins()
 
 app.add_middleware(
     CORSMiddleware,

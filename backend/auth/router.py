@@ -22,17 +22,25 @@ import bcrypt
 import stripe
 from authlib.integrations.httpx_client import AsyncOAuth2Client
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.auth.dependencies import get_current_user
+from backend.auth.dependencies import get_current_user, get_current_user_from_bearer
 from backend.auth.jwt import create_access_token
+from backend.auth.session_cookie import (
+    delete_session_cookie,
+    read_session_cookie,
+    require_allowed_origin,
+    session_cookie_present,
+    set_session_cookie,
+)
 from backend.database import get_db
 from backend.models.user import Plan, PasswordResetToken, User, EmailConfirmationToken
 from backend.services.email_service import send_reset_email, send_welcome_email, send_confirmation_email
+from backend.services.session_service import session_service
 
 if os.getenv("APP_ENVIRONMENT") in {"development", "test"}:
     load_dotenv()
@@ -223,6 +231,44 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 @router.get("/me", response_model=dict)
 async def me(user: User = Depends(get_current_user)):
     return _user_dict(user)
+
+
+@router.post("/session", response_model=dict, status_code=status.HTTP_201_CREATED)
+async def create_session(
+    response: Response,
+    user: User = Depends(get_current_user_from_bearer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mint an opaque cookie session from a JWT without changing login behavior."""
+    try:
+        created = await session_service.create_session(db, user.id)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    set_session_cookie(response, created.raw_token)
+    return {"expires_at": created.session.expires_at}
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(request: Request, db: AsyncSession = Depends(get_db)):
+    """Idempotently revoke the opaque cookie session; JWTs remain stateless."""
+    has_cookie = session_cookie_present(request)
+    if has_cookie:
+        require_allowed_origin(request)
+
+    token = read_session_cookie(request)
+    if token is not None:
+        try:
+            await session_service.revoke_session_by_token(db, token)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+
+    response = Response(status_code=status.HTTP_204_NO_CONTENT)
+    delete_session_cookie(response)
+    return response
 
 
 # ── Confirm Email ─────────────────────────────────────────────────────────────

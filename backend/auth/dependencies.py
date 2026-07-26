@@ -4,7 +4,7 @@ auth/dependencies.py – FastAPI dependencies for authenticated routes.
 
 from datetime import datetime, timezone
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -12,26 +12,83 @@ from sqlalchemy import select
 from backend.database import get_db
 from backend.models.user import User
 from backend.auth.jwt import decode_token
+from backend.auth.session_cookie import read_session_cookie, session_cookie_present
+from backend.services.session_service import session_service
 
-bearer_scheme = HTTPBearer()
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def _authentication_failed() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def _credentials_missing() -> HTTPException:
+    """Preserve the existing HTTPBearer response for entirely anonymous calls."""
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Not authenticated",
+    )
+
+
+async def _active_user(db: AsyncSession, user_id: str) -> User | None:
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    return user if user is not None and user.is_active else None
+
+
+async def resolve_user_from_bearer_token(
+    credentials: HTTPAuthorizationCredentials | None, db: AsyncSession
+) -> User | None:
+    """Resolve an active user from the existing JWT Bearer credential."""
+    if credentials is None:
+        return None
+    payload = decode_token(credentials.credentials)
+    return await _active_user(db, payload["sub"])
+
+
+async def get_current_user_from_bearer(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """JWT-only boundary for transitional endpoints that mint sessions."""
+    if credentials is None:
+        raise _credentials_missing()
+    user = await resolve_user_from_bearer_token(credentials, db)
+    if user is None:
+        raise _authentication_failed()
+    return user
+
+
+async def resolve_user_from_session_cookie(request: Request, db: AsyncSession) -> User:
+    """Resolve a cookie session or return one opaque authentication failure."""
+    auth_session = await session_service.get_valid_session(db, read_session_cookie(request))
+    if auth_session is None or auth_session.user is None or not auth_session.user.is_active:
+        raise _authentication_failed()
+    return auth_session.user
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Extract and validate the Bearer token, return the User object."""
-    payload = decode_token(credentials.credentials)
-    user_id: str = payload["sub"]
+    """Cookie-first dual boundary; a present invalid cookie never falls back to JWT."""
+    if session_cookie_present(request):
+        cookie_user = await resolve_user_from_session_cookie(request, db)
+        bearer_user = await resolve_user_from_bearer_token(credentials, db)
+        if bearer_user is not None and bearer_user.id != cookie_user.id:
+            raise _authentication_failed()
+        return cookie_user
 
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-
-    if user is None or not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
-        )
-
+    if credentials is None:
+        raise _credentials_missing()
+    user = await resolve_user_from_bearer_token(credentials, db)
+    if user is None:
+        raise _authentication_failed()
     return user
 
 

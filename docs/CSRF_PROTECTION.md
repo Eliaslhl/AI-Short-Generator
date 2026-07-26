@@ -24,10 +24,11 @@ present. JWT Bearer-only API clients remain compatible without Origin. If a
 cookie and Bearer credential are both present, the cookie-first identity and
 conflict rules run first; a valid cookie then requires Origin.
 
-`POST /auth/session` is deliberately Bearer-only: it ignores any existing
-cookie, requires a valid Bearer JWT, then replaces the browser cookie with a
-new server-generated session. Because cross-site requests cannot supply that
-Bearer credential, this conversion does not rely on Origin.
+`POST /auth/session` is a temporary legacy Bearer-only endpoint: it ignores any
+existing cookie, requires a valid Bearer JWT, then replaces the browser cookie
+with a new server-generated session. The web frontend does not call it; because
+cross-site requests cannot supply that Bearer credential, this compatibility
+endpoint does not rely on Origin.
 
 This protects web actions such as generation, Twitch jobs, Stripe checkout and
 subscription cancellation. It also protects logout. Stripe webhooks and

@@ -2,16 +2,21 @@
 
 import asyncio
 from datetime import timedelta
+from unittest.mock import AsyncMock, Mock
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.auth.jwt import create_access_token
+import backend.auth.router as auth_router
 from backend.config import settings
 from backend.database import Base, get_db
 from backend.main import app
-from backend.models.user import User
+from backend.models.user import AuthSession, EmailConfirmationToken, User
+from backend.auth.router import hash_password
 from backend.services.session_service import session_service, utc_now
 
 
@@ -43,13 +48,19 @@ def auth_client(tmp_path):
         asyncio.run(engine.dispose())
 
 
-def _seed_user(session_factory, user_id: str, *, active: bool = True) -> User:
+def _seed_user(
+    session_factory,
+    user_id: str,
+    *,
+    active: bool = True,
+    password: str = "not-used",
+) -> User:
     async def seed():
         async with session_factory() as db:
             user = User(
                 id=user_id,
                 email=f"{user_id}@example.com",
-                hashed_password="not-used",
+                hashed_password=hash_password(password),
                 is_active=active,
                 is_verified=True,
             )
@@ -74,6 +85,17 @@ def _bearer(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user.id, user.email)}"}
 
 
+def _session_count(session_factory, user_id: str | None = None) -> int:
+    async def count():
+        async with session_factory() as db:
+            statement = select(AuthSession)
+            if user_id is not None:
+                statement = statement.where(AuthSession.user_id == user_id)
+            return len((await db.execute(statement)).scalars().all())
+
+    return asyncio.run(count())
+
+
 def test_jwt_and_cookie_both_authenticate_me(auth_client):
     client, session_factory = auth_client
     user = _seed_user(session_factory, "user-a")
@@ -87,6 +109,291 @@ def test_jwt_and_cookie_both_authenticate_me(auth_client):
 
     assert client.get("/auth/me").json()["id"] == user.id
     assert client.get("/auth/me", headers=_bearer(user)).status_code == 200
+
+
+def test_password_login_creates_cookie_session_without_returning_a_jwt(auth_client):
+    client, session_factory = auth_client
+    user = _seed_user(session_factory, "password-user", password="correct-password")
+
+    response = client.post(
+        "/auth/login",
+        json={"email": user.email, "password": "correct-password"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user"]["id"] == user.id
+    assert "access_token" not in response.json()
+    assert "token_type" not in response.json()
+    assert "httponly" in response.headers["set-cookie"].lower()
+    assert client.get("/auth/me").json()["id"] == user.id
+    assert _session_count(session_factory, user.id) == 1
+
+
+@pytest.mark.parametrize(
+    ("active", "verified", "password", "expected_status"),
+    [
+        (True, True, "wrong-password", 401),
+        (False, True, "correct-password", 403),
+        (True, False, "correct-password", 403),
+    ],
+)
+def test_password_login_failures_do_not_create_sessions_or_cookies(
+    auth_client, active, verified, password, expected_status
+):
+    client, session_factory = auth_client
+    user = _seed_user(session_factory, "login-failure", active=active, password="correct-password")
+
+    async def set_verification():
+        async with session_factory() as db:
+            stored_user = await db.get(User, user.id)
+            stored_user.is_verified = verified
+            await db.commit()
+
+    asyncio.run(set_verification())
+    response = client.post("/auth/login", json={"email": user.email, "password": password})
+
+    assert response.status_code == expected_status
+    assert "set-cookie" not in response.headers
+    assert _session_count(session_factory, user.id) == 0
+
+
+def test_email_confirmation_creates_cookie_session_without_returning_a_jwt(auth_client):
+    client, session_factory = auth_client
+    user = _seed_user(session_factory, "confirmation-user", password="correct-password")
+
+    async def create_confirmation_token():
+        async with session_factory() as db:
+            stored_user = await db.get(User, user.id)
+            stored_user.is_verified = False
+            token = EmailConfirmationToken.create_token(stored_user.id, stored_user.email)
+            db.add(token)
+            await db.commit()
+            return token.token
+
+    confirmation_token = asyncio.run(create_confirmation_token())
+    response = client.post("/auth/confirm-email", json={"token": confirmation_token})
+
+    assert response.status_code == 200
+    assert response.json()["user"]["id"] == user.id
+    assert "access_token" not in response.json()
+    assert "token_type" not in response.json()
+    assert "httponly" in response.headers["set-cookie"].lower()
+    assert client.get("/auth/me").json()["id"] == user.id
+    assert _session_count(session_factory, user.id) == 1
+
+
+def test_invalid_confirmation_and_register_do_not_authenticate(auth_client):
+    client, session_factory = auth_client
+
+    invalid_confirmation = client.post("/auth/confirm-email", json={"token": "invalid-token"})
+    assert invalid_confirmation.status_code == 400
+    assert "set-cookie" not in invalid_confirmation.headers
+    assert _session_count(session_factory) == 0
+
+    registration = client.post(
+        "/auth/register",
+        json={"email": "pending@example.com", "password": "correct-password"},
+    )
+    assert registration.status_code == 200
+    assert registration.json()["requires_email_confirmation"] is True
+    assert "access_token" not in registration.json()
+    assert "token_type" not in registration.json()
+    assert "set-cookie" not in registration.headers
+    assert _session_count(session_factory) == 0
+
+
+def test_login_session_creation_failure_rolls_back_without_cookie(auth_client, monkeypatch):
+    client, session_factory = auth_client
+    user = _seed_user(session_factory, "login-create-failure", password="correct-password")
+    set_cookie = Mock()
+
+    async def fail_create_session(*_args, **_kwargs):
+        raise RuntimeError("session storage unavailable")
+
+    monkeypatch.setattr(auth_router.session_service, "create_session", fail_create_session)
+    monkeypatch.setattr(auth_router, "set_session_cookie", set_cookie)
+
+    response = client.post(
+        "/auth/login",
+        json={"email": user.email, "password": "correct-password"},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Unable to log in. Please try again."
+    assert "set-cookie" not in response.headers
+    assert _session_count(session_factory, user.id) == 0
+    set_cookie.assert_not_called()
+
+
+def test_login_commit_failure_rolls_back_without_cookie(auth_client, monkeypatch):
+    client, session_factory = auth_client
+    user = _seed_user(session_factory, "login-commit-failure", password="correct-password")
+    set_cookie = Mock()
+
+    async def failing_get_db():
+        async with session_factory() as db:
+            async def fail_commit():
+                raise RuntimeError("database unavailable")
+
+            db.commit = fail_commit
+            try:
+                yield db
+            except Exception:
+                await db.rollback()
+                raise
+
+    monkeypatch.setitem(app.dependency_overrides, get_db, failing_get_db)
+    monkeypatch.setattr(auth_router, "set_session_cookie", set_cookie)
+    response = client.post(
+        "/auth/login",
+        json={"email": user.email, "password": "correct-password"},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Unable to log in. Please try again."
+    assert "set-cookie" not in response.headers
+    assert _session_count(session_factory, user.id) == 0
+    set_cookie.assert_not_called()
+
+
+def test_confirmation_session_creation_failure_rolls_back_without_cookie_or_email(
+    auth_client, monkeypatch
+):
+    client, session_factory = auth_client
+    user = _seed_user(session_factory, "confirmation-create-failure")
+    welcome_email = AsyncMock()
+
+    async def prepare_token():
+        async with session_factory() as db:
+            stored_user = await db.get(User, user.id)
+            stored_user.is_verified = False
+            token = EmailConfirmationToken.create_token(stored_user.id, stored_user.email)
+            db.add(token)
+            await db.commit()
+            return token.token
+
+    async def fail_create_session(*_args, **_kwargs):
+        raise RuntimeError("session storage unavailable")
+
+    token = asyncio.run(prepare_token())
+    monkeypatch.setattr(auth_router.session_service, "create_session", fail_create_session)
+    monkeypatch.setattr(auth_router, "send_welcome_email", welcome_email)
+    response = client.post("/auth/confirm-email", json={"token": token})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Unable to confirm email. Please try again."
+    assert "set-cookie" not in response.headers
+    assert _session_count(session_factory, user.id) == 0
+    welcome_email.assert_not_awaited()
+
+    async def verify_rollback():
+        async with session_factory() as db:
+            stored_user = await db.get(User, user.id)
+            stored_token = (
+                await db.execute(select(EmailConfirmationToken).where(EmailConfirmationToken.token == token))
+            ).scalar_one()
+            assert stored_user.is_verified is False
+            assert stored_token.used is False
+
+    asyncio.run(verify_rollback())
+
+
+def test_confirmation_commit_failure_rolls_back_without_cookie_or_email(auth_client, monkeypatch):
+    client, session_factory = auth_client
+    user = _seed_user(session_factory, "confirmation-commit-failure")
+    welcome_email = AsyncMock()
+
+    async def prepare_token():
+        async with session_factory() as db:
+            stored_user = await db.get(User, user.id)
+            stored_user.is_verified = False
+            token = EmailConfirmationToken.create_token(stored_user.id, stored_user.email)
+            db.add(token)
+            await db.commit()
+            return token.token
+
+    token = asyncio.run(prepare_token())
+    async def failing_get_db():
+        async with session_factory() as db:
+            async def fail_commit():
+                raise RuntimeError("database unavailable")
+
+            db.commit = fail_commit
+            try:
+                yield db
+            except Exception:
+                await db.rollback()
+                raise
+
+    monkeypatch.setitem(app.dependency_overrides, get_db, failing_get_db)
+    monkeypatch.setattr(auth_router, "send_welcome_email", welcome_email)
+    response = client.post("/auth/confirm-email", json={"token": token})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Unable to confirm email. Please try again."
+    assert "set-cookie" not in response.headers
+    assert _session_count(session_factory, user.id) == 0
+    welcome_email.assert_not_awaited()
+
+    async def verify_rollback():
+        async with session_factory() as db:
+            stored_user = await db.get(User, user.id)
+            stored_token = (
+                await db.execute(select(EmailConfirmationToken).where(EmailConfirmationToken.token == token))
+            ).scalar_one()
+            assert stored_user.is_verified is False
+            assert stored_token.used is False
+
+    asyncio.run(verify_rollback())
+
+
+def test_confirmation_token_is_consumed_once_under_concurrent_requests(auth_client, monkeypatch):
+    _client, session_factory = auth_client
+    user = _seed_user(session_factory, "concurrent-confirmation")
+    welcome_email = AsyncMock()
+
+    async def prepare_token():
+        async with session_factory() as db:
+            stored_user = await db.get(User, user.id)
+            stored_user.is_verified = False
+            token = EmailConfirmationToken.create_token(stored_user.id, stored_user.email)
+            db.add(token)
+            await db.commit()
+            return token.token
+
+    token = asyncio.run(prepare_token())
+    monkeypatch.setattr(auth_router, "send_welcome_email", welcome_email)
+    async def confirm_concurrently():
+        barrier = asyncio.Barrier(2)
+        transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as contender:
+            async def confirm():
+                await barrier.wait()
+                return await contender.post("/auth/confirm-email", json={"token": token})
+
+            return await asyncio.gather(confirm(), confirm())
+
+    responses = asyncio.run(confirm_concurrently())
+
+    successes = [response for response in responses if response.status_code == 200]
+    failures = [response for response in responses if response.status_code == 400]
+    assert len(successes) == 1
+    assert len(failures) == 1
+    assert "set-cookie" in successes[0].headers
+    assert "set-cookie" not in failures[0].headers
+    assert _session_count(session_factory, user.id) == 1
+    welcome_email.assert_awaited_once()
+
+    async def verify_single_consumption():
+        async with session_factory() as db:
+            stored_user = await db.get(User, user.id)
+            stored_token = (
+                await db.execute(select(EmailConfirmationToken).where(EmailConfirmationToken.token == token))
+            ).scalar_one()
+            assert stored_user.is_verified is True
+            assert stored_token.used is True
+
+    asyncio.run(verify_single_consumption())
 
 
 def test_cookie_is_authoritative_and_conflicts_are_rejected(auth_client):

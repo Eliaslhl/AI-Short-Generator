@@ -5,7 +5,7 @@ import { AuthProvider, useAuth } from './AuthContext'
 const mocks = vi.hoisted(() => ({
   me: vi.fn(),
   login: vi.fn(),
-  createSession: vi.fn(),
+  confirmEmail: vi.fn(),
   logout: vi.fn(),
   showToast: vi.fn(),
 }))
@@ -14,7 +14,7 @@ vi.mock('../api', () => ({
   authApi: {
     me: mocks.me,
     login: mocks.login,
-    createSession: mocks.createSession,
+    confirmEmail: mocks.confirmEmail,
     logout: mocks.logout,
   },
 }))
@@ -47,6 +47,7 @@ function Probe() {
     <>
       <div data-testid="state">{`${auth.loading}:${auth.authChecked}:${auth.user?.email ?? 'none'}:${auth.authError ?? 'none'}:${auth.isLoggingOut}`}</div>
       <button onClick={() => { void auth.login('user@example.test', 'password').catch(() => undefined) }}>login</button>
+      <button onClick={() => { void auth.confirmEmail('confirmation-token').catch(() => undefined) }}>confirm</button>
       <button onClick={() => { void auth.logout().catch(() => undefined) }}>logout</button>
     </>
   )
@@ -91,31 +92,29 @@ describe('AuthProvider cookie session cutover', () => {
     await screen.findByText('false:true:none:none:false')
   })
 
-  it('keeps the password JWT in memory only while creating a cookie session', async () => {
+  it('uses the cookie set by password login without requesting a JWT exchange', async () => {
     mocks.me.mockResolvedValueOnce({ data: user }).mockResolvedValueOnce({ data: user })
-    mocks.login.mockResolvedValue({ data: { access_token: 'temporary-jwt', token_type: 'bearer', user } })
-    mocks.createSession.mockResolvedValue({ data: { expires_at: '2030-01-01T00:00:00Z' } })
+    mocks.login.mockResolvedValue({ data: { user } })
 
     render(<AuthProvider><Probe /></AuthProvider>)
     await screen.findByText(`false:true:${user.email}:none:false`)
     fireEvent.click(screen.getByRole('button', { name: 'login' }))
 
-    await waitFor(() => expect(mocks.createSession).toHaveBeenCalledWith('temporary-jwt'))
+    await waitFor(() => expect(mocks.login).toHaveBeenCalledWith('user@example.test', 'password'))
     expect(mocks.me).toHaveBeenCalledTimes(2)
     expect(localStorage.getItem('token')).toBeNull()
     expect(localStorage.getItem('access_token')).toBeNull()
   })
 
-  it('does not authenticate when the cookie session exchange fails', async () => {
+  it('does not authenticate when the direct login request fails', async () => {
     mocks.me.mockRejectedValueOnce({ isAxiosError: true, response: { status: 401 } })
-    mocks.login.mockResolvedValue({ data: { access_token: 'temporary-jwt', token_type: 'bearer', user } })
-    mocks.createSession.mockRejectedValue(new Error('session unavailable'))
+    mocks.login.mockRejectedValue(new Error('session unavailable'))
 
     render(<AuthProvider><Probe /></AuthProvider>)
     await screen.findByText('false:true:none:none:false')
     fireEvent.click(screen.getByRole('button', { name: 'login' }))
 
-    await waitFor(() => expect(mocks.createSession).toHaveBeenCalledWith('temporary-jwt'))
+    await waitFor(() => expect(mocks.login).toHaveBeenCalledWith('user@example.test', 'password'))
     expect(screen.getByTestId('state').textContent).toBe('false:true:none:none:false')
     expect(localStorage.getItem('token')).toBeNull()
   })
@@ -147,8 +146,7 @@ describe('AuthProvider cookie session cutover', () => {
   it('ignores an initial session check that resolves after a successful login', async () => {
     const initialMe = deferred<{ data: typeof user }>()
     mocks.me.mockReturnValueOnce(initialMe.promise).mockResolvedValueOnce({ data: user })
-    mocks.login.mockResolvedValue({ data: { access_token: 'temporary-jwt', token_type: 'bearer', user } })
-    mocks.createSession.mockResolvedValue({ data: { expires_at: '2030-01-01T00:00:00Z' } })
+    mocks.login.mockResolvedValue({ data: { user } })
 
     render(<AuthProvider><Probe /></AuthProvider>)
     fireEvent.click(screen.getByRole('button', { name: 'login' }))
@@ -168,6 +166,41 @@ describe('AuthProvider cookie session cutover', () => {
     await screen.findByText('false:true:none:none:false')
 
     initialMe.resolve({ data: user })
+    await waitFor(() => expect(screen.getByTestId('state').textContent).toBe('false:true:none:none:false'))
+  })
+
+  it('does not restore authentication when confirmation resolves after logout', async () => {
+    const confirmation = deferred<{ data: { message: string } }>()
+    mocks.me.mockResolvedValue({ data: user })
+    mocks.confirmEmail.mockReturnValue(confirmation.promise)
+    mocks.logout.mockResolvedValue({ data: undefined })
+
+    render(<AuthProvider><Probe /></AuthProvider>)
+    await screen.findByText(`false:true:${user.email}:none:false`)
+    fireEvent.click(screen.getByRole('button', { name: 'confirm' }))
+    await waitFor(() => expect(mocks.confirmEmail).toHaveBeenCalledWith('confirmation-token'))
+    fireEvent.click(screen.getByRole('button', { name: 'logout' }))
+    await screen.findByText('false:true:none:none:false')
+
+    confirmation.resolve({ data: { message: 'confirmed' } })
+    await waitFor(() => expect(mocks.me).toHaveBeenCalledTimes(1))
+    expect(screen.getByTestId('state').textContent).toBe('false:true:none:none:false')
+  })
+
+  it('ignores a confirmation session check that resolves after logout', async () => {
+    const confirmationMe = deferred<{ data: typeof user }>()
+    mocks.me.mockResolvedValueOnce({ data: user }).mockReturnValueOnce(confirmationMe.promise)
+    mocks.confirmEmail.mockResolvedValue({ data: { message: 'confirmed' } })
+    mocks.logout.mockResolvedValue({ data: undefined })
+
+    render(<AuthProvider><Probe /></AuthProvider>)
+    await screen.findByText(`false:true:${user.email}:none:false`)
+    fireEvent.click(screen.getByRole('button', { name: 'confirm' }))
+    await waitFor(() => expect(mocks.me).toHaveBeenCalledTimes(2))
+    fireEvent.click(screen.getByRole('button', { name: 'logout' }))
+    await screen.findByText('false:true:none:none:false')
+
+    confirmationMe.resolve({ data: user })
     await waitFor(() => expect(screen.getByTestId('state').textContent).toBe('false:true:none:none:false'))
   })
 

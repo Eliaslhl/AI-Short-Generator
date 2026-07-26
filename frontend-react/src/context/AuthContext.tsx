@@ -12,7 +12,7 @@ interface AuthContextValue {
   authError: string | null
   isLoggingOut: boolean
   login: (email: string, password: string) => Promise<User>
-  establishSession: (accessToken: string) => Promise<User>
+  confirmEmail: (token: string) => Promise<{ message: string }>
   logout: () => Promise<void>
   refreshUser: () => Promise<User>
   retryAuth: () => Promise<void>
@@ -111,28 +111,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = async (): Promise<User> => refreshUserForOperation(beginAuthOperation())
 
-  const establishSessionForOperation = async (accessToken: string, operation: number): Promise<User> => {
-    if (!accessToken) throw new Error('Missing temporary access token')
-    await authApi.createSession(accessToken)
-    if (!isCurrentAuthOperation(operation)) {
-      throw new Error('Authentication request superseded')
-    }
-    return refreshUserForOperation(operation)
-  }
-
-  const establishSession = async (accessToken: string): Promise<User> => {
-    return establishSessionForOperation(accessToken, beginAuthOperation())
-  }
-
   const login = async (email: string, password: string): Promise<User> => {
     const operation = beginAuthOperation()
-    const res = await authApi.login(email, password)
+    await authApi.login(email, password)
     if (!isCurrentAuthOperation(operation)) {
       throw new Error('Authentication request superseded')
     }
-    const authenticatedUser = await establishSessionForOperation(res.data.access_token, operation)
+    const authenticatedUser = await refreshUserForOperation(operation)
     showToast('Connexion réussie 👋', 'success')
     return authenticatedUser
+  }
+
+  const confirmEmail = async (token: string): Promise<{ message: string }> => {
+    const operation = beginAuthOperation()
+    const response = await authApi.confirmEmail(token)
+    if (!isCurrentAuthOperation(operation)) {
+      throw new Error('Authentication request superseded')
+    }
+    await refreshUserForOperation(operation)
+    return { message: response.data.message }
   }
 
   const logout = async (): Promise<void> => {
@@ -182,7 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authError,
       isLoggingOut,
       login,
-      establishSession,
+      confirmEmail,
       logout,
       refreshUser,
       retryAuth,

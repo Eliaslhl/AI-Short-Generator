@@ -1,12 +1,16 @@
+import asyncio
 import json
 import uuid
 
 import stripe
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
+from backend.auth.jwt import create_access_token
+from backend.database import AsyncSessionLocal
 from backend.main import app
-from backend.models.user import Plan
+from backend.models.user import Plan, User
 import backend.auth.router as router
 
 
@@ -23,13 +27,24 @@ def register_user(client, email=None):
     )
     assert resp.status_code == 200
     data = resp.json()
-    token = data["access_token"]
-    user = data["user"]
-    return token, user
+    assert data["requires_email_confirmation"] is True
+
+    async def load_user():
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(User).where(User.email == email))
+            user = result.scalar_one()
+            user.is_verified = True
+            await db.commit()
+            return user
+
+    user = asyncio.run(load_user())
+    return create_access_token(user.id, user.email), {"id": user.id}
 
 
 def test_webhook_with_metadata_plan(client, monkeypatch):
     token, user = register_user(client)
+    price_id = "price_metadata_plan"
+    router.PRICE_TO_PLAN[price_id] = Plan.PRO
 
     # Build event where session.metadata.plan is present
     event = {
@@ -48,6 +63,11 @@ def test_webhook_with_metadata_plan(client, monkeypatch):
         return event
 
     monkeypatch.setattr(stripe.Webhook, "construct_event", fake_construct_event)
+    monkeypatch.setattr(
+        stripe.Subscription,
+        "retrieve",
+        lambda _: {"items": {"data": [{"price": {"id": price_id}}]}},
+    )
 
     resp = client.post(
         "/auth/stripe/webhook",
@@ -108,6 +128,9 @@ def test_webhook_without_metadata_uses_subscription(client, monkeypatch):
 def test_customer_subscription_deleted_downgrades_user(client, monkeypatch):
     # create user and set subscription/customer ids
     token, user = register_user(client)
+    price_id = "price_delete_plan"
+    customer_id = f"cus_delete_{uuid.uuid4().hex}"
+    router.PRICE_TO_PLAN[price_id] = Plan.PRO
 
     # first, simulate that the user has a stripe_customer_id so lookup works
     # perform an upgrade via metadata to set a non-free plan
@@ -116,7 +139,7 @@ def test_customer_subscription_deleted_downgrades_user(client, monkeypatch):
         "data": {
             "object": {
                 "metadata": {"user_id": user["id"], "plan": "PRO"},
-                "customer": "cus_delete_test",
+                "customer": customer_id,
                 "subscription": "sub_delete_test",
             }
         },
@@ -126,6 +149,11 @@ def test_customer_subscription_deleted_downgrades_user(client, monkeypatch):
         return event_upgrade
 
     monkeypatch.setattr(stripe.Webhook, "construct_event", fake_construct_event_upgrade)
+    monkeypatch.setattr(
+        stripe.Subscription,
+        "retrieve",
+        lambda _: {"items": {"data": [{"price": {"id": price_id}}]}},
+    )
     resp = client.post(
         "/auth/stripe/webhook",
         data=json.dumps(event_upgrade),
@@ -140,7 +168,7 @@ def test_customer_subscription_deleted_downgrades_user(client, monkeypatch):
     # Now simulate subscription deletion event for that customer
     event_delete = {
         "type": "customer.subscription.deleted",
-        "data": {"object": {"customer": "cus_delete_test"}},
+        "data": {"object": {"customer": customer_id}},
     }
 
     def fake_construct_event_delete(payload, sig, secret):

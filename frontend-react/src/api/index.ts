@@ -20,11 +20,6 @@ export const authApi = {
   me: (): Promise<AxiosResponse<AuthResponse['user']>> =>
     client.get('/auth/me'),
 
-  createSession: (accessToken: string): Promise<AxiosResponse<{ expires_at: string }>> =>
-    client.post('/auth/session', undefined, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }),
-
   logout: (): Promise<AxiosResponse<void>> => client.post('/auth/logout'),
 
   confirmEmail: (token: string): Promise<AxiosResponse<AuthResponse & { message: string }>> =>

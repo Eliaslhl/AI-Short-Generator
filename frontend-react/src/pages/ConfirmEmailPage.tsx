@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { authApi } from '../api'
 import { useSeoTags } from '../hooks/useSeoTags'
 
 export default function ConfirmEmailPage() {
@@ -9,7 +8,7 @@ export default function ConfirmEmailPage() {
   const navigate = useNavigate()
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [message, setMessage] = useState('')
-  const { establishSession } = useAuth()
+  const { confirmEmail: completeEmailConfirmation } = useAuth()
   const handled = useRef(false)
 
   useSeoTags({
@@ -29,6 +28,7 @@ export default function ConfirmEmailPage() {
   }, [])
 
   useEffect(() => {
+    let active = true
     const confirmEmail = async () => {
       if (handled.current) return
       handled.current = true
@@ -46,24 +46,28 @@ export default function ConfirmEmailPage() {
       window.history.replaceState({}, document.title, window.location.pathname)
 
       try {
-        const response = await authApi.confirmEmail(token)
-        await establishSession(response.data.access_token)
+        const response = await completeEmailConfirmation(token)
+        if (!active) return
 
         setStatus('success')
-        setMessage(response.data.message || 'Email confirmed successfully!')
+        setMessage(response.message || 'Email confirmed successfully!')
         
         // Redirect to dashboard after 2 seconds
         setTimeout(() => {
-          navigate('/dashboard')
+          if (active) navigate('/dashboard')
         }, 2000)
       } catch {
+        if (!active) return
         setStatus('error')
         setMessage('An error occurred while confirming your email')
       }
     }
 
     confirmEmail()
-  }, [searchParams, navigate, establishSession])
+    return () => {
+      active = false
+    }
+  }, [searchParams, navigate, completeEmailConfirmation])
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center px-4">

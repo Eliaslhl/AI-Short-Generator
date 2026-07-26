@@ -25,11 +25,10 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.auth.dependencies import get_current_user, get_current_user_from_bearer
-from backend.auth.jwt import create_access_token
 from backend.auth.session_cookie import (
     delete_session_cookie,
     read_session_cookie,
@@ -203,8 +202,18 @@ async def register(
 
 # ── Login ─────────────────────────────────────────────────────────────────────
 @router.post("/login", response_model=dict)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(
+    body: LoginRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     try:
+        # SQLite releases a top-level savepoint on exit. Start a real write
+        # transaction so the session service's retry savepoint remains enclosed
+        # by this route's commit/rollback boundary.
+        if db.bind is not None and db.bind.dialect.name == "sqlite":
+            await db.execute(text("BEGIN IMMEDIATE"))
+
         result = await db.execute(select(User).where(User.email == body.email))
         user = result.scalar_one_or_none()
 
@@ -221,9 +230,14 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
         if not user.is_verified:
             raise HTTPException(status_code=403, detail="Email not confirmed. Please check your inbox and confirm your email address.")
 
-        token = create_access_token(user.id, user.email)
-        # Return token and user object
-        return {"access_token": token, "token_type": "bearer", "user": _user_dict(user)}
+        try:
+            created = await session_service.create_session(db, user.id)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+        set_session_cookie(response, created.raw_token)
+        return {"user": _user_dict(user)}
     except HTTPException:
         # re-raise known HTTP exceptions unchanged
         raise
@@ -279,49 +293,61 @@ async def logout(request: Request, db: AsyncSession = Depends(get_db)):
 
 # ── Confirm Email ─────────────────────────────────────────────────────────────
 @router.post("/confirm-email", response_model=dict)
-async def confirm_email(body: ConfirmEmailRequest, db: AsyncSession = Depends(get_db)):
+async def confirm_email(
+    body: ConfirmEmailRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     """Verify email confirmation token and activate user account."""
     token = body.token
-    
-    # Find the confirmation token
+    now = datetime.now(timezone.utc)
+
+    # Consume the one-time capability in the database, not in application
+    # memory. A concurrent request can never receive the same user_id here.
     result = await db.execute(
-        select(EmailConfirmationToken).where(
-            EmailConfirmationToken.token == token
+        update(EmailConfirmationToken)
+        .where(
+            EmailConfirmationToken.token == token,
+            EmailConfirmationToken.used.is_(False),
+            EmailConfirmationToken.expires_at > now,
         )
+        .values(used=True)
+        .returning(EmailConfirmationToken.user_id)
     )
-    email_token = result.scalar_one_or_none()
-    
-    if not email_token:
-        raise HTTPException(status_code=400, detail="Invalid confirmation token")
-    
-    if email_token.used:
-        raise HTTPException(status_code=400, detail="Confirmation token already used")
-    
-    # Check if token has expired (handle both aware and naive datetimes)
-    now = datetime.now(timezone.utc) if email_token.expires_at.tzinfo else datetime.now()
-    if email_token.expires_at < now:
+    user_id = result.scalar_one_or_none()
+    if user_id is None:
+        # Preserve the historical client errors without ever allowing this
+        # fallback read to create a session.
+        result = await db.execute(
+            select(EmailConfirmationToken).where(EmailConfirmationToken.token == token)
+        )
+        email_token = result.scalar_one_or_none()
+        if not email_token:
+            raise HTTPException(status_code=400, detail="Invalid confirmation token")
+        if email_token.used:
+            raise HTTPException(status_code=400, detail="Confirmation token already used")
         raise HTTPException(status_code=400, detail="Confirmation token has expired")
-    
-    # Find the user and verify email
-    result = await db.execute(
-        select(User).where(User.id == email_token.user_id)
-    )
+
+    result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
-    
     if not user:
+        await db.rollback()
         raise HTTPException(status_code=404, detail="User not found")
-    
-    # Mark user as verified and token as used
+
     user.is_verified = True
-    email_token.used = True
-    
     db.add(user)
-    db.add(email_token)
-    await db.commit()
+    try:
+        created = await session_service.create_session(db, user.id)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        logger.error("Unexpected error during email confirmation")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to confirm email. Please try again.",
+        )
     await db.refresh(user)
-    
-    # Create access token for immediate login
-    access_token = create_access_token(user.id, user.email)
+    set_session_cookie(response, created.raw_token)
     
     logger.info("Email confirmed: user_id=%s", user.id)
     
@@ -332,8 +358,6 @@ async def confirm_email(body: ConfirmEmailRequest, db: AsyncSession = Depends(ge
         logger.error("Failed to send welcome email")
     
     return {
-        "access_token": access_token,
-        "token_type": "bearer",
         "user": _user_dict(user),
         "message": "Email confirmed! Your account is now active."
     }

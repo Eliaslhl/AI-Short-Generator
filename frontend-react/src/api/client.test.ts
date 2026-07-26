@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import client from './client'
 import { authApi } from './index'
 
@@ -9,14 +9,7 @@ describe('session HTTP client', () => {
     expect(handlers).toHaveLength(0)
   })
 
-  it('sends a temporary Bearer only for the explicit session exchange', async () => {
-    const post = vi.spyOn(client, 'post').mockResolvedValue({ data: { expires_at: '2030-01-01T00:00:00Z' } })
-
-    await authApi.createSession('temporary-jwt')
-
-    expect(post).toHaveBeenCalledWith('/auth/session', undefined, {
-      headers: { Authorization: 'Bearer temporary-jwt' },
-    })
-    post.mockRestore()
+  it('does not expose a browser JWT-to-session exchange helper', () => {
+    expect(authApi).not.toHaveProperty('createSession')
   })
 })

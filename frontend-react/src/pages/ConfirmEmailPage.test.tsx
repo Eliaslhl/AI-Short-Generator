@@ -5,11 +5,9 @@ import ConfirmEmailPage from './ConfirmEmailPage'
 
 const mocks = vi.hoisted(() => ({
   confirmEmail: vi.fn(),
-  establishSession: vi.fn(),
 }))
 
-vi.mock('../api', () => ({ authApi: { confirmEmail: mocks.confirmEmail } }))
-vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ establishSession: mocks.establishSession }) }))
+vi.mock('../context/AuthContext', () => ({ useAuth: () => ({ confirmEmail: mocks.confirmEmail }) }))
 vi.mock('../hooks/useSeoTags', () => ({ useSeoTags: vi.fn() }))
 
 describe('ConfirmEmailPage', () => {
@@ -18,11 +16,8 @@ describe('ConfirmEmailPage', () => {
     vi.clearAllMocks()
   })
 
-  it('exchanges the confirmation JWT for a cookie session without persisting it', async () => {
-    mocks.confirmEmail.mockResolvedValue({
-      data: { access_token: 'temporary-jwt', token_type: 'bearer', user: {}, message: 'confirmed' },
-    })
-    mocks.establishSession.mockResolvedValue({})
+  it('uses the cookie set by email confirmation without a JWT exchange', async () => {
+    mocks.confirmEmail.mockResolvedValue({ message: 'confirmed' })
 
     render(
       <MemoryRouter initialEntries={['/confirm-email?token=email-confirmation-token']}>
@@ -32,7 +27,6 @@ describe('ConfirmEmailPage', () => {
 
     await screen.findByText('Email Confirmed!')
     expect(mocks.confirmEmail).toHaveBeenCalledWith('email-confirmation-token')
-    expect(mocks.establishSession).toHaveBeenCalledWith('temporary-jwt')
     expect(localStorage.getItem('access_token')).toBeNull()
     expect(localStorage.getItem('token_type')).toBeNull()
   })

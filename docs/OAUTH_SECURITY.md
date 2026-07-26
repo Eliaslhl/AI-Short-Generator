@@ -12,4 +12,5 @@ HttpOnly session cookie, and redirects to `/auth/callback` without query data.
 PKCE is intentionally not added: this is a confidential server-side client that
 keeps the authorization-code exchange and client secret on the backend. The
 frontend consumes the resulting HttpOnly cookie through `GET /auth/me` and does
-not persist a callback JWT.
+not persist a callback JWT. Password login and email confirmation use the same
+direct-session pattern; no web authentication flow returns a JWT to the browser.

@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
 import { authApi } from '../api'
 import { useSeoTags } from '../hooks/useSeoTags'
 import { type AxiosError } from 'axios'
@@ -9,7 +8,6 @@ import { Film, Mail, Lock, User, Chrome } from 'lucide-react'
 // Email verification required on registration
 export default function RegisterPage() {
   const navigate = useNavigate()
-  const { establishSession } = useAuth()
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -44,13 +42,7 @@ export default function RegisterPage() {
         setFullName('')
         setPassword('')
       } else {
-        // Legacy deployments may still return a JWT. Exchange it immediately
-        // for the HttpOnly session cookie instead of persisting it.
-        if (!res.data.access_token) {
-          throw new Error('Registration did not provide a sign-in session.')
-        }
-        await establishSession(res.data.access_token)
-        navigate('/dashboard')
+        throw new Error('Registration did not require email confirmation.')
       }
     } catch (err) {
       const axiosErr = err as AxiosError<{ detail: string }>

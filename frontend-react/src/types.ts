@@ -51,8 +51,6 @@ export interface Job {
 // ─── API response shapes ───────────────────────────────────────────────────────
 
 export interface AuthResponse {
-  access_token: string
-  token_type: string
   user: User
 }
 
@@ -60,9 +58,6 @@ export interface RegistrationResponse {
   message: string
   email: string
   requires_email_confirmation: boolean
-  access_token?: string
-  token_type?: string
-  user?: User
 }
 
 export interface GenerateResponse {

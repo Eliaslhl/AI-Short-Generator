@@ -172,14 +172,11 @@ def test_http_owner_can_read_memory_backed_job(http_client):
 
     clips = client.get(f"/api/clips/{data['job_id']}", headers=owner_headers)
     status = client.get(f"/api/status/{data['job_id']}", headers=owner_headers)
-    debug = client.get(f"/api/debug/job/{data['job_id']}", headers=owner_headers)
 
     assert status.status_code == 200
     assert status.json()["status"] == "processing"
     assert clips.status_code == 200
     assert clips.json()["status"] == "processing"
-    assert debug.status_code == 200
-    assert debug.json()["db"]["id"] == data["job_id"]
 
 
 def test_http_owner_falls_back_to_database_when_memory_is_missing(http_client):
@@ -197,6 +194,27 @@ def test_http_owner_falls_back_to_database_when_memory_is_missing(http_client):
     assert clips.json()["video_title"] == "Owner video"
 
 
+def test_historical_job_error_is_not_exposed_by_status(http_client):
+    client, session_factory = http_client
+    data = _seed_users_and_job(session_factory)
+    owner_headers = _headers(data["owner_id"], data["owner_email"])
+    sensitive_error = "postgresql://secret-user:secret-password@private-host/database"
+
+    async def mark_failed():
+        async with session_factory() as session:
+            job = await session.get(Job, data["job_id"])
+            job.status = "error"
+            job.error = sensitive_error
+            await session.commit()
+
+    asyncio.run(mark_failed())
+    response = client.get(f"/api/status/{data['job_id']}", headers=owner_headers)
+
+    assert response.status_code == 200
+    assert response.json()["step"] == "Processing failed"
+    assert sensitive_error not in response.text
+
+
 def test_http_foreign_and_missing_jobs_are_indistinguishable(http_client, monkeypatch):
     client, session_factory = http_client
     data = _seed_users_and_job(session_factory)
@@ -207,7 +225,6 @@ def test_http_foreign_and_missing_jobs_are_indistinguishable(http_client, monkey
     paths = (
         "/api/status/{job_id}",
         "/api/clips/{job_id}",
-        "/api/debug/job/{job_id}",
         "/api/download-clip/{job_id}/clip.mp4",
     )
     for path_template in paths:

@@ -17,7 +17,7 @@ import os
 import hashlib
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -34,6 +34,7 @@ from backend.services.hook_service import generate_hook
 from backend.services.emoji_caption_service import build_captions
 from backend.services.title_service import generate_title
 from backend.services.hashtag_service import generate_hashtags
+from backend.services.job_access_service import job_access_service
 from backend.video.video_editor import render_clip
 
 logger = logging.getLogger(__name__)
@@ -691,31 +692,24 @@ async def get_status(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    job_record = await job_access_service.require_owned_job(db, job_id, user)
+
     # Fast path: job still in memory
-    if job_id in jobs:
-        job = jobs[job_id]
-        if job.get("user_id") and job["user_id"] != user.id:
-            raise HTTPException(status_code=403, detail="Forbidden")
+    memory_job = job_access_service.get_owned_memory_job(job_record, jobs)
+    if memory_job is not None:
         # Normalize clips for frontend compatibility
-        raw_clips = job.get("clips", []) or []
+        raw_clips = memory_job.get("clips", []) or []
         normalized = [_normalize_clip_for_response(c, job_id) for c in raw_clips]
         return StatusResponse(
             job_id=job_id,
-            status=job["status"],
-            progress=job["progress"],
-            step=job["step"],
+            status=memory_job["status"],
+            progress=memory_job["progress"],
+            step=memory_job["step"],
             clips=normalized,
         )
 
-    # Fallback: job lost from memory (container restart) — reload from DB
+    # Fallback: job lost from memory (container restart) — use the DB record.
     import json
-
-    result = await db.execute(select(Job).where(Job.id == job_id))
-    job_record = result.scalar_one_or_none()
-    if not job_record:
-        raise HTTPException(status_code=404, detail="Job not found")
-    if job_record.user_id != user.id:
-        raise HTTPException(status_code=403, detail="Forbidden")
 
     clips = json.loads(job_record.clips_json) if job_record.clips_json else []
     step = (
@@ -751,21 +745,17 @@ async def get_clips(
 ):
     import json
 
-    if job_id in jobs:
+    job_record = await job_access_service.require_owned_job(db, job_id, user)
+    memory_job = job_access_service.get_owned_memory_job(job_record, jobs)
+    if memory_job is not None:
         return JSONResponse(
             {
-                "clips": jobs[job_id].get("clips", []),
-                "video_title": jobs[job_id].get("video_title"),
-                "status": jobs[job_id].get("status"),
+                "clips": memory_job.get("clips", []),
+                "video_title": memory_job.get("video_title"),
+                "status": memory_job.get("status"),
             }
         )
-    # Fallback to DB
-    result = await db.execute(
-        select(Job).where(Job.id == job_id, Job.user_id == user.id)
-    )
-    job_record = result.scalar_one_or_none()
-    if not job_record:
-        raise HTTPException(status_code=404, detail="Job not found")
+
     clips = json.loads(job_record.clips_json) if job_record.clips_json else []
     return JSONResponse(
         {
@@ -773,6 +763,35 @@ async def get_clips(
             "video_title": job_record.video_title,
             "status": job_record.status,
         }
+    )
+
+
+@router.get("/download-clip/{job_id}/{clip_name}")
+async def download_clip(
+    job_id: str,
+    clip_name: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Download a clip file with proper Content-Disposition header."""
+    from pathlib import Path
+
+    job_record = await job_access_service.require_owned_job(db, job_id, user)
+
+    if not clip_name or Path(clip_name).name != clip_name:
+        raise HTTPException(status_code=404, detail="Clip not found")
+
+    job_dir = (Path(settings.clips_dir) / job_record.id).resolve()
+    clip_path = (job_dir / clip_name).resolve()
+    if not clip_path.is_relative_to(job_dir) or not clip_path.is_file():
+        raise HTTPException(status_code=404, detail="Clip not found")
+
+    # Return file with attachment disposition (forces download)
+    return FileResponse(
+        path=clip_path,
+        filename=clip_path.name,
+        media_type="video/mp4",
+        headers={"Content-Disposition": f"attachment; filename={clip_path.name}"},
     )
 
 
@@ -942,33 +961,27 @@ async def debug_refresh_cookies():
 
 
 @router.get("/debug/job/{job_id}")
-async def debug_job(job_id: str, user: User = Depends(get_current_user)):
+async def debug_job(
+    job_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Debug endpoint: return in-memory job state and DB record for a given job_id.
     Use this to inspect why a job is still processing or to retrieve error details.
     """
-    # First check in-memory state
-    in_memory = jobs.get(job_id)
-
-    # Then fetch DB row
-    try:
-        from backend.database import AsyncSessionLocal
-
-        async with AsyncSessionLocal() as db:
-            result = await db.execute(select(Job).where(Job.id == job_id))
-            job_record = result.scalar_one_or_none()
-            db_row = None
-            if job_record:
-                db_row = {
-                    "id": job_record.id,
-                    "status": job_record.status,
-                    "progress": job_record.progress,
-                    "video_title": job_record.video_title,
-                    "error": job_record.error,
-                    "clips_json": job_record.clips_json,
-                    "created_at": job_record.created_at.isoformat() if job_record.created_at else None,
-                }
-    except Exception:
-        db_row = None
+    job_record = await job_access_service.require_owned_job(db, job_id, user)
+    in_memory = job_access_service.get_owned_memory_job(job_record, jobs)
+    db_row = {
+        "id": job_record.id,
+        "status": job_record.status,
+        "progress": job_record.progress,
+        "video_title": job_record.video_title,
+        "error": job_record.error,
+        "clips_json": job_record.clips_json,
+        "created_at": job_record.created_at.isoformat()
+        if job_record.created_at
+        else None,
+    }
 
     return JSONResponse({"in_memory": in_memory, "db": db_row})

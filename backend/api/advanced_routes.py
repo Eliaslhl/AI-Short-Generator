@@ -17,6 +17,7 @@ from backend.auth.dependencies import get_current_user
 from backend.models.user import User
 from backend.queue.redis_queue import get_queue
 from backend.queue.worker import process_twitch_video
+from backend.services.job_access_service import job_access_service
 
 logger = logging.getLogger(__name__)
 advanced_router = APIRouter()
@@ -44,7 +45,7 @@ class TwitchStatusResponse(BaseModel):
     progress: int
     step: str
     clips: list = []
-    error: str = None
+    error: str | None = None
 
 
 @advanced_router.post("/api/generate/twitch/advanced", response_model=TwitchAdvancedResponse)
@@ -83,6 +84,7 @@ async def generate_twitch_advanced(
         queue.enqueue(
             process_twitch_video,
             job_id=job_id,
+            meta={"user_id": current_user.id},
             args=(job_id, str(current_user.id), req.url),
             kwargs={
                 "max_clips": req.max_clips,
@@ -126,10 +128,11 @@ async def get_twitch_status(
         Detailed job status
     """
     queue = get_queue()
-    
+
     try:
+        job_access_service.require_owned_rq_job(queue, job_id, current_user)
         status = queue.get_job_status(job_id)
-        
+
         return {
             "job_id": job_id,
             "status": status.get("status", "unknown"),
@@ -139,6 +142,8 @@ async def get_twitch_status(
             "error": status.get("error"),
         }
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"❌ Error getting job status: {e}")
         raise HTTPException(status_code=500, detail="Failed to get job status")
@@ -160,16 +165,19 @@ async def cancel_job(
         Cancellation result
     """
     queue = get_queue()
-    
+
     try:
+        job_access_service.require_owned_rq_job(queue, job_id, current_user)
         success = queue.cancel_job(job_id)
-        
+
         if success:
             logger.info(f"❌ Cancelled job {job_id}")
             return {"status": "cancelled", "job_id": job_id}
         else:
             raise HTTPException(status_code=400, detail="Failed to cancel job")
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"❌ Error cancelling job: {e}")
         raise HTTPException(status_code=500, detail="Failed to cancel job")

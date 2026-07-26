@@ -1,8 +1,4 @@
-"""
-redis_queue.py – Redis-based job queue for async video processing.
-
-Supports both RQ (Redis Queue) and Celery backends.
-"""
+"""Redis Queue-based job processing for asynchronous video work."""
 
 import os
 import json
@@ -14,8 +10,12 @@ from enum import Enum
 logger = logging.getLogger(__name__)
 
 # Queue backend selection
-QUEUE_BACKEND = os.getenv("QUEUE_BACKEND", "rq")  # "rq" or "celery"
+QUEUE_BACKEND = os.getenv("QUEUE_BACKEND", "rq")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+
+class QueueBackendUnavailableError(RuntimeError):
+    """Raised when RQ cannot reach its Redis backend."""
 
 
 class JobStatus(str, Enum):
@@ -82,10 +82,10 @@ class RedisQueue:
         """Initialize the queue backend."""
         if self.backend == "rq":
             self._init_rq()
-        elif self.backend == "celery":
-            self._init_celery()
         else:
-            raise ValueError(f"Unknown queue backend: {self.backend}")
+            raise ValueError(
+                f"Unsupported QUEUE_BACKEND={self.backend!r}. Only 'rq' is supported."
+            )
 
     def _init_rq(self):
         """Initialize RQ (Redis Queue)."""
@@ -127,11 +127,12 @@ class RedisQueue:
         func: Callable,
         *args,
         job_id: Optional[str] = None,
+        meta: Optional[Dict[str, Any]] = None,
         **kwargs
     ) -> str:
         """Enqueue a job."""
         if self.backend == "rq":
-            return self._enqueue_rq(func, *args, job_id=job_id, **kwargs)
+            return self._enqueue_rq(func, *args, job_id=job_id, meta=meta, **kwargs)
         else:
             return self._enqueue_celery(func, *args, job_id=job_id, **kwargs)
 
@@ -140,12 +141,14 @@ class RedisQueue:
         func: Callable,
         *args,
         job_id: Optional[str] = None,
+        meta: Optional[Dict[str, Any]] = None,
         **kwargs
     ) -> str:
         """Enqueue a job with RQ."""
-        from rq.job import Job
-        
         job = self.queue.enqueue(func, *args, job_id=job_id, **kwargs)
+        if meta:
+            job.meta.update(meta)
+            job.save_meta()
         logger.info(f"📨 Enqueued RQ job: {job.id}")
         return job.id
 
@@ -173,17 +176,34 @@ class RedisQueue:
         else:
             return self._get_job_status_celery(job_id)
 
+    def get_rq_job(self, job_id: str):
+        """Fetch an RQ job, preserving backend failures for API translation."""
+        if self.backend != "rq":
+            return None
+
+        from redis.exceptions import RedisError
+        from rq.exceptions import NoSuchJobError
+        from rq.job import Job
+
+        try:
+            return Job.fetch(job_id, connection=self.redis_conn)
+        except NoSuchJobError:
+            return None
+        except (RedisError, OSError) as exc:
+            logger.error("Unable to reach Redis while fetching RQ job %s", job_id)
+            raise QueueBackendUnavailableError("RQ backend unavailable") from exc
+
     def _get_job_status_rq(self, job_id: str) -> Dict[str, Any]:
         """Get RQ job status."""
-        from rq.job import Job
-        
         try:
-            job = Job.fetch(job_id, connection=self.redis_conn)
+            job = self.get_rq_job(job_id)
+            if job is None:
+                raise LookupError("Job not found")
             return {
                 "job_id": job_id,
                 "status": job.get_status(),
-                "progress": getattr(job.meta, "progress", 0),
-                "step": getattr(job.meta, "step", "Processing..."),
+                "progress": job.meta.get("progress", 0),
+                "step": job.meta.get("step", "Processing..."),
                 "result": job.result if job.is_finished else None,
                 "error": str(job.exc_info) if job.is_failed else None,
             }
@@ -216,10 +236,10 @@ class RedisQueue:
 
     def _cancel_job_rq(self, job_id: str) -> bool:
         """Cancel an RQ job."""
-        from rq.job import Job
-        
         try:
-            job = Job.fetch(job_id, connection=self.redis_conn)
+            job = self.get_rq_job(job_id)
+            if job is None:
+                raise LookupError("Job not found")
             job.cancel()
             logger.info(f"❌ Cancelled RQ job: {job_id}")
             return True

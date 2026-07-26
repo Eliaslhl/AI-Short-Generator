@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum as PyEnum
 
-from sqlalchemy import String, Boolean, DateTime, Integer, ForeignKey, Enum, Text
+from sqlalchemy import DateTime, Boolean, Enum, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.database import Base
@@ -43,6 +43,10 @@ class User(Base):
     # OAuth
     google_id: Mapped[str | None] = mapped_column(
         String(255), unique=True, nullable=True
+    )
+
+    auth_sessions: Mapped[list["AuthSession"]] = relationship(
+        "AuthSession", back_populates="user"
     )
 
     # Status
@@ -201,6 +205,37 @@ class Job(Base):
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="jobs")
+
+
+class AuthSession(Base):
+    """A revocable, server-side web-session record with no raw token material."""
+
+    __tablename__ = "auth_sessions"
+    __table_args__ = (
+        Index("ix_auth_sessions_user_id_revoked_at", "user_id", "revoked_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(
+        String(64), nullable=False, unique=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    user: Mapped["User"] = relationship("User", back_populates="auth_sessions")
 
 
 class PasswordResetToken(Base):

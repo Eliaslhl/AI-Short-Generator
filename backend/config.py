@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     # Development-only routes are never enabled by an absent or invalid value.
     # Set APP_ENVIRONMENT=development explicitly for local diagnostics.
     app_environment: Literal["development", "test", "production"] = "production"
+    session_hash_key: str = ""
 
     # ---------- Database ----------
     database_url: str = (

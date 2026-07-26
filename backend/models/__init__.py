@@ -4,6 +4,7 @@ from backend.models.user import (
     Plan,
     PasswordResetToken,
     EmailConfirmationToken,
+    AuthSession,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "Plan",
     "PasswordResetToken",
     "EmailConfirmationToken",
+    "AuthSession",
 ]

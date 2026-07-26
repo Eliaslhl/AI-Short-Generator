@@ -49,6 +49,7 @@ services:
     env_file:
       - .env.docker
     environment:
+      - APP_ENVIRONMENT=development
       - QUEUE_BACKEND=rq
       - REDIS_URL=redis://redis:6379/0
       - CHUNK_DURATION=1800
@@ -77,7 +78,10 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     container_name: videoshort_worker_1
+    env_file:
+      - .env.docker
     environment:
+      - APP_ENVIRONMENT=development
       - QUEUE_BACKEND=rq
       - REDIS_URL=redis://redis:6379/0
       - PYTHONUNBUFFERED=1
@@ -97,7 +101,10 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     container_name: videoshort_worker_2
+    env_file:
+      - .env.docker
     environment:
+      - APP_ENVIRONMENT=development
       - QUEUE_BACKEND=rq
       - REDIS_URL=redis://redis:6379/0
       - PYTHONUNBUFFERED=1
@@ -118,4 +125,3 @@ volumes:
 networks:
   videoshort_network:
     driver: bridge
-

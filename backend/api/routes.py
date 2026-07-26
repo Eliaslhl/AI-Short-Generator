@@ -14,7 +14,6 @@ import asyncio
 import logging
 from typing import Dict, Any
 import os
-import hashlib
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
 from fastapi.responses import JSONResponse, FileResponse
@@ -25,7 +24,7 @@ from sqlalchemy import select
 from backend.database import get_db
 from backend.models.user import User, Job
 from backend.auth.dependencies import get_current_user
-from backend.services.youtube_service import download_video as download_youtube, _get_cookies_file
+from backend.services.youtube_service import download_video as download_youtube
 from backend.services.twitch_service import download_video as download_twitch
 from backend.services.twitch_api_client import TwitchAPIClient
 from backend.config import settings
@@ -382,11 +381,17 @@ async def run_pipeline(
                     clip_index=idx,
                     subtitle_style=subtitle_style,
                 )
-            except Exception as e:
-                logger.exception(f"Failed to render clip {idx + 1}/{total} for job {job_id}: {e}")
+            except Exception as exc:
+                logger.error(
+                    "Failed to render clip %s/%s for job %s: exception_type=%s",
+                    idx + 1,
+                    total,
+                    job_id,
+                    type(exc).__name__,
+                )
                 # Persist error state and refund credit
                 jobs[job_id]["status"] = "error"
-                jobs[job_id]["step"] = f"Error rendering clip: {e}"
+                jobs[job_id]["step"] = "A clip could not be rendered"
                 from backend.database import AsyncSessionLocal
 
                 async with AsyncSessionLocal() as db:
@@ -394,7 +399,7 @@ async def run_pipeline(
                     job_record = result.scalar_one_or_none()
                     if job_record:
                         job_record.status = "error"
-                        job_record.error = str(e)
+                        job_record.error = "A clip could not be rendered"
                         # refund credit
                         user_result = await db.execute(select(User).where(User.id == user_id))
                         user_record = user_result.scalar_one_or_none()
@@ -412,18 +417,7 @@ async def run_pipeline(
             # Persist the partially rendered clips immediately so the UI can show
             # them while the rest of the pipeline continues.
             jobs[job_id]["clips"] = clips.copy()
-            # Log minimal clip info for debugging (keys and common fields)
-            try:
-                import json as _json
-                keys = list(clip_info.keys()) if isinstance(clip_info, dict) else []
-                info_preview = {
-                    "keys": keys,
-                    "path": clip_info.get("path") if isinstance(clip_info, dict) else None,
-                    "thumbnail": clip_info.get("thumbnail") if isinstance(clip_info, dict) else None,
-                }
-                logger.info(f"[{job_id}] rendered clip preview: {_json.dumps(info_preview)}")
-            except Exception:
-                logger.debug(f"[{job_id}] unable to stringify clip_info for logging", exc_info=True)
+            logger.info("Rendered clip %s/%s for job %s", idx + 1, total, job_id)
             try:
                 from backend.database import AsyncSessionLocal
                 import json as _json
@@ -457,9 +451,9 @@ async def run_pipeline(
                 await db.commit()
 
     except Exception as exc:
-        logger.exception(f"Pipeline error for job {job_id}: {exc}")
+        logger.error("Pipeline error for job %s: exception_type=%s", job_id, type(exc).__name__)
         jobs[job_id]["status"] = "error"
-        jobs[job_id]["step"] = f"Error: {exc}"
+        jobs[job_id]["step"] = "Processing failed"
 
         from backend.database import AsyncSessionLocal
 
@@ -468,7 +462,7 @@ async def run_pipeline(
             job_record = result.scalar_one_or_none()
             if job_record:
                 job_record.status = "error"
-                job_record.error = str(exc)
+                job_record.error = "Processing failed"
                 # ── Refund the generation credit on failure ──────────────────
                 user_result = await db.execute(select(User).where(User.id == user_id))
                 user_record = user_result.scalar_one_or_none()
@@ -479,33 +473,6 @@ async def run_pipeline(
                             f"Refunded {platform} generation credit for user {user_id} (job {job_id} failed)"
                         )
                 await db.commit()
-
-
-        # Debug endpoint: return size and sha256 of reconstructed YouTube cookies file
-        # Only available when YOUTUBE_COOKIES_DEBUG is enabled to avoid leaking secrets.
-        @router.get("/debug/youtube-cookies")
-        async def debug_youtube_cookies():
-            if os.environ.get("YOUTUBE_COOKIES_DEBUG", "").lower() not in ("1", "true", "yes"):
-                # Hide endpoint when not enabled
-                raise HTTPException(status_code=404, detail="Not found")
-
-            cookies_file, cookies_is_temp = _get_cookies_file()
-            if not cookies_file:
-                return JSONResponse({"found": False})
-
-            try:
-                size = os.path.getsize(cookies_file)
-                with open(cookies_file, "rb") as fh:
-                    sha = hashlib.sha256(fh.read()).hexdigest()
-            finally:
-                # cleanup only if we created a temp file
-                try:
-                    if cookies_file and cookies_is_temp:
-                        os.unlink(cookies_file)
-                except Exception:
-                    pass
-
-            return JSONResponse({"found": True, "size": size, "sha256": sha})
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -641,10 +608,12 @@ async def preview(
         # Try common thumbnail keys
         thumbnail = info.get("thumbnail") or info.get("thumbnails") and (info.get("thumbnails")[-1].get("url") if isinstance(info.get("thumbnails"), list) and info.get("thumbnails") else None)
         return PreviewResponse(url=url, title=title, duration=duration, thumbnail=thumbnail)
-    except subprocess.CalledProcessError as e:
-        raise HTTPException(status_code=400, detail=f"yt-dlp failed: {e.stderr or e.stdout or str(e)}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except subprocess.CalledProcessError:
+        logger.warning("yt-dlp preview failed")
+        raise HTTPException(status_code=400, detail="Unable to preview this video")
+    except Exception as exc:
+        logger.error("Unexpected error while previewing video: exception_type=%s", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="Unable to preview this video")
 
 
 @router.post("/twitch/vods", response_model=TwitchVodsResponse)
@@ -678,12 +647,15 @@ async def get_twitch_vods(
                 channel_login=channel_login,
                 vods=[TwitchVodItem(**vod) for vod in vods],
             )
-    except RuntimeError as e:
-        logger.warning(f"Twitch API error for channel {channel_login}: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.exception(f"Error fetching Twitch VODs for {channel_login}: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+    except RuntimeError:
+        logger.warning("Twitch API request failed for channel %s", channel_login)
+        raise HTTPException(status_code=400, detail="Unable to fetch Twitch VODs")
+    except Exception as exc:
+        logger.error(
+            "Unexpected error while fetching Twitch VODs: exception_type=%s",
+            type(exc).__name__,
+        )
+        raise HTTPException(status_code=500, detail="Unable to fetch Twitch VODs")
 
 
 @router.get("/status/{job_id}", response_model=StatusResponse)
@@ -715,7 +687,7 @@ async def get_status(
     step = (
         "done"
         if job_record.status == "done"
-        else (job_record.error or job_record.status)
+        else ("Processing failed" if job_record.status == "error" else job_record.status)
     )
     progress = 100 if job_record.status == "done" else 0
 
@@ -850,138 +822,28 @@ async def get_history(
     return JSONResponse({"history": history})
 
 
-# ── Debug / Diagnostic endpoints ────────────────────────────────────────────
-@router.post("/debug/refresh-cookies")
-async def debug_refresh_cookies():
-    """
-    [DEBUG ONLY] Manually trigger a YouTube cookies refresh for testing.
+# ── Development-only diagnostics ────────────────────────────────────────────
+if settings.is_development:
 
-    This endpoint attempts to run the Playwright refresher script and returns
-    safe diagnostic information (size + sha256, not the cookie contents).
+    @router.get("/debug/job/{job_id}")
+    async def debug_job(
+        job_id: str,
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ):
+        """Return owned job state for local troubleshooting only."""
+        job_record = await job_access_service.require_owned_job(db, job_id, user)
+        in_memory = job_access_service.get_owned_memory_job(job_record, jobs)
+        db_row = {
+            "id": job_record.id,
+            "status": job_record.status,
+            "progress": job_record.progress,
+            "video_title": job_record.video_title,
+            "error": job_record.error,
+            "clips_json": job_record.clips_json,
+            "created_at": job_record.created_at.isoformat()
+            if job_record.created_at
+            else None,
+        }
 
-    Useful for testing the auto-refresh mechanism without waiting for real
-    cookie expiration.
-
-    Returns
-    -------
-    {
-        "status": "success" | "failed",
-        "diagnostic": "WROTE ... size=... sha256=...",
-        "profile_dir": "<path>",
-        "output_path": "<path>",
-        "message": "<error detail if failed>"
-    }
-    """
-    try:
-        import subprocess
-        import sys
-        import os
-        from pathlib import Path
-        import re as regex_module
-
-        # Locate the refresher script
-        proj_root = Path(__file__).resolve().parents[2]
-        script_path = proj_root / "scripts" / "refresh_youtube_cookies.py"
-
-        if not script_path.exists():
-            return JSONResponse(
-                {
-                    "status": "failed",
-                    "message": f"Refresher script not found: {script_path}",
-                },
-                status_code=500,
-            )
-
-        # Build the refresh command
-        out_path = os.environ.get("YOUTUBE_AUTO_REFRESH_OUT", "/tmp/yt_cookies_debug.txt")
-        cmd = [sys.executable, str(script_path), "--out", out_path]
-
-        profile = os.environ.get("YOUTUBE_BROWSER_PROFILE_DIR")
-        if profile:
-            cmd.extend(["--profile", profile])
-
-        if os.environ.get("YOUTUBE_AUTO_REFRESH_HEADLESS", "1").lower() in ("1", "true", "yes"):
-            cmd.append("--headless")
-
-        logger.info(f"[DEBUG] Running refresher: {script_path}")
-
-        # Run the refresher with a timeout
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-
-        if proc.returncode != 0:
-            logger.error(f"[DEBUG] Refresher failed: {proc.stderr}")
-            return JSONResponse(
-                {
-                    "status": "failed",
-                    "profile_dir": profile,
-                    "output_path": out_path,
-                    "message": f"Refresher exited with code {proc.returncode}",
-                    "stderr": proc.stderr[:500],  # truncate long errors
-                },
-                status_code=500,
-            )
-
-        # Parse the safe diagnostic line
-        diagnostic_line = ""
-        m = regex_module.search(r"WROTE\s+(\S+)\s+size=\s*(\d+)\s+sha256=([0-9a-fA-F]+)", proc.stdout)
-        if m:
-            refreshed_path = m.group(1)
-            size = int(m.group(2))
-            sha = m.group(3)
-            diagnostic_line = f"WROTE {refreshed_path} size={size} sha256={sha}"
-            logger.info(f"[DEBUG] {diagnostic_line}")
-
-        return JSONResponse(
-            {
-                "status": "success",
-                "diagnostic": diagnostic_line,
-                "profile_dir": profile,
-                "output_path": out_path,
-                "message": "Cookies refreshed successfully (if profile was configured with authenticated session)",
-            }
-        )
-
-    except subprocess.TimeoutExpired:
-        return JSONResponse(
-            {
-                "status": "failed",
-                "message": "Refresher timed out (180s). Check if Playwright is installed and profile is valid.",
-            },
-            status_code=500,
-        )
-    except Exception as e:
-        logger.exception(f"[DEBUG] Refresh-cookies endpoint error: {e}")
-        return JSONResponse(
-            {
-                "status": "failed",
-                "message": f"Unexpected error: {str(e)}",
-            },
-            status_code=500,
-        )
-
-
-@router.get("/debug/job/{job_id}")
-async def debug_job(
-    job_id: str,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Debug endpoint: return in-memory job state and DB record for a given job_id.
-    Use this to inspect why a job is still processing or to retrieve error details.
-    """
-    job_record = await job_access_service.require_owned_job(db, job_id, user)
-    in_memory = job_access_service.get_owned_memory_job(job_record, jobs)
-    db_row = {
-        "id": job_record.id,
-        "status": job_record.status,
-        "progress": job_record.progress,
-        "video_title": job_record.video_title,
-        "error": job_record.error,
-        "clips_json": job_record.clips_json,
-        "created_at": job_record.created_at.isoformat()
-        if job_record.created_at
-        else None,
-    }
-
-    return JSONResponse({"in_memory": in_memory, "db": db_row})
+        return JSONResponse({"in_memory": in_memory, "db": db_row})

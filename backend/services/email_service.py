@@ -62,7 +62,7 @@ async def send_reset_email(to_email: str, reset_token: str) -> None:
     reset_url = f"{FRONTEND_URL}/reset-password?token={reset_token}"
 
     if suppress:
-        logger.info(f"[DEV] Password reset email suppressed. URL: {reset_url}")
+        logger.info("Password reset email suppressed")
         return
 
     html = f"""
@@ -92,9 +92,9 @@ async def send_reset_email(to_email: str, reset_token: str) -> None:
 
     try:
         await mailer.send_message(message)
-        logger.info(f"Password reset email sent to {to_email}")
-    except Exception as exc:
-        logger.error(f"Failed to send reset email to {to_email}: {exc}")
+        logger.info("Password reset email sent")
+    except Exception:
+        logger.error("Failed to send reset email")
         raise
 
 
@@ -105,7 +105,7 @@ async def send_welcome_email(to_email: str, full_name: str = "") -> None:
     name = full_name.split()[0] if full_name else "there"
 
     if suppress:
-        logger.info(f"[DEV] Welcome email suppressed for {to_email}")
+        logger.info("Welcome email suppressed")
         return
 
     html = f"""
@@ -146,10 +146,10 @@ async def send_welcome_email(to_email: str, full_name: str = "") -> None:
 
     try:
         await mailer.send_message(message)
-        logger.info(f"Welcome email sent to {to_email}")
-    except Exception as exc:
+        logger.info("Welcome email sent")
+    except Exception:
         # Don't block registration if welcome email fails
-        logger.error(f"Failed to send welcome email to {to_email}: {exc}")
+        logger.error("Failed to send welcome email")
 
 
 async def send_confirmation_email(to_email: str, confirmation_token: str) -> None:
@@ -158,7 +158,7 @@ async def send_confirmation_email(to_email: str, confirmation_token: str) -> Non
     confirmation_url = f"{FRONTEND_URL}/confirm-email?token={confirmation_token}"
 
     if suppress:
-        logger.info(f"[DEV] Email confirmation suppressed. URL: {confirmation_url}")
+        logger.info("Email confirmation email suppressed")
         return
 
     html = f"""
@@ -192,7 +192,7 @@ async def send_confirmation_email(to_email: str, confirmation_token: str) -> Non
 
     try:
         await mailer.send_message(message)
-        logger.info(f"Confirmation email sent to {to_email}")
-    except Exception as exc:
-        logger.error(f"Failed to send confirmation email to {to_email}: {exc}")
+        logger.info("Confirmation email sent")
+    except Exception:
+        logger.error("Failed to send confirmation email")
         raise

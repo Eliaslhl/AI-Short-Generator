@@ -7,7 +7,7 @@ multiple files to change a path, model name, or threshold.
 
 from pathlib import Path
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Literal, Optional
 import math
 import os
 
@@ -26,6 +26,11 @@ VIDEO_DIR = DATA_DIR / "videos"
 CLIPS_DIR = DATA_DIR / "clips"
 BROLL_DIR = DATA_DIR / "broll"
 
+# A local dotenv file is a development convenience, never a production source
+# of authority. Production configuration must be injected by the runtime.
+_runtime_environment = os.getenv("APP_ENVIRONMENT", "production")
+_local_env_file = ".env" if _runtime_environment in {"development", "test"} else None
+
 # Make sure every directory exists at import time
 for _d in (VIDEO_DIR, CLIPS_DIR, BROLL_DIR):
     _d.mkdir(parents=True, exist_ok=True)
@@ -35,6 +40,10 @@ for _d in (VIDEO_DIR, CLIPS_DIR, BROLL_DIR):
 #  Settings (can be overridden via .env file)
 # ──────────────────────────────────────────────
 class Settings(BaseSettings):
+    # Development-only routes are never enabled by an absent or invalid value.
+    # Set APP_ENVIRONMENT=development explicitly for local diagnostics.
+    app_environment: Literal["development", "test", "production"] = "production"
+
     # ---------- Database ----------
     database_url: str = (
         "sqlite+aiosqlite:///./data/app.db"  # override with postgresql+asyncpg:// in prod
@@ -206,9 +215,13 @@ class Settings(BaseSettings):
     video_temp_dir: str = str(DATA_DIR / "tmp")
 
     class Config:
-        env_file = ".env"
+        env_file = _local_env_file
         env_file_encoding = "utf-8"
         extra = "ignore"  # ignore unknown .env vars (auth, mail, stripe…)
+
+    @property
+    def is_development(self) -> bool:
+        return self.app_environment == "development"
 
 
 # Single shared instance

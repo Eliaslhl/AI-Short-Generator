@@ -314,30 +314,10 @@ def _write_cookies_file() -> str | None:
         tmp.write(filtered_content)
         tmp.flush()
         tmp.close()
-        logger.info(f"YouTube cookies written to {tmp.name}")
-        # Optional debug: log size and sha256 of the reconstructed cookies file
-        # without revealing the contents. Enable by setting YOUTUBE_COOKIES_DEBUG=true
-        try:
-            if os.environ.get("YOUTUBE_COOKIES_DEBUG", "").lower() in ("1", "true", "yes"):
-                size = os.path.getsize(tmp.name)
-                with open(tmp.name, "rb") as fh:
-                    sha = hashlib.sha256(fh.read()).hexdigest()
-                logger.info(f"[YTC DEBUG] cookies file size={size} sha256={sha}")
-        except Exception:
-            # Do not fail cookie writing for debug logging failures
-            pass
+        logger.info("YouTube cookies materialized in temporary storage")
         return tmp.name
-    except Exception as exc:
-        if part_debug:
-            meta = ", ".join([f"{k}={n}" for k, n in part_debug])
-            logger.warning(
-                f"Could not decode YOUTUBE_COOKIES_B64 (source={source_mode}, total_len={len(b64)}): {exc}. "
-                f"Detected parts: {meta}"
-            )
-        else:
-            logger.warning(
-                f"Could not decode YOUTUBE_COOKIES_B64 (source={source_mode}, total_len={len(b64)}): {exc}"
-            )
+    except Exception:
+        logger.warning("Could not decode configured YouTube cookies")
         return None
 
 
@@ -357,15 +337,13 @@ def _get_cookies_file() -> tuple[str | None, bool]:
         if os.path.exists(path):
             try:
                 sanitized_path = _sanitize_cookie_file_to_temp(path)
-                logger.info(
-                    f"Using user-provided YouTube cookies file (sanitized): {path} -> {sanitized_path}"
-                )
+                logger.info("Using configured YouTube cookies file")
                 return sanitized_path, True
-            except Exception as exc:
-                logger.warning(f"Failed to sanitize YOUTUBE_COOKIES_FILE at {path}: {exc}")
+            except Exception:
+                logger.warning("Failed to sanitize configured YouTube cookies file")
                 return None, False
         else:
-            logger.warning(f"YOUTUBE_COOKIES_FILE set but file not found: {path}")
+            logger.warning("Configured YouTube cookies file was not found")
 
     # 2) base64-encoded cookies in env var
     env_payload_present = _has_env_cookies_payload()
@@ -399,7 +377,7 @@ def _get_cookies_file() -> tuple[str | None, bool]:
             proj_root = Path(__file__).resolve().parents[2]
             script_path = proj_root / "scripts" / "refresh_youtube_cookies.py"
             if not script_path.exists():
-                logger.warning(f"Auto-refresh requested but script not found: {script_path}")
+                logger.warning("YouTube cookie auto-refresh script was not found")
                 return None
 
             out_path = os.environ.get("YOUTUBE_AUTO_REFRESH_OUT", "/tmp/yt_cookies_refreshed.txt")
@@ -416,14 +394,12 @@ def _get_cookies_file() -> tuple[str | None, bool]:
             if os.environ.get("YOUTUBE_AUTO_REFRESH_HEADLESS", "1").lower() in ("1", "true", "yes"):
                 cmd.append("--headless")
 
-            logger.info(f"Attempting auto-refresh of YouTube cookies via: {script_path}")
+            logger.info("Attempting YouTube cookie auto-refresh")
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
             if proc.returncode != 0:
                 logger.warning(
                     "Auto-refresh script failed",
                 )
-                logger.debug("auto-refresh stdout: %s", proc.stdout)
-                logger.debug("auto-refresh stderr: %s", proc.stderr)
                 return None
 
             # parse safe diagnostic line: WROTE <path> size=<bytes> sha256=<hex>
@@ -432,23 +408,20 @@ def _get_cookies_file() -> tuple[str | None, bool]:
             m = _re.search(r"WROTE\s+(\S+)\s+size=\s*(\d+)\s+sha256=([0-9a-fA-F]+)", proc.stdout)
             if not m:
                 # Fallback: check stdout for a path
-                logger.debug("auto-refresh produced no WROTE line; stdout: %s", proc.stdout)
+                logger.debug("Auto-refresh produced no completion marker")
                 if os.path.exists(out_path):
                     return out_path
                 return None
 
             refreshed_path = m.group(1)
-            size = int(m.group(2))
-            sha = m.group(3)
-            # Log safe metadata
-            logger.info(f"[YTC AUTOREFRESH] wrote {refreshed_path} size={size} sha256={sha}")
+            logger.info("YouTube cookie auto-refresh completed")
             if os.path.exists(refreshed_path):
                 try:
                     return _sanitize_cookie_file_to_temp(
                         refreshed_path, prefix="yt_cookies_refreshed_safe_"
                     )
-                except Exception as exc:
-                    logger.warning(f"Could not sanitize refreshed cookies file {refreshed_path}: {exc}")
+                except Exception:
+                    logger.warning("Could not sanitize refreshed YouTube cookies")
                     return None
             # If script reported path but file missing, try configured out_path
             if os.path.exists(out_path):
@@ -456,12 +429,12 @@ def _get_cookies_file() -> tuple[str | None, bool]:
                     return _sanitize_cookie_file_to_temp(
                         out_path, prefix="yt_cookies_refreshed_safe_"
                     )
-                except Exception as exc:
-                    logger.warning(f"Could not sanitize refreshed cookies file {out_path}: {exc}")
+                except Exception:
+                    logger.warning("Could not sanitize refreshed YouTube cookies")
                     return None
             return None
-        except Exception as exc:
-            logger.exception("Auto-refresh attempt failed: %s", exc)
+        except Exception:
+            logger.error("YouTube cookie auto-refresh attempt failed")
             return None
 
     refreshed = _attempt_auto_refresh()
@@ -521,16 +494,11 @@ def _auto_refresh_and_retry_download(
         for path in possible_paths:
             if path.exists():
                 script_path = path
-                logger.debug(f"Found refresher script at {script_path}")
+                logger.debug("Found YouTube cookie refresher script")
                 break
         
         if not script_path:
-            logger.error(
-                f"Auto-refresh script not found at any of: {possible_paths}. "
-                "Ensure scripts/refresh_youtube_cookies.py is included in your Docker image. "
-                "Add to Dockerfile: COPY scripts/refresh_youtube_cookies.py /app/scripts/ "
-                "and install Playwright: RUN pip install -r scripts/requirements-playwright.txt && python3 -m playwright install"
-            )
+            logger.error("YouTube cookie auto-refresh script is unavailable")
             raise RuntimeError(
                 "Playwright refresher not found. Ensure scripts are deployed to the image. "
                 "See logs for Dockerfile requirements."
@@ -554,43 +522,46 @@ def _auto_refresh_and_retry_download(
         if os.environ.get("YOUTUBE_AUTO_REFRESH_HEADLESS", "1").lower() in ("1", "true", "yes"):
             refresh_cmd.append("--headless")
         
-        logger.info(f"Running Playwright refresher: {script_path}")
+        logger.info("Running YouTube cookie auto-refresh")
         refresh_proc = subprocess.run(refresh_cmd, capture_output=True, text=True, timeout=180)
         
         if refresh_proc.returncode != 0:
-            logger.error(f"Playwright refresher failed with exit code {refresh_proc.returncode}")
-            logger.error(f"refresher stdout: {refresh_proc.stdout}")
-            logger.error(f"refresher stderr: {refresh_proc.stderr}")
-            raise RuntimeError(f"Playwright refresher failed (exit {refresh_proc.returncode}): {refresh_proc.stderr or refresh_proc.stdout}")
+            logger.error(
+                "YouTube cookie auto-refresh failed: return_code=%s",
+                refresh_proc.returncode,
+            )
+            raise RuntimeError("YouTube cookie auto-refresh failed")
         
         # Parse safe diagnostic: WROTE <path> size=<bytes> sha256=<hex>
         m = re.search(r"WROTE\s+(\S+)\s+size=\s*(\d+)\s+sha256=([0-9a-fA-F]+)", refresh_proc.stdout)
         if not m:
-            logger.error(f"Refresher did not produce a WROTE line. stdout: {refresh_proc.stdout}")
+            logger.error("YouTube cookie auto-refresh did not report completion")
             if not os.path.exists(out_path):
                 raise RuntimeError("Playwright refresher failed to write cookies file")
             refreshed_path = out_path
         else:
             refreshed_path = m.group(1)
-            size = int(m.group(2))
-            sha = m.group(3)
-            logger.info(f"[YTC AUTO-REFRESH] cookies refreshed: {refreshed_path} size={size} sha256={sha}")
+            logger.info("YouTube cookie auto-refresh completed")
         
         if not os.path.exists(refreshed_path):
-            raise RuntimeError(f"Refreshed cookies file not found at {refreshed_path}")
+            raise RuntimeError("YouTube cookie auto-refresh output was unavailable")
 
         try:
             refreshed_path = _sanitize_cookie_file_to_temp(
                 refreshed_path, prefix="yt_cookies_autorefresh_safe_"
             )
         except Exception as exc:
-            raise RuntimeError(f"Refreshed cookies sanitization failed: {exc}")
+            logger.warning(
+                "YouTube cookie auto-refresh sanitation failed: exception_type=%s",
+                type(exc).__name__,
+            )
+            raise RuntimeError("YouTube cookie auto-refresh sanitation failed") from exc
         
         # Record this refresh in rate-limit cache
         _AUTOREFRESH_RATELIMIT_CACHE[job_id] = now
         
         # Retry the yt-dlp command with the refreshed cookies
-        logger.info(f"Retrying yt-dlp with refreshed cookies for job {job_id}: {youtube_url}")
+        logger.info("Retrying yt-dlp after YouTube cookie auto-refresh: job_id=%s", job_id)
         retry_cmd = list(base_cmd)
         
         # Replace or add --cookies flag
@@ -605,15 +576,15 @@ def _auto_refresh_and_retry_download(
         logger.info(f"yt-dlp retry succeeded for job {job_id}")
         return result
     
-    except subprocess.CalledProcessError as e:
-        logger.error(f"yt-dlp retry failed after refresh: {e.stderr or e.stdout}")
-        raise RuntimeError(
-            f"yt-dlp failed even after refreshing cookies (exit {e.returncode}). "
-            f"Error: {e.stderr.strip() or e.stdout.strip()}"
+    except subprocess.CalledProcessError as exc:
+        logger.error("yt-dlp retry after auto-refresh failed: return_code=%s", exc.returncode)
+        raise RuntimeError("yt-dlp retry after auto-refresh failed") from exc
+    except Exception as exc:
+        logger.error(
+            "YouTube cookie auto-refresh retry failed: exception_type=%s",
+            type(exc).__name__,
         )
-    except Exception as e:
-        logger.exception(f"Auto-refresh and retry failed: {e}")
-        raise RuntimeError(f"Auto-refresh and retry failed: {e}")
+        raise RuntimeError("YouTube cookie auto-refresh retry failed") from exc
 
 
 def _sanitize_filename(name: str) -> str:
@@ -768,7 +739,7 @@ def download_video(
             base_cmd.extend(["--impersonate", default_impersonate_target])
             cmd.extend(["--impersonate", default_impersonate_target])
 
-    logger.info(f"Running yt-dlp for job {job_id}: {youtube_url}")
+    logger.info("Running yt-dlp download: job_id=%s", job_id)
 
     def _run_cmd(cmd_list):
         return subprocess.run(
@@ -891,8 +862,11 @@ def download_video(
             try:
                 return _run_cmd(c)
             except subprocess.CalledProcessError as e_fb:
-                logger.error(f"yt-dlp fallback stderr ({name}): {e_fb.stderr}")
-                logger.error(f"yt-dlp fallback stdout ({name}): {e_fb.stdout}")
+                logger.warning(
+                    "yt-dlp fallback failed: attempt=%s return_code=%s",
+                    name,
+                    e_fb.returncode,
+                )
                 if _is_impersonate_unavailable(e_fb.stderr or "", e_fb.stdout or ""):
                     _disable_impersonation_runtime("impersonate target unavailable during fallback")
 
@@ -912,8 +886,7 @@ def download_video(
                 except subprocess.CalledProcessError as e:
                     stderr = (e.stderr or "").lower()
                     stdout = (e.stdout or "").lower()
-                    logger.error(f"yt-dlp stderr: {e.stderr}")
-                    logger.error(f"yt-dlp stdout: {e.stdout}")
+                    logger.warning("yt-dlp primary attempt failed: return_code=%s", e.returncode)
 
                     # If impersonation is unsupported at runtime, retry once
                     # without --impersonate before other branches.
@@ -927,8 +900,10 @@ def download_video(
                             try:
                                 result = _run_cmd(retry_no_imp)
                             except subprocess.CalledProcessError as e_no_imp:
-                                logger.error(f"yt-dlp retry(no-impersonate) stderr: {e_no_imp.stderr}")
-                                logger.error(f"yt-dlp retry(no-impersonate) stdout: {e_no_imp.stdout}")
+                                logger.warning(
+                                    "yt-dlp retry without impersonation failed: return_code=%s",
+                                    e_no_imp.returncode,
+                                )
                                 stderr = (e_no_imp.stderr or "").lower()
                                 stdout = (e_no_imp.stdout or "").lower()
                                 e = e_no_imp
@@ -950,8 +925,10 @@ def download_video(
                                 try:
                                     result = _run_cmd(_with_js_flags(base_cmd))
                                 except subprocess.CalledProcessError as e2:
-                                    logger.error(f"yt-dlp retry stderr: {e2.stderr}")
-                                    logger.error(f"yt-dlp retry stdout: {e2.stdout}")
+                                    logger.warning(
+                                        "yt-dlp JavaScript retry failed: return_code=%s",
+                                        e2.returncode,
+                                    )
                                     raise RuntimeError(
                                         f"yt-dlp failed (exit {e2.returncode}): {e2.stderr.strip() or e2.stdout.strip()}"
                                     )
@@ -1016,8 +993,10 @@ def download_video(
                                     retry_cmd = base_cmd + ["--impersonate", direct_impersonate_target]
                                     result = _run_cmd(retry_cmd)
                                 except subprocess.CalledProcessError as e2:
-                                    logger.error(f"yt-dlp retry stderr: {e2.stderr}")
-                                    logger.error(f"yt-dlp retry stdout: {e2.stdout}")
+                                    logger.warning(
+                                        "yt-dlp impersonation retry failed: return_code=%s",
+                                        e2.returncode,
+                                    )
                                     raise RuntimeError(
                                         f"yt-dlp failed (exit {e2.returncode}): {e2.stderr.strip() or e2.stdout.strip()}"
                                     )
@@ -1036,8 +1015,7 @@ def download_video(
             # Capture output for analysis (when not handled above)
             stderr = (e.stderr or "").lower()
             stdout = (e.stdout or "").lower()
-            logger.error(f"yt-dlp stderr: {e.stderr}")
-            logger.error(f"yt-dlp stdout: {e.stdout}")
+            logger.warning("yt-dlp download attempt failed: return_code=%s", e.returncode)
 
             # If impersonation is unsupported at runtime, retry once without it.
             if _is_impersonate_unavailable(e.stderr or "", e.stdout or ""):
@@ -1050,8 +1028,10 @@ def download_video(
                     try:
                         result = _run_cmd(retry_no_imp)
                     except subprocess.CalledProcessError as e_no_imp:
-                        logger.error(f"yt-dlp retry(no-impersonate) stderr: {e_no_imp.stderr}")
-                        logger.error(f"yt-dlp retry(no-impersonate) stdout: {e_no_imp.stdout}")
+                        logger.warning(
+                            "yt-dlp retry without impersonation failed: return_code=%s",
+                            e_no_imp.returncode,
+                        )
                         stderr = (e_no_imp.stderr or "").lower()
                         stdout = (e_no_imp.stdout or "").lower()
 
@@ -1119,8 +1099,10 @@ def download_video(
                             retry_cmd = cmd + ["--impersonate", direct_impersonate_target]
                             result = _run_cmd(retry_cmd)
                         except subprocess.CalledProcessError as e2:
-                            logger.error(f"yt-dlp retry stderr: {e2.stderr}")
-                            logger.error(f"yt-dlp retry stdout: {e2.stdout}")
+                            logger.warning(
+                                "yt-dlp impersonation retry failed: return_code=%s",
+                                e2.returncode,
+                            )
                             raise RuntimeError(
                                 f"yt-dlp failed (exit {e2.returncode}): {e2.stderr.strip() or e2.stdout.strip()}"
                             )
@@ -1156,7 +1138,7 @@ def download_video(
         video_path = mp4_files[0]
 
     video_title = video_path.stem
-    logger.info(f"Download complete: {video_path}")
+    logger.info("yt-dlp download completed: job_id=%s", job_id)
     return video_path, video_title
 
 
@@ -1194,12 +1176,11 @@ def extract_audio(
     # audio-only, mono, 16kHz WAV (widely supported for ASR)
     cmd += ["-vn", "-ac", "1", "-ar", "16000", "-f", "wav", out_wav]
 
-    logger.info(f"Extracting audio: {' '.join(cmd)}")
+    logger.info("Extracting audio from downloaded video")
     try:
         run(cmd, capture_output=True, text=True, check=True)
-    except CalledProcessError as e:
-        logger.error(f"ffmpeg stderr: {e.stderr}")
-        logger.error(f"ffmpeg stdout: {e.stdout}")
-        raise RuntimeError(f"ffmpeg failed: {e.stderr.strip() or e.stdout.strip()}")
+    except CalledProcessError as exc:
+        logger.error("ffmpeg audio extraction failed: return_code=%s", exc.returncode)
+        raise RuntimeError("ffmpeg audio extraction failed") from exc
 
     return Path(out_wav)

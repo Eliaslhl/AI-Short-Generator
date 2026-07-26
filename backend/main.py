@@ -16,12 +16,12 @@ from dotenv import load_dotenv, find_dotenv
 import asyncio
 # This makes behaviour deterministic whether you run uvicorn from the repo root
 # or from the backend folder. Prefer a single root `.env` for secrets/config.
-_dotenv_path = find_dotenv()
-if _dotenv_path:
-    load_dotenv(_dotenv_path)
-else:
-    # fall back to default behaviour (no .env found)
-    load_dotenv()
+if os.getenv("APP_ENVIRONMENT") in {"development", "test"}:
+    _dotenv_path = find_dotenv()
+    if _dotenv_path:
+        load_dotenv(_dotenv_path)
+    else:
+        load_dotenv()
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
@@ -33,6 +33,10 @@ from slowapi.errors import RateLimitExceeded  # noqa: E402
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 from starlette.requests import Request  # noqa: E402
 
+from backend.security_logging import configure_logging  # noqa: E402
+
+configure_logging()
+
 from backend.api.routes import router  # noqa: E402
 from backend.auth.router import router as auth_router  # noqa: E402
 from backend.api.advanced_routes import advanced_router  # noqa: E402
@@ -41,10 +45,6 @@ from backend.database import create_tables  # noqa: E402
 # ──────────────────────────────────────────────
 #  Logging
 # ──────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────
@@ -124,18 +124,11 @@ async def lifespan(app: FastAPI):
     # ── startup ──
     await create_tables()
     
-    # Log email configuration for debugging
-    print("\n" + "=" * 60)
-    print("EMAIL CONFIGURATION AT STARTUP")
-    print("=" * 60)
-    print(f"MAIL_USERNAME:     {os.getenv('MAIL_USERNAME', 'NOT SET')}")
-    print(f"MAIL_FROM:         {os.getenv('MAIL_FROM', 'NOT SET')}")
-    print(f"MAIL_SERVER:       {os.getenv('MAIL_SERVER', 'NOT SET')}")
-    print(f"MAIL_PORT:         {os.getenv('MAIL_PORT', 'NOT SET')}")
-    print(f"MAIL_STARTTLS:     {os.getenv('MAIL_STARTTLS', 'NOT SET')}")
-    print(f"MAIL_SSL_TLS:      {os.getenv('MAIL_SSL_TLS', 'NOT SET')}")
-    print(f"MAIL_SUPPRESS_SEND: {os.getenv('MAIL_SUPPRESS_SEND', 'NOT SET')}")
-    print("=" * 60 + "\n")
+    logger.info(
+        "Email delivery configured=%s suppressed=%s",
+        bool(os.getenv("MAIL_USERNAME")),
+        os.getenv("MAIL_SUPPRESS_SEND", "false").lower() == "true",
+    )
     
     logger.info("AI Shorts Generator is ready 🚀")
     yield
@@ -151,8 +144,11 @@ async def lifespan(app: FastAPI):
             try:
                 await create_tables()
                 logger.info("DB initialization completed")
-            except Exception:
-                logger.exception("Background DB initialization failed")
+            except Exception as exc:
+                logger.error(
+                    "Background DB initialization failed: exception_type=%s",
+                    type(exc).__name__,
+                )
 
         # schedule background init and don't await it
         asyncio.create_task(_init_db())
@@ -243,11 +239,3 @@ async def health():
 app.include_router(router, prefix="/api")
 app.include_router(auth_router)
 app.include_router(advanced_router, prefix="/api", tags=["advanced"])
-
-
-# Debug route: show effective DATABASE_URL (dev only)
-@app.get("/_debug/db", include_in_schema=False)
-async def _debug_db():
-    from backend import database
-
-    return {"database_url": database.DATABASE_URL}

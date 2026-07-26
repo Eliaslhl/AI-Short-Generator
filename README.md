@@ -115,6 +115,7 @@ cd ..
 Copy and fill in the required values:
 
 ```dotenv
+APP_ENVIRONMENT=development  # development | test | production
 FRONTEND_URL=http://localhost:5173
 SECRET_KEY=your-random-secret-key
 
@@ -136,6 +137,12 @@ STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 STRIPE_PRO_PRICE_ID=
 ```
+
+`APP_ENVIRONMENT` defaults to `production` when omitted. For local work, set
+it explicitly to `development`. Production requires a unique `SECRET_KEY` of
+at least 32 characters; inject it through the deployment environment or secret
+manager, never from an example file. Local Docker Compose is configured for
+`development` and reads its ignored `.env.docker` file for local-only values.
 
 ### 4. Launch
 

@@ -101,8 +101,11 @@ async def generate_twitch_advanced(
             "step": "Queued for processing...",
         }
     
-    except Exception as e:
-        logger.exception(f"❌ Failed to enqueue job: {e}")
+    except Exception as exc:
+        logger.error(
+            "Failed to enqueue advanced Twitch job: exception_type=%s",
+            type(exc).__name__,
+        )
         raise HTTPException(status_code=500, detail="Failed to start processing")
 
 
@@ -144,8 +147,11 @@ async def get_twitch_status(
     
     except HTTPException:
         raise
-    except Exception as e:
-        logger.exception(f"❌ Error getting job status: {e}")
+    except Exception as exc:
+        logger.error(
+            "Failed to get advanced Twitch job status: exception_type=%s",
+            type(exc).__name__,
+        )
         raise HTTPException(status_code=500, detail="Failed to get job status")
 
 
@@ -178,6 +184,9 @@ async def cancel_job(
     
     except HTTPException:
         raise
-    except Exception as e:
-        logger.exception(f"❌ Error cancelling job: {e}")
+    except Exception as exc:
+        logger.error(
+            "Failed to cancel advanced Twitch job: exception_type=%s",
+            type(exc).__name__,
+        )
         raise HTTPException(status_code=500, detail="Failed to cancel job")

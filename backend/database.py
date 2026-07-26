@@ -32,11 +32,11 @@ elif _raw_url.startswith("postgresql://") and "+asyncpg" not in _raw_url:
 
 DATABASE_URL: str = _raw_url
 
-logger.info(f"Using DATABASE_URL={DATABASE_URL}")
-
 _is_sqlite = DATABASE_URL.startswith("sqlite")
 # DATABASE_URL in async mode looks like: postgresql+asyncpg://...
 _is_postgres = DATABASE_URL.startswith("postgresql") or DATABASE_URL.startswith("postgres://")
+
+logger.info("Database backend configured: %s", "sqlite" if _is_sqlite else "postgresql")
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Engine
@@ -141,9 +141,12 @@ async def create_tables():
                 await conn.run_sync(Base.metadata.create_all)
             logger.info(f"DB tables ready  [{DATABASE_URL.split('://')[0]}]")
             return
-        except Exception as exc:  # pragma: no cover - runtime network/errors
+        except Exception:  # pragma: no cover - runtime network/errors
             logger.warning(
-                f"DB connect attempt {attempt}/{max_retries} failed: {exc}. Retrying in {delay_seconds}s"
+                "DB connect attempt %s/%s failed; retrying in %ss",
+                attempt,
+                max_retries,
+                delay_seconds,
             )
             if attempt >= max_retries:
                 logger.error("Exceeded DB connect retries while creating tables")

@@ -34,7 +34,8 @@ from backend.database import get_db
 from backend.models.user import Plan, PasswordResetToken, User, EmailConfirmationToken
 from backend.services.email_service import send_reset_email, send_welcome_email, send_confirmation_email
 
-load_dotenv()
+if os.getenv("APP_ENVIRONMENT") in {"development", "test"}:
+    load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -137,8 +138,8 @@ async def send_confirmation_email_safe(email: str, token: str) -> None:
     """Send confirmation email. Silently catch errors (for background tasks)."""
     try:
         await send_confirmation_email(email, token)
-    except Exception as exc:
-        logger.error(f"Failed to send confirmation email to {email}: {exc}")
+    except Exception:
+        logger.error("Failed to send confirmation email")
 
 
 # ── Register ─────────────────────────────────────────────────────────────────
@@ -168,7 +169,7 @@ async def register(
     await db.commit()
     await db.refresh(user)
 
-    logger.info(f"New user registered: {user.email}")
+    logger.info("New user registered: user_id=%s", user.id)
 
     # Generate confirmation token
     confirmation_token_obj = EmailConfirmationToken.create_token(user.id, user.email)
@@ -213,9 +214,9 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     except HTTPException:
         # re-raise known HTTP exceptions unchanged
         raise
-    except Exception as exc:
-        logger.exception("Unexpected error during login")
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception:
+        logger.error("Unexpected error during login")
+        raise HTTPException(status_code=500, detail="Unable to log in. Please try again.")
 
 
 # ── Me ────────────────────────────────────────────────────────────────────────
@@ -229,7 +230,6 @@ async def me(user: User = Depends(get_current_user)):
 async def confirm_email(body: ConfirmEmailRequest, db: AsyncSession = Depends(get_db)):
     """Verify email confirmation token and activate user account."""
     token = body.token
-    logger.info(f"[DEBUG] Confirm email called with token: {token[:20]}...")
     
     # Find the confirmation token
     result = await db.execute(
@@ -238,7 +238,6 @@ async def confirm_email(body: ConfirmEmailRequest, db: AsyncSession = Depends(ge
         )
     )
     email_token = result.scalar_one_or_none()
-    logger.info(f"[DEBUG] Token found: {email_token is not None}")
     
     if not email_token:
         raise HTTPException(status_code=400, detail="Invalid confirmation token")
@@ -256,7 +255,6 @@ async def confirm_email(body: ConfirmEmailRequest, db: AsyncSession = Depends(ge
         select(User).where(User.id == email_token.user_id)
     )
     user = result.scalar_one_or_none()
-    logger.info(f"[DEBUG] User found: {user is not None}, email={user.email if user else 'N/A'}")
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -269,20 +267,17 @@ async def confirm_email(body: ConfirmEmailRequest, db: AsyncSession = Depends(ge
     db.add(email_token)
     await db.commit()
     await db.refresh(user)
-    logger.info(f"[DEBUG] User marked verified and token marked used")
     
     # Create access token for immediate login
     access_token = create_access_token(user.id, user.email)
     
-    logger.info(f"Email confirmed for user: {user.email}")
+    logger.info("Email confirmed: user_id=%s", user.id)
     
     # Send welcome email now that they're verified
     try:
-        logger.info(f"[DEBUG] Sending welcome email to {user.email}")
         await send_welcome_email(user.email, user.full_name or "")
-        logger.info(f"[DEBUG] Welcome email sent successfully")
-    except Exception as exc:
-        logger.error(f"Failed to send welcome email: {exc}", exc_info=True)
+    except Exception:
+        logger.error("Failed to send welcome email")
     
     return {
         "access_token": access_token,
@@ -823,4 +818,3 @@ async def get_stripe_pricing():
             prices[platform] = platform_prices
     
     return prices
-

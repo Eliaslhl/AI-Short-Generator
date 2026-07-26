@@ -205,14 +205,18 @@ class RedisQueue:
                 "progress": job.meta.get("progress", 0),
                 "step": job.meta.get("step", "Processing..."),
                 "result": job.result if job.is_finished else None,
-                "error": str(job.exc_info) if job.is_failed else None,
+                "error": "Processing failed" if job.is_failed else None,
             }
-        except Exception as e:
-            logger.error(f"❌ Error fetching RQ job {job_id}: {e}")
+        except Exception as exc:
+            logger.error(
+                "Unable to fetch RQ job status: job_id=%s exception_type=%s",
+                job_id,
+                type(exc).__name__,
+            )
             return {
                 "job_id": job_id,
                 "status": "unknown",
-                "error": str(e),
+                "error": "Job status unavailable",
             }
 
     def _get_job_status_celery(self, job_id: str) -> Dict[str, Any]:
@@ -224,7 +228,7 @@ class RedisQueue:
             "progress": result.info.get("progress", 0) if isinstance(result.info, dict) else 0,
             "step": result.info.get("step", "Processing...") if isinstance(result.info, dict) else "Processing...",
             "result": result.result if result.state == "SUCCESS" else None,
-            "error": str(result.info) if result.state == "FAILURE" else None,
+            "error": "Processing failed" if result.state == "FAILURE" else None,
         }
 
     def cancel_job(self, job_id: str) -> bool:
@@ -243,8 +247,12 @@ class RedisQueue:
             job.cancel()
             logger.info(f"❌ Cancelled RQ job: {job_id}")
             return True
-        except Exception as e:
-            logger.error(f"❌ Error cancelling RQ job {job_id}: {e}")
+        except Exception as exc:
+            logger.error(
+                "Unable to cancel RQ job: job_id=%s exception_type=%s",
+                job_id,
+                type(exc).__name__,
+            )
             return False
 
     def _cancel_job_celery(self, job_id: str) -> bool:
@@ -253,8 +261,12 @@ class RedisQueue:
             self.celery_app.control.revoke(job_id, terminate=True)
             logger.info(f"❌ Cancelled Celery task: {job_id}")
             return True
-        except Exception as e:
-            logger.error(f"❌ Error cancelling Celery task {job_id}: {e}")
+        except Exception as exc:
+            logger.error(
+                "Unable to cancel Celery task: job_id=%s exception_type=%s",
+                job_id,
+                type(exc).__name__,
+            )
             return False
 
 

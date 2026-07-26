@@ -11,6 +11,10 @@ Handles:
 import logging
 from typing import Dict, Any, Optional, List
 
+from backend.security_logging import configure_logging
+
+configure_logging()
+
 logger = logging.getLogger(__name__)
 
 # Import queue and services
@@ -115,15 +119,19 @@ def process_twitch_video(
             "errors": ctx.errors,
         }
     
-    except Exception as e:
-        logger.exception(f"❌ Error processing job {job_id}: {e}")
-        ctx.add_error(str(e))
+    except Exception as exc:
+        logger.error(
+            "Error processing job: job_id=%s exception_type=%s",
+            job_id,
+            type(exc).__name__,
+        )
+        ctx.add_error("Processing failed")
         return {
             "success": False,
             "job_id": job_id,
             "progress": ctx.progress,
             "step": ctx.step,
-            "error": str(e),
+            "error": "Processing failed",
             "errors": ctx.errors,
         }
 

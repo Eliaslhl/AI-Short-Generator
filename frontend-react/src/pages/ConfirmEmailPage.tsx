@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { authApi } from '../api'
 import { useSeoTags } from '../hooks/useSeoTags'
-
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 export default function ConfirmEmailPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [message, setMessage] = useState('')
+  const { establishSession } = useAuth()
+  const handled = useRef(false)
 
   useSeoTags({
     title: 'Confirm Email - AI Shorts Generator',
@@ -28,6 +30,9 @@ export default function ConfirmEmailPage() {
 
   useEffect(() => {
     const confirmEmail = async () => {
+      if (handled.current) return
+      handled.current = true
+
       const token = searchParams.get('token')
       
       if (!token) {
@@ -36,45 +41,29 @@ export default function ConfirmEmailPage() {
         return
       }
 
+      // The email confirmation token is needed only for this request. Remove it
+      // from the visible address before sending it and never persist it.
+      window.history.replaceState({}, document.title, window.location.pathname)
+
       try {
-        const response = await fetch(`${API_BASE}/auth/confirm-email`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ token }),
-        })
-
-        const data = await response.json()
-
-        if (!response.ok) {
-          setStatus('error')
-          setMessage(data.detail || 'Failed to confirm email')
-          return
-        }
-
-        // Save token to localStorage
-        if (data.access_token) {
-          localStorage.setItem('access_token', data.access_token)
-          localStorage.setItem('token_type', data.token_type)
-        }
+        const response = await authApi.confirmEmail(token)
+        await establishSession(response.data.access_token)
 
         setStatus('success')
-        setMessage(data.message || 'Email confirmed successfully!')
+        setMessage(response.data.message || 'Email confirmed successfully!')
         
         // Redirect to dashboard after 2 seconds
         setTimeout(() => {
           navigate('/dashboard')
         }, 2000)
-      } catch (error) {
+      } catch {
         setStatus('error')
         setMessage('An error occurred while confirming your email')
-        console.error('Confirmation error:', error)
       }
     }
 
     confirmEmail()
-  }, [searchParams, navigate])
+  }, [searchParams, navigate, establishSession])
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center px-4">

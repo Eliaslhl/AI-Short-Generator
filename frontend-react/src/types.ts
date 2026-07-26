@@ -56,6 +56,15 @@ export interface AuthResponse {
   user: User
 }
 
+export interface RegistrationResponse {
+  message: string
+  email: string
+  requires_email_confirmation: boolean
+  access_token?: string
+  token_type?: string
+  user?: User
+}
+
 export interface GenerateResponse {
   job_id: string
   message: string

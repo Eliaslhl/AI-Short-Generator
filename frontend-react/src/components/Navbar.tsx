@@ -24,15 +24,19 @@ const PLAN_BADGE: Record<string, { label: string; className: string; icon: React
 }
 
 export default function Navbar() {
-  const { user, logout } = useAuth()
+  const { user, logout, isLoggingOut } = useAuth()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const [cookieOpen, setCookieOpen] = useState(false)
 
-  const handleLogout = (): void => {
-    logout()
-    navigate('/')
-    setMenuOpen(false)
+  const handleLogout = async (): Promise<void> => {
+    try {
+      await logout()
+      navigate('/')
+      setMenuOpen(false)
+    } catch {
+      // AuthContext has displayed a generic retry-safe error and retains state.
+    }
   }
 
   const platform = user ? getCurrentPlatform(user) : 'youtube'
@@ -107,6 +111,7 @@ export default function Navbar() {
 
               <button
                 onClick={handleLogout}
+                disabled={isLoggingOut}
                 className="p-1.5 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition"
                   title="Sign out"
               >
@@ -192,7 +197,8 @@ export default function Navbar() {
               </Link>
 
               <button
-                onClick={() => { handleLogout(); setMenuOpen(false); }}
+                onClick={() => { void handleLogout(); }}
+                disabled={isLoggingOut}
                 className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 transition w-full text-left"
               >
                 <LogOut className="w-4 h-4" /> Sign out
@@ -231,4 +237,3 @@ export default function Navbar() {
     </nav>
   )
 }
-

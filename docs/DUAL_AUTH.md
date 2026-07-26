@@ -14,6 +14,7 @@ commit; a database failure returns an error without falsely reporting logout.
 It checks an explicit CORS origin when a cookie is supplied. Logout does not
 revoke existing stateless JWTs.
 
-Google OAuth still places a JWT in its callback URL, the frontend still uses
-localStorage, and PKCE/state plus the frontend cookie migration remain deferred
-to PR3.3 and PR3.4.
+Google OAuth now sets the opaque session cookie server-side and redirects the
+frontend without a JWT query parameter. The web client uses that cookie through
+credentialed requests and does not persist browser JWTs. PKCE and eventual
+removal of the transitional Bearer support remain deferred.

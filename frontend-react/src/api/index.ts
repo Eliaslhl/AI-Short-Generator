@@ -1,6 +1,7 @@
 import client from './client'
 import type {
   AuthResponse,
+  RegistrationResponse,
   GenerateResponse,
   StatusResponse,
   ClipsResponse,
@@ -10,7 +11,7 @@ import type {
 import type { AxiosResponse } from 'axios'
 
 export const authApi = {
-  register: (email: string, password: string, fullName: string): Promise<AxiosResponse<AuthResponse>> =>
+  register: (email: string, password: string, fullName: string): Promise<AxiosResponse<RegistrationResponse>> =>
     client.post('/auth/register', { email, password, full_name: fullName }),
 
   login: (email: string, password: string): Promise<AxiosResponse<AuthResponse>> =>
@@ -18,6 +19,16 @@ export const authApi = {
 
   me: (): Promise<AxiosResponse<AuthResponse['user']>> =>
     client.get('/auth/me'),
+
+  createSession: (accessToken: string): Promise<AxiosResponse<{ expires_at: string }>> =>
+    client.post('/auth/session', undefined, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }),
+
+  logout: (): Promise<AxiosResponse<void>> => client.post('/auth/logout'),
+
+  confirmEmail: (token: string): Promise<AxiosResponse<AuthResponse & { message: string }>> =>
+    client.post('/auth/confirm-email', { token }),
 
   googleLogin: (): void => {
     window.location.href = `${client.defaults.baseURL}/auth/google`

@@ -9,7 +9,7 @@ import { Film, Mail, Lock, User, Chrome } from 'lucide-react'
 // Email verification required on registration
 export default function RegisterPage() {
   const navigate = useNavigate()
-  const { register: authRegister } = useAuth()
+  const { establishSession } = useAuth()
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -44,8 +44,12 @@ export default function RegisterPage() {
         setFullName('')
         setPassword('')
       } else {
-        // Old flow - if backend still returns access_token
-        await authRegister(email, password, fullName)
+        // Legacy deployments may still return a JWT. Exchange it immediately
+        // for the HttpOnly session cookie instead of persisting it.
+        if (!res.data.access_token) {
+          throw new Error('Registration did not provide a sign-in session.')
+        }
+        await establishSession(res.data.access_token)
         navigate('/dashboard')
       }
     } catch (err) {

@@ -238,6 +238,20 @@ class AuthSession(Base):
     user: Mapped["User"] = relationship("User", back_populates="auth_sessions")
 
 
+class OAuthTransaction(Base):
+    """One-time server-side authorization request; never stores OAuth credentials."""
+
+    __tablename__ = "oauth_transactions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    state_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    redirect_uri: Mapped[str] = mapped_column(String(512), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class PasswordResetToken(Base):
     __tablename__ = "password_reset_tokens"
 

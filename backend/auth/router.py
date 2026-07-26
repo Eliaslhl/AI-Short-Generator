@@ -41,6 +41,10 @@ from backend.database import get_db
 from backend.models.user import Plan, PasswordResetToken, User, EmailConfirmationToken
 from backend.services.email_service import send_reset_email, send_welcome_email, send_confirmation_email
 from backend.services.session_service import session_service
+from backend.services.oauth_transaction_service import (
+    consume_oauth_transaction,
+    create_oauth_transaction,
+)
 
 if os.getenv("APP_ENVIRONMENT") in {"development", "test"}:
     load_dotenv()
@@ -335,7 +339,7 @@ async def confirm_email(body: ConfirmEmailRequest, db: AsyncSession = Depends(ge
 
 # ── Google OAuth ──────────────────────────────────────────────────────────────
 @router.get("/google")
-async def google_login():
+async def google_login(db: AsyncSession = Depends(get_db)):
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=501, detail="Google OAuth not configured")
 
@@ -343,16 +347,21 @@ async def google_login():
         client_id=GOOGLE_CLIENT_ID,
         redirect_uri=GOOGLE_REDIRECT_URI,
     )
+    state = await create_oauth_transaction(
+        db, provider="google", redirect_uri=GOOGLE_REDIRECT_URI
+    )
+    await db.commit()
     uri, _ = client.create_authorization_url(
         "https://accounts.google.com/o/oauth2/v2/auth",
         scope="openid email profile",
         access_type="offline",
+        state=state,
     )
     return RedirectResponse(uri)
 
 
 @router.get("/google/callback")
-async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
+async def google_callback(code: str, state: str | None = None, db: AsyncSession = Depends(get_db)):
     """Exchange Google code, find-or-create user using raw SQL to avoid selecting missing columns.
 
     This is a defensive hotfix: if the DB schema is partially migrated and some columns
@@ -361,6 +370,12 @@ async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
     """
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=501, detail="Google OAuth not configured")
+
+    if not await consume_oauth_transaction(
+        db, state=state, provider="google", redirect_uri=GOOGLE_REDIRECT_URI
+    ):
+        raise HTTPException(status_code=400, detail="Invalid OAuth transaction")
+    await db.commit()
 
     # Exchange code for token and fetch Google user info
     async with AsyncOAuth2Client(
@@ -469,8 +484,11 @@ async def google_callback(code: str, db: AsyncSession = Depends(get_db)):
     if not user_id:
         raise HTTPException(status_code=500, detail="Could not create or find user")
 
-    jwt_token = create_access_token(user_id, email)
-    return RedirectResponse(f"{FRONTEND_URL}/auth/callback?token={jwt_token}")
+    created_session = await session_service.create_session(db, user_id)
+    await db.commit()
+    response = RedirectResponse(f"{FRONTEND_URL}/auth/callback", status_code=302)
+    set_session_cookie(response, created_session.raw_token)
+    return response
 
 
 # ── Stripe: create checkout session ──────────────────────────────────────────

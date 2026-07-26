@@ -10,6 +10,7 @@ from sqlalchemy import create_engine, inspect
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PREVIOUS_REVISION = "20260404_remove_email_constraint"
+AUTH_SESSION_REVISION = "20260726_add_auth_sessions"
 
 
 def _run_alembic(database_url: str, *args: str) -> None:
@@ -34,7 +35,7 @@ def test_auth_session_migration_upgrades_downgrades_and_upgrades_again(tmp_path)
             "CREATE TABLE users (id VARCHAR(36) NOT NULL PRIMARY KEY)"
         )
     _run_alembic(async_url, "stamp", PREVIOUS_REVISION)
-    _run_alembic(async_url, "upgrade", "head")
+    _run_alembic(async_url, "upgrade", AUTH_SESSION_REVISION)
     inspector = inspect(engine)
     assert "auth_sessions" in inspector.get_table_names()
     columns = {column["name"] for column in inspector.get_columns("auth_sessions")}
@@ -70,6 +71,6 @@ def test_auth_session_migration_upgrades_downgrades_and_upgrades_again(tmp_path)
     _run_alembic(async_url, "downgrade", "-1")
     inspector = inspect(engine)
     assert "auth_sessions" not in inspector.get_table_names()
-    _run_alembic(async_url, "upgrade", "head")
+    _run_alembic(async_url, "upgrade", AUTH_SESSION_REVISION)
     assert "auth_sessions" in inspect(engine).get_table_names()
     engine.dispose()

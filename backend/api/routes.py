@@ -17,7 +17,7 @@ import os
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
 from fastapi.responses import JSONResponse, FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, StrictBool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -185,6 +185,7 @@ class GenerateRequest(BaseModel):
     language: str = ""  # "" = auto-detect; ISO-639-1 code for PRO (e.g. "fr")
     subtitle_style: str = "default"  # PRO: default | bold | outlined | neon | minimal
     transcription_mode: str = ""  # optional: "FAST" (default) or "QUALITY" (Pro+ only)
+    include_subtitles: StrictBool | None = None
 
 
 class GenerateResponse(BaseModel):
@@ -242,9 +243,16 @@ async def run_pipeline(
     subtitle_style: str = "default",
     is_proplus: bool = False,
     transcription_mode: str | None = None,
+    include_subtitles: bool | None = None,
 ):
     """Full async pipeline: download → transcribe → score → render."""
     platform = _detect_platform_from_url(youtube_url)
+    subtitles_enabled = (
+        settings.include_subtitles_by_default
+        if include_subtitles is None
+        else include_subtitles
+    )
+    logger.info("[%s] subtitles_enabled=%s", job_id, subtitles_enabled)
 
     async def update(progress: int, step: str):
         """Update in-memory status and persist progress to DB.
@@ -359,13 +367,18 @@ async def run_pipeline(
                     generate_hashtags, seg["text"]
                 )
 
-        await update(65, "Building emoji captions…")
-        for seg in top_segments:
-            seg["captions"] = await asyncio.to_thread(
-                build_captions,
-                seg["text"],
-                seg.get("words"),  # word-level timestamps for accurate sync
-            )
+        if subtitles_enabled:
+            await update(65, "Building emoji captions…")
+            for seg in top_segments:
+                seg["captions"] = await asyncio.to_thread(
+                    build_captions,
+                    seg["text"],
+                    seg.get("words"),  # word-level timestamps for accurate sync
+                )
+        else:
+            await update(65, "Preparing clips without subtitles…")
+            for seg in top_segments:
+                seg["captions"] = None
 
         clips = []
         total = len(top_segments)
@@ -565,6 +578,7 @@ async def generate(
             language,
             subtitle_style,
             plan == "proplus",
+            include_subtitles=request.include_subtitles,
         )
     )
     return GenerateResponse(job_id=job_id, message="Job started.")

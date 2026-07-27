@@ -310,12 +310,17 @@ def render_clip(
     # leave `overlay_hook` empty so no top overlay is produced.
     hook_text = segment.get("hook", "")
     overlay_hook = None
-    captions = segment.get("captions", [])
+    captions = segment.get("captions")
     broll = segment.get("broll")
     # "ai_title" = Pro+ generated title; "title" = clip_selector first-sentence fallback
     ai_title = segment.get("ai_title") or segment.get("title", f"Clip {clip_index + 1}")
     hashtags = segment.get("hashtags")  # Pro+ only
-    include_subtitles = segment.get("include_subtitles", True)  # Default to True
+    logger.info(
+        "Rendering clip %s: subtitles_enabled=%s caption_count=%s",
+        clip_index + 1,
+        bool(captions),
+        len(captions) if captions else 0,
+    )
 
     output_path = _make_output_path(job_id, clip_index)
 
@@ -346,7 +351,6 @@ def render_clip(
             target_w=target_w,
             target_h=target_h,
             quality_profile=profile or "default",
-            include_subtitles=include_subtitles,
         )
         if ffmpeg_success:
             logger.info(f"Clip {clip_index + 1} saved (ffmpeg): {output_path}")
@@ -375,7 +379,7 @@ def render_clip(
         # ── Overlays ──────────────────────────────────────────────────────
         # Do not add the hook overlay (title at top) — keep only bottom captions
 
-        if captions and include_subtitles:
+        if captions:
             clip = _add_caption_overlays(clip, captions, start, subtitle_style)
 
         if broll:
@@ -550,7 +554,6 @@ def _render_with_ffmpeg(
     target_w: int | None = None,
     target_h: int | None = None,
     quality_profile: str = "default",
-    include_subtitles: bool = True,
 ) -> bool:
     """
     Fast path renderer using ffmpeg. Returns True on success.
@@ -586,7 +589,8 @@ def _render_with_ffmpeg(
         srt_path = None
         ass_path = None
         subtitle_path_for_filter = None
-        if captions and include_subtitles:
+        if captions:
+            logger.info("Creating subtitles: caption_count=%s", len(captions))
             fd, srt_path = tempfile.mkstemp(suffix=".srt", prefix="caps_")
             os.close(fd)
             _write_srt(captions, start, srt_path)
@@ -605,6 +609,7 @@ def _render_with_ffmpeg(
                 subtitle_path_for_filter = str(ass_path)
             except Exception:
                 # fallback to SRT if conversion fails
+                logger.warning("SRT-to-ASS conversion failed; falling back to SRT")
                 subtitle_path_for_filter = str(srt_path)
         # 3) Build filter graph: sharp scale + pad (no blur)
         # NOTE: previous implementation introduced a global boxblur in some branches,

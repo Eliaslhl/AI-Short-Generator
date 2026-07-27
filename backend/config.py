@@ -200,6 +200,11 @@ class Settings(BaseSettings):
     output_audio_bitrate: str = "320k"
     output_audio_samplerate: int = 44100
 
+    # ---------- Subtitles Configuration ----------
+    # Whether to include subtitles in generated shorts by default
+    # Users can still override via API parameter 'include_subtitles'
+    include_subtitles_by_default: bool = True
+
     # ---------- Rendering / parallelism ----------
     # If None, compute a sane default based on CPU cores: min(4, floor(0.75 * logical_cpus)).
     # This prevents overloading small machines while giving good throughput on larger hosts.

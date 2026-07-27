@@ -29,6 +29,15 @@ _model: WhisperModel | None = None
 _models: dict[str, WhisperModel] = {}
 
 
+def _attach_detected_language(segments: List[Dict[str, Any]], info: Any) -> None:
+    """Preserve Faster Whisper's detected language for downstream consumers."""
+    detected_language = getattr(info, "language", None)
+    if not isinstance(detected_language, str) or not detected_language.strip():
+        return
+    for segment in segments:
+        segment["detected_language"] = detected_language
+
+
 def _get_model() -> WhisperModel:
     global _model
     if _model is None:
@@ -343,6 +352,7 @@ def transcribe_two_pass(
 
     # sort and return
     final_sorted = sorted(final, key=lambda x: x["start"]) if final else []
+    _attach_detected_language(final_sorted, info)
     t_total = time.perf_counter() - t_start
 
     # Emit a compact structured log line to help monitoring/tuning in prod.
@@ -384,7 +394,7 @@ def transcribe_fast_full(
     fast_model = _get_model_by_name(fast_model_name, compute_type="int8")
 
     logger.info(f"Fast-full ({fast_model_name}) transcribing {path.name}…")
-    seg_iter, _ = fast_model.transcribe(
+    seg_iter, info = fast_model.transcribe(
         str(path),
         language=lang,
         word_timestamps=True,
@@ -414,6 +424,7 @@ def transcribe_fast_full(
             }
         )
 
+    _attach_detected_language(segments, info)
     logger.info(f"Fast-full transcription complete: {len(segments)} segments detected.")
     return segments
 
@@ -499,5 +510,6 @@ def transcribe_video(
             }
         )
 
+    _attach_detected_language(segments, info)
     logger.info(f"Transcription complete: {len(segments)} segments detected.")
     return segments

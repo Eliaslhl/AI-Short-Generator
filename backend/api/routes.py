@@ -31,7 +31,7 @@ from backend.config import settings
 from backend.services.clip_selector import select_top_segments
 from backend.services.hook_service import generate_hook
 from backend.services.emoji_caption_service import build_captions
-from backend.services.title_service import generate_title
+from backend.services.title_service import generate_title, normalize_supported_language
 from backend.services.hashtag_service import generate_hashtags
 from backend.services.job_access_service import job_access_service
 from backend.video.video_editor import render_clip
@@ -45,6 +45,15 @@ jobs: Dict[str, Dict[str, Any]] = {}
 
 def _detect_platform_from_url(url: str) -> str:
     return "twitch" if "twitch.tv" in (url or "").lower() else "youtube"
+
+
+def _detected_transcript_language(segments: list[dict[str, Any]]) -> str | None:
+    """Read optional language metadata without attempting text-based detection."""
+    for segment in segments:
+        language = segment.get("detected_language") or segment.get("language")
+        if isinstance(language, str) and language.strip():
+            return language
+    return None
 
 
 def _get_platform_plan(user: User, platform: str):
@@ -319,8 +328,16 @@ async def run_pipeline(
 
         from backend.services.transcription_service import transcribe_for_job
 
+        requested_language = (
+            language.strip() if language and language.strip().lower() != "auto" else None
+        )
         segments = await asyncio.to_thread(
-            transcribe_for_job, str(video_path), mode, language or None
+            transcribe_for_job, str(video_path), mode, requested_language
+        )
+        title_language = (
+            normalize_supported_language(requested_language)
+            or normalize_supported_language(_detected_transcript_language(segments))
+            or "en"
         )
 
         # Get video duration for precise padding/clamping
@@ -362,7 +379,11 @@ async def run_pipeline(
         if is_proplus:
             await update(60, "Generating titles & hashtags (Pro+)…")
             for seg in top_segments:
-                seg["ai_title"] = await asyncio.to_thread(generate_title, seg["text"])
+                seg["ai_title"] = await asyncio.to_thread(
+                    generate_title,
+                    seg["text"],
+                    language=title_language,
+                )
                 seg["hashtags"] = await asyncio.to_thread(
                     generate_hashtags, seg["text"]
                 )

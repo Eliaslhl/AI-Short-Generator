@@ -28,7 +28,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.auth.dependencies import get_current_user, get_current_user_from_bearer
+from backend.auth.dependencies import get_current_user
 from backend.auth.session_cookie import (
     delete_session_cookie,
     read_session_cookie,
@@ -252,26 +252,9 @@ async def me(user: User = Depends(get_current_user)):
     return _user_dict(user)
 
 
-@router.post("/session", response_model=dict, status_code=status.HTTP_201_CREATED)
-async def create_session(
-    response: Response,
-    user: User = Depends(get_current_user_from_bearer),
-    db: AsyncSession = Depends(get_db),
-):
-    """Mint an opaque cookie session from a JWT without changing login behavior."""
-    try:
-        created = await session_service.create_session(db, user.id)
-        await db.commit()
-    except Exception:
-        await db.rollback()
-        raise
-    set_session_cookie(response, created.raw_token)
-    return {"expires_at": created.session.expires_at}
-
-
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(request: Request, db: AsyncSession = Depends(get_db)):
-    """Idempotently revoke the opaque cookie session; JWTs remain stateless."""
+    """Idempotently revoke the opaque cookie session."""
     reject_ambiguous_session_cookie(request)
     has_cookie = session_cookie_present(request)
     if has_cookie:

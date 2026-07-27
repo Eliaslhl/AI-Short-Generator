@@ -31,7 +31,7 @@ def _routes_for(environment: str) -> set[str]:
     env = {
         **os.environ,
         "APP_ENVIRONMENT": environment,
-        "SECRET_KEY": "test-production-secret-value-long-enough-012345",
+        "SESSION_HASH_KEY": "test-production-session-key-long-enough-012345",
         "DATABASE_URL": "sqlite+aiosqlite:///./data/app.db.test",
         "MIGRATE_ON_START": "false",
     }
@@ -93,9 +93,10 @@ def test_invalid_environment_is_rejected_before_routes_are_registered():
     assert "app_environment" in result.stderr
 
 
-def test_production_requires_a_configured_jwt_secret():
+def test_production_requires_a_configured_session_hash_key():
     env = {**os.environ, "APP_ENVIRONMENT": "production"}
-    env.pop("SECRET_KEY", None)
+    env.pop("SESSION_HASH_KEY", None)
+    env["FRONTEND_URL"] = "https://app.example.test"
     result = subprocess.run(
         [sys.executable, "-c", "import backend.main"],
         cwd=PROJECT_ROOT,
@@ -105,31 +106,36 @@ def test_production_requires_a_configured_jwt_secret():
     )
 
     assert result.returncode != 0
-    assert "SECRET_KEY" in result.stderr
+    assert "SESSION_HASH_KEY" in result.stderr
 
 
-def test_production_rejects_weak_jwt_secrets():
+def test_production_rejects_weak_session_hash_keys():
     for secret in ("dev-secret-key", "change-me", "short-secret"):
-        env = {**os.environ, "APP_ENVIRONMENT": "production", "SECRET_KEY": secret}
+        env = {
+            **os.environ,
+            "APP_ENVIRONMENT": "production",
+            "FRONTEND_URL": "https://app.example.test",
+            "SESSION_HASH_KEY": secret,
+        }
         result = subprocess.run(
-            [sys.executable, "-c", "import backend.auth.jwt"],
+            [sys.executable, "-c", "import backend.main"],
             cwd=PROJECT_ROOT,
             env=env,
             capture_output=True,
             text=True,
         )
         assert result.returncode != 0
-        assert "SECRET_KEY" in result.stderr
+        assert "SESSION_HASH_KEY" in result.stderr
 
 
-def test_development_accepts_documented_local_jwt_secret():
+def test_development_accepts_documented_local_session_hash_key():
     env = {
         **os.environ,
         "APP_ENVIRONMENT": "development",
-        "SECRET_KEY": "dev-secret-key",
+        "SESSION_HASH_KEY": "dev-session-key",
     }
     result = subprocess.run(
-        [sys.executable, "-c", "import backend.auth.jwt"],
+        [sys.executable, "-c", "import backend.main"],
         cwd=PROJECT_ROOT,
         env=env,
         capture_output=True,
@@ -140,11 +146,11 @@ def test_development_accepts_documented_local_jwt_secret():
 
 
 def test_api_and_worker_share_explicit_environment_configuration():
-    secret = "test-shared-secret-value-with-sufficient-length"
+    session_key = "test-shared-session-key-with-sufficient-length"
     env = {
         **os.environ,
         "APP_ENVIRONMENT": "test",
-        "SECRET_KEY": secret,
+        "SESSION_HASH_KEY": session_key,
     }
     result = subprocess.run(
         [
@@ -152,10 +158,10 @@ def test_api_and_worker_share_explicit_environment_configuration():
             "-c",
             (
                 "from backend.config import settings; "
-                "from backend.auth.jwt import SECRET_KEY; "
+                "from backend.services.session_service import hash_session_token; "
                 "import backend.queue.worker; "
                 "print(settings.app_environment); "
-                "print(SECRET_KEY == 'test-shared-secret-value-with-sufficient-length')"
+                "print(bool(hash_session_token('session-token')))"
             ),
         ],
         cwd=PROJECT_ROOT,

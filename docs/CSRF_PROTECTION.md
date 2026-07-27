@@ -17,18 +17,11 @@ loopback addresses; `localhost.example.com` remains a normal public hostname.
 Production without `FRONTEND_URL` starts with an empty allowlist.
 
 The policy applies only after a valid opaque cookie session has authenticated
-the request. On dual-auth routes, an empty, malformed, expired or duplicate
-authentication cookie fails closed and never falls back to Bearer. Logout is
-intentionally idempotent, but still requires Origin whenever the auth cookie is
-present. JWT Bearer-only API clients remain compatible without Origin. If a
-cookie and Bearer credential are both present, the cookie-first identity and
-conflict rules run first; a valid cookie then requires Origin.
-
-`POST /auth/session` is a temporary legacy Bearer-only endpoint: it ignores any
-existing cookie, requires a valid Bearer JWT, then replaces the browser cookie
-with a new server-generated session. The web frontend does not call it; because
-cross-site requests cannot supply that Bearer credential, this compatibility
-endpoint does not rely on Origin.
+the request. An empty, malformed, expired, revoked, or duplicate authentication
+cookie fails closed. Logout is intentionally idempotent, but still requires
+Origin whenever the auth cookie is present. `Authorization: Bearer` is not an
+authentication mechanism: it is ignored when a valid cookie is present and
+cannot authenticate a request on its own.
 
 This protects web actions such as generation, Twitch jobs, Stripe checkout and
 subscription cancellation. It also protects logout. Stripe webhooks and

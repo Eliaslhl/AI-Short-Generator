@@ -165,11 +165,8 @@ export YOUTUBE_AUTO_REFRESH_HEADLESS=true
 # Lancer un téléchargement
 python test_payment_flow.py --plan PRO --platform youtube
 
-# Ou directement via l'API:
-curl -X POST http://localhost:8080/api/generate \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://www.youtube.com/watch?v=...", "platform": "youtube"}'
+# L'API de génération utilise une session opaque HttpOnly créée par le navigateur.
+# Utiliser le frontend local pour tester une requête authentifiée.
 ```
 
 ## Logs to Expect

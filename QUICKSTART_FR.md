@@ -358,17 +358,16 @@ docker-compose up -d
 
 ## 🧪 Tests
 
-### Test unitaire (audio analyzer)
+### Tests d'autorisation et jobs
 
 ```bash
-cd /Users/elias/Documents/projet/VideoToShortFree/ai-shorts-generator
-python tests_advanced.py 1
+PYTHONPATH=. .venv/bin/pytest -q tests/test_job_authorization.py
 ```
 
-### Test complet (API)
+### Suite backend complète
 
 ```bash
-python tests_advanced.py 8
+PYTHONPATH=. .venv/bin/pytest -q
 ```
 
 ---

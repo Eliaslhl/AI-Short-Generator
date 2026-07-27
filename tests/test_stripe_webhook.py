@@ -7,10 +7,11 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from backend.auth.jwt import create_access_token
+from backend.config import settings
 from backend.database import AsyncSessionLocal
 from backend.main import app
 from backend.models.user import Plan, User
+from backend.services.session_service import session_service
 import backend.auth.router as router
 
 
@@ -35,14 +36,17 @@ def register_user(client, email=None):
             user = result.scalar_one()
             user.is_verified = True
             await db.commit()
-            return user
+            created = await session_service.create_session(db, user.id)
+            await db.commit()
+            return user, created.raw_token
 
-    user = asyncio.run(load_user())
-    return create_access_token(user.id, user.email), {"id": user.id}
+    user, raw_token = asyncio.run(load_user())
+    client.cookies.set(settings.session_cookie_name, raw_token)
+    return {"id": user.id}
 
 
 def test_webhook_with_metadata_plan(client, monkeypatch):
-    token, user = register_user(client)
+    user = register_user(client)
     price_id = "price_metadata_plan"
     router.PRICE_TO_PLAN[price_id] = Plan.PRO
 
@@ -77,13 +81,13 @@ def test_webhook_with_metadata_plan(client, monkeypatch):
     assert resp.status_code == 200
 
     # Verify user's plan updated via /auth/me
-    me = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    me = client.get("/auth/me")
     assert me.status_code == 200
     assert me.json()["plan"] == Plan.PRO.value
 
 
 def test_webhook_without_metadata_uses_subscription(client, monkeypatch):
-    token, user = register_user(client)
+    user = register_user(client)
 
     # Ensure PRICE_TO_PLAN contains a known price id
     price_id = "price_test_123"
@@ -120,14 +124,14 @@ def test_webhook_without_metadata_uses_subscription(client, monkeypatch):
     )
     assert resp.status_code == 200
 
-    me = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    me = client.get("/auth/me")
     assert me.status_code == 200
     assert me.json()["plan"] == Plan.PRO.value
 
 
 def test_customer_subscription_deleted_downgrades_user(client, monkeypatch):
     # create user and set subscription/customer ids
-    token, user = register_user(client)
+    user = register_user(client)
     price_id = "price_delete_plan"
     customer_id = f"cus_delete_{uuid.uuid4().hex}"
     router.PRICE_TO_PLAN[price_id] = Plan.PRO
@@ -162,7 +166,7 @@ def test_customer_subscription_deleted_downgrades_user(client, monkeypatch):
     assert resp.status_code == 200
 
     # sanity check user is PRO
-    me = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    me = client.get("/auth/me")
     assert me.json()["plan"] == Plan.PRO.value
 
     # Now simulate subscription deletion event for that customer
@@ -183,5 +187,5 @@ def test_customer_subscription_deleted_downgrades_user(client, monkeypatch):
     )
     assert resp2.status_code == 200
 
-    me2 = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    me2 = client.get("/auth/me")
     assert me2.json()["plan"] == Plan.FREE.value

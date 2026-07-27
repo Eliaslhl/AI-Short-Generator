@@ -47,7 +47,6 @@ allow_headers=["*"],     # Any header accepted
 allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Explicit
 allow_headers=[
     "Content-Type",
-    "Authorization",
     "Accept",
     "Origin",
     "X-Requested-With",
@@ -88,10 +87,16 @@ limiter = Limiter(
 - ✅ Minimum 8 characters required
 - ✅ Password reset tokens with expiry
 
-### JWT Tokens
-- ✅ Access tokens (short-lived)
-- ✅ Secure claims
-- ✅ Token expiry validation
+### Opaque Application Sessions
+- ✅ Server-side sessions validated against the database
+- ✅ HttpOnly cookies keep session material out of browser JavaScript
+- ✅ Expiration and revocation are enforced server-side
+- ✅ User JWT/Bearer authentication and `POST /auth/session` are not supported
+
+Authenticated mutations require an exact trusted `Origin`. A Bearer header alone
+returns `401`; when a valid session cookie is present, that header is ignored.
+Google OAuth creates the same opaque session directly. Twitch and Google service
+tokens are external credentials and are unaffected.
 
 ## 5. Database Security
 
@@ -140,7 +145,7 @@ class RegisterRequest(BaseModel):
 STRIPE_SECRET_KEY=sk_...          # Never commit
 MAIL_PASSWORD=...                 # Never commit
 GOOGLE_CLIENT_SECRET=...          # Never commit
-JWT_SECRET_KEY=...                # Generated on first run
+SESSION_HASH_KEY=...               # Opaque-session digesting key
 DATABASE_URL=...                  # Credentials hidden
 ```
 
@@ -180,10 +185,10 @@ DATABASE_URL=...                  # Credentials hidden
 - ✅ No inline scripts without nonce
 - ✅ All external resources HTTPS
 
-### Token Storage
-- ✅ JWT stored in localStorage (secure for SPA)
-- ✅ Token sent in Authorization header (not cookie)
-- ✅ Expires and refreshes appropriately
+### Session Storage
+- ✅ Opaque session stored only in an HttpOnly cookie
+- ✅ Browser JavaScript cannot read the session value
+- ✅ Sessions can be revoked server-side
 
 ## Security Checklist
 

@@ -4,4 +4,4 @@ import os
 
 
 os.environ.setdefault("APP_ENVIRONMENT", "test")
-os.environ.setdefault("SECRET_KEY", "test-secret-not-for-production")
+os.environ.setdefault("SESSION_HASH_KEY", "test-session-key-not-for-production")

@@ -25,7 +25,6 @@ extend-ignore = ["E501"]
 "backend/video/video_editor.py" = ["E501"]
 "scripts/run_e2e_test.py" = ["E501"]
 "scripts/seed_test_accounts.py" = ["E501"]
-"scripts/test_stripe_flow.py" = ["E501"]
 
 [tool.black]
 line-length = 88

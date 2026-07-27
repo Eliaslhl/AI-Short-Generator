@@ -40,6 +40,7 @@ from backend.api.routes import router  # noqa: E402
 from backend.auth.router import router as auth_router  # noqa: E402
 from backend.auth.origin_policy import CanonicalCORSMiddleware  # noqa: E402
 from backend.auth.session_cookie import allowed_origins, validate_session_cookie_configuration  # noqa: E402
+from backend.services.session_service import validate_session_hash_key  # noqa: E402
 from backend.api.advanced_routes import advanced_router  # noqa: E402
 from backend.database import create_tables  # noqa: E402
 
@@ -176,6 +177,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # ty
 # NOTE: allow_credentials=True requires explicit origins (not "*").
 # ⚠️  IMPORTANT: CORS middleware MUST be added FIRST (before other middlewares)
 validate_session_cookie_configuration()
+validate_session_hash_key()
 ALLOWED_ORIGINS = allowed_origins()
 
 app.add_middleware(
@@ -185,7 +187,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Explicit methods instead of "*"
     allow_headers=[
         "Content-Type",
-        "Authorization",
         "Accept",
         "Origin",
         "X-Requested-With",

@@ -159,7 +159,7 @@ def _cors_test_app() -> FastAPI:
         allow_origins=allowed_origins(),
         allow_credentials=True,
         allow_methods=["POST"],
-        allow_headers=["Content-Type", "Authorization"],
+        allow_headers=["Content-Type"],
     )
 
     @app.post("/mutation")

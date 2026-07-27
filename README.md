@@ -16,7 +16,7 @@
 | B-roll matching | Local file library |
 | Video rendering | `MoviePy` + `ffmpeg` |
 | 9:16 portrait format | Automatic crop / pad |
-| Auth (JWT + Google OAuth) | FastAPI + SQLAlchemy |
+| Auth (opaque sessions + Google OAuth) | FastAPI + SQLAlchemy |
 | Plans (Free / Pro) | Stripe integration |
 | Password reset | Gmail SMTP via fastapi-mail |
 | React frontend | Vite + TypeScript + Tailwind CSS v4 |
@@ -34,7 +34,7 @@ ai-shorts-generator/
 │   ├── api/
 │   │   └── routes.py                 # /api/generate, /api/status
 │   ├── auth/
-│   │   └── router.py                 # JWT, Google OAuth, password reset
+│   │   └── router.py                 # sessions, Google OAuth, password reset
 │   ├── models/
 │   │   └── user.py                   # User, Job, PasswordResetToken
 │   ├── services/
@@ -53,7 +53,7 @@ ai-shorts-generator/
 ├── frontend-react/                   # React + Vite + TypeScript
 │   ├── src/
 │   │   ├── pages/                    # Landing, Login, Register, Generator…
-│   │   ├── context/AuthContext.tsx   # JWT auth state
+│   │   ├── context/AuthContext.tsx   # session auth state
 │   │   └── api/index.ts              # Axios API client
 │   └── package.json
 ├── scripts/
@@ -117,7 +117,7 @@ Copy and fill in the required values:
 ```dotenv
 APP_ENVIRONMENT=development  # development | test | production
 FRONTEND_URL=http://localhost:5173
-SECRET_KEY=your-random-secret-key
+SESSION_HASH_KEY=your-random-session-hash-key
 
 # Email (Gmail App Password)
 MAIL_USERNAME=you@gmail.com
@@ -139,7 +139,7 @@ STRIPE_PRO_PRICE_ID=
 ```
 
 `APP_ENVIRONMENT` defaults to `production` when omitted. For local work, set
-it explicitly to `development`. Production requires a unique `SECRET_KEY` of
+it explicitly to `development`. Production requires a unique `SESSION_HASH_KEY` of
 at least 32 characters; inject it through the deployment environment or secret
 manager, never from an example file. Local Docker Compose is configured for
 `development` and reads its ignored `.env.docker` file for local-only values.
@@ -230,7 +230,7 @@ YouTube URL
 | `POST` | `/api/generate` | Start a generation job |
 | `GET` | `/api/status/{job_id}` | Poll job progress |
 | `POST` | `/auth/register` | Create an account |
-| `POST` | `/auth/login` | Get JWT token |
+| `POST` | `/auth/login` | Start an opaque cookie session |
 | `POST` | `/auth/forgot-password` | Send reset email |
 | `POST` | `/auth/reset-password` | Set new password |
 | `GET` | `/docs` | Swagger UI |

@@ -1,4 +1,4 @@
-"""HTTP regressions for the transitional cookie-first authentication boundary."""
+"""HTTP regressions for the opaque cookie-session authentication boundary."""
 
 import asyncio
 from datetime import timedelta
@@ -10,7 +10,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from backend.auth.jwt import create_access_token
 import backend.auth.router as auth_router
 from backend.config import settings
 from backend.database import Base, get_db
@@ -81,10 +80,6 @@ def _mint_session(session_factory, user_id: str, **kwargs):
     return asyncio.run(mint())
 
 
-def _bearer(user: User) -> dict[str, str]:
-    return {"Authorization": f"Bearer {create_access_token(user.id, user.email)}"}
-
-
 def _session_count(session_factory, user_id: str | None = None) -> int:
     async def count():
         async with session_factory() as db:
@@ -96,19 +91,16 @@ def _session_count(session_factory, user_id: str | None = None) -> int:
     return asyncio.run(count())
 
 
-def test_jwt_and_cookie_both_authenticate_me(auth_client):
+def test_cookie_session_authenticates_me_and_bearer_is_ignored(auth_client):
     client, session_factory = auth_client
     user = _seed_user(session_factory, "user-a")
-
-    assert client.get("/auth/me", headers=_bearer(user)).status_code == 200
-    created = client.post("/auth/session", headers=_bearer(user))
-    assert created.status_code == 201
-    assert "session" not in created.json()
-    assert "httponly" in created.headers["set-cookie"].lower()
-    assert "samesite=lax" in created.headers["set-cookie"].lower()
+    created = _mint_session(session_factory, user.id)
+    client.cookies.set(settings.session_cookie_name, created.raw_token)
 
     assert client.get("/auth/me").json()["id"] == user.id
-    assert client.get("/auth/me", headers=_bearer(user)).status_code == 200
+    assert client.get("/auth/me", headers={"Authorization": "Bearer legacy-token"}).status_code == 200
+    client.cookies.clear()
+    assert client.get("/auth/me", headers={"Authorization": "Bearer legacy-token"}).status_code == 401
 
 
 def test_password_login_creates_cookie_session_without_returning_a_jwt(auth_client):
@@ -396,16 +388,14 @@ def test_confirmation_token_is_consumed_once_under_concurrent_requests(auth_clie
     asyncio.run(verify_single_consumption())
 
 
-def test_cookie_is_authoritative_and_conflicts_are_rejected(auth_client):
+def test_invalid_cookie_is_not_authenticated_by_authorization_header(auth_client):
     client, session_factory = auth_client
     first = _seed_user(session_factory, "user-a")
-    second = _seed_user(session_factory, "user-b")
     created = _mint_session(session_factory, first.id)
     client.cookies.set(settings.session_cookie_name, created.raw_token)
 
-    assert client.get("/auth/me", headers=_bearer(second)).status_code == 401
     client.cookies.set(settings.session_cookie_name, "unknown-session-token-value" * 3)
-    assert client.get("/auth/me", headers=_bearer(first)).status_code == 401
+    assert client.get("/auth/me", headers={"Authorization": "Bearer legacy-token"}).status_code == 401
 
 
 def test_expired_revoked_and_inactive_cookie_sessions_are_refused(auth_client):
@@ -444,28 +434,54 @@ def test_expired_revoked_and_inactive_cookie_sessions_are_refused(auth_client):
     assert client.get("/auth/me").status_code == 401
 
 
-def test_session_endpoint_requires_bearer_and_logout_is_csrf_protected(auth_client):
+def test_legacy_session_endpoint_is_absent_and_logout_is_csrf_protected(auth_client):
     client, session_factory = auth_client
     user = _seed_user(session_factory, "user-a")
 
-    assert client.post("/auth/session").status_code == 403
-    created = client.post("/auth/session", headers=_bearer(user))
-    assert created.status_code == 201
+    client.cookies.set(settings.session_cookie_name, _mint_session(session_factory, user.id).raw_token)
+    assert client.post("/auth/session").status_code == 404
     assert client.post("/auth/logout", headers={"Origin": "https://evil.example"}).status_code == 403
 
     logout = client.post("/auth/logout", headers={"Origin": "http://localhost:5173"})
     assert logout.status_code == 204
     assert "max-age=0" in logout.headers["set-cookie"].lower()
-    assert client.get("/auth/me").status_code == 403
-    assert client.get("/auth/me", headers=_bearer(user)).status_code == 200
+    assert client.get("/auth/me").status_code == 401
+
+
+def test_openapi_excludes_legacy_bearer_authentication():
+    schema = app.openapi()
+    assert "/auth/session" not in schema["paths"]
+    assert "/auth/session/" not in schema["paths"]
+
+    schemes = schema.get("components", {}).get("securitySchemes", {})
+    assert not any(
+        scheme.get("type") == "http" and scheme.get("scheme") == "bearer"
+        for scheme in schemes.values()
+    )
+    assert not any(
+        scheme.get("type") == "oauth2"
+        or scheme.get("flows", {}).get("password", {}).get("tokenUrl") == "/auth/session"
+        for scheme in schemes.values()
+    )
+
+    for methods in schema["paths"].values():
+        for operation in methods.values():
+            assert not operation.get("security")
+
+    assert not any(
+        {"access_token", "token_type"} <= set(model.get("properties", {}))
+        for model in schema.get("components", {}).get("schemas", {}).values()
+    )
+    for path in ("/auth/me", "/api/generate", "/auth/stripe/checkout", "/api/status/{job_id}"):
+        assert path in schema["paths"]
 
 
 @pytest.mark.parametrize("cookie", ["", "   ", "a" * 10000])
-def test_malformed_cookie_never_falls_back_to_bearer(auth_client, cookie):
+def test_malformed_cookie_is_rejected(auth_client, cookie):
     client, session_factory = auth_client
     user = _seed_user(session_factory, "user-a")
     client.cookies.set(settings.session_cookie_name, cookie)
-    assert client.get("/auth/me", headers=_bearer(user)).status_code == 401
+    assert client.get("/auth/me", headers={"Authorization": "Bearer legacy-token"}).status_code == 401
 
 
 @pytest.mark.parametrize(
@@ -475,15 +491,15 @@ def test_malformed_cookie_never_falls_back_to_bearer(auth_client, cookie):
 def test_logout_rejects_non_exact_origins(auth_client, origin):
     client, session_factory = auth_client
     user = _seed_user(session_factory, "user-a")
-    assert client.post("/auth/session", headers=_bearer(user)).status_code == 201
+    client.cookies.set(settings.session_cookie_name, _mint_session(session_factory, user.id).raw_token)
     headers = {} if origin is None else {"Origin": origin}
     assert client.post("/auth/logout", headers=headers).status_code == 403
 
 
-def test_basic_and_empty_bearer_are_not_credentials(auth_client):
+def test_authorization_headers_are_not_credentials(auth_client):
     client, _ = auth_client
-    assert client.get("/auth/me", headers={"Authorization": "Basic abc"}).status_code == 403
-    assert client.get("/auth/me", headers={"Authorization": "Bearer "}).status_code in {401, 403}
+    assert client.get("/auth/me", headers={"Authorization": "Basic abc"}).status_code == 401
+    assert client.get("/auth/me", headers={"Authorization": "Bearer "}).status_code == 401
 
 
 def test_production_cookie_is_secure(monkeypatch):

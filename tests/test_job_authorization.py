@@ -13,10 +13,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import backend.api.advanced_routes as advanced_routes
 import backend.api.routes as routes
-from backend.auth.jwt import create_access_token
+from backend.config import settings
 from backend.database import Base, get_db
 from backend.main import app
 from backend.models.user import Job, User
+from backend.services.session_service import session_service
 from backend.queue.redis_queue import (
     QueueBackendUnavailableError,
     RedisQueue,
@@ -152,15 +153,20 @@ def _seed_users_and_job(session_factory):
     return asyncio.run(seed())
 
 
-def _headers(user_id: str, email: str) -> dict[str, str]:
-    token = create_access_token(user_id, email)
-    return {"Authorization": f"Bearer {token}"}
+def _headers(session_factory, user_id: str, _email: str) -> dict[str, str]:
+    async def create_session() -> str:
+        async with session_factory() as session:
+            created = await session_service.create_session(session, user_id)
+            await session.commit()
+            return created.raw_token
+
+    return {"Cookie": f"{settings.session_cookie_name}={asyncio.run(create_session())}"}
 
 
 def test_http_owner_can_read_memory_backed_job(http_client):
     client, session_factory = http_client
     data = _seed_users_and_job(session_factory)
-    owner_headers = _headers(data["owner_id"], data["owner_email"])
+    owner_headers = _headers(session_factory, data["owner_id"], data["owner_email"])
     routes.jobs[data["job_id"]] = {
         "status": "processing",
         "progress": 50,
@@ -182,7 +188,7 @@ def test_http_owner_can_read_memory_backed_job(http_client):
 def test_http_owner_falls_back_to_database_when_memory_is_missing(http_client):
     client, session_factory = http_client
     data = _seed_users_and_job(session_factory)
-    owner_headers = _headers(data["owner_id"], data["owner_email"])
+    owner_headers = _headers(session_factory, data["owner_id"], data["owner_email"])
 
     clips = client.get(f"/api/clips/{data['job_id']}", headers=owner_headers)
     status = client.get(f"/api/status/{data['job_id']}", headers=owner_headers)
@@ -197,7 +203,7 @@ def test_http_owner_falls_back_to_database_when_memory_is_missing(http_client):
 def test_historical_job_error_is_not_exposed_by_status(http_client):
     client, session_factory = http_client
     data = _seed_users_and_job(session_factory)
-    owner_headers = _headers(data["owner_id"], data["owner_email"])
+    owner_headers = _headers(session_factory, data["owner_id"], data["owner_email"])
     sensitive_error = "postgresql://secret-user:secret-password@private-host/database"
 
     async def mark_failed():
@@ -218,8 +224,8 @@ def test_historical_job_error_is_not_exposed_by_status(http_client):
 def test_http_foreign_and_missing_jobs_are_indistinguishable(http_client, monkeypatch):
     client, session_factory = http_client
     data = _seed_users_and_job(session_factory)
-    owner_headers = _headers(data["owner_id"], data["owner_email"])
-    other_headers = _headers(data["other_id"], data["other_email"])
+    owner_headers = _headers(session_factory, data["owner_id"], data["owner_email"])
+    other_headers = _headers(session_factory, data["other_id"], data["other_email"])
     monkeypatch.setattr(routes, "settings", SimpleNamespace(clips_dir=None))
 
     paths = (
@@ -245,8 +251,8 @@ def test_http_anonymous_job_access_uses_project_auth_response(http_client):
 
     response = client.get(f"/api/status/{data['job_id']}")
 
-    assert response.status_code == 403
-    assert response.json() == {"detail": "Not authenticated"}
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Could not validate credentials"}
 
 
 def test_http_owner_can_download_and_foreign_user_never_reads_file(
@@ -254,8 +260,8 @@ def test_http_owner_can_download_and_foreign_user_never_reads_file(
 ):
     client, session_factory = http_client
     data = _seed_users_and_job(session_factory)
-    owner_headers = _headers(data["owner_id"], data["owner_email"])
-    other_headers = _headers(data["other_id"], data["other_email"])
+    owner_headers = _headers(session_factory, data["owner_id"], data["owner_email"])
+    other_headers = _headers(session_factory, data["other_id"], data["other_email"])
     job_dir = tmp_path / data["job_id"]
     job_dir.mkdir()
     (job_dir / "clip.mp4").write_bytes(b"video")
@@ -279,12 +285,14 @@ def test_http_owner_can_download_and_foreign_user_never_reads_file(
 def test_http_rq_owner_can_read_and_cancel(http_client, monkeypatch):
     client, session_factory = http_client
     data = _seed_users_and_job(session_factory)
-    owner_headers = _headers(data["owner_id"], data["owner_email"])
+    owner_headers = _headers(session_factory, data["owner_id"], data["owner_email"])
     queue = _Queue(_RQJob({"user_id": data["owner_id"]}))
     monkeypatch.setattr(advanced_routes, "get_queue", lambda: queue)
 
     status = client.get("/api/api/status/twitch/rq-job", headers=owner_headers)
-    cancelled = client.delete("/api/api/jobs/rq-job", headers=owner_headers)
+    cancelled = client.delete(
+        "/api/api/jobs/rq-job", headers={**owner_headers, "Origin": "http://localhost:5173"}
+    )
 
     assert status.status_code == 200
     assert status.json()["status"] == "finished"
@@ -296,12 +304,14 @@ def test_http_rq_owner_can_read_and_cancel(http_client, monkeypatch):
 def test_http_rq_foreign_user_cannot_read_or_cancel(http_client, monkeypatch):
     client, session_factory = http_client
     data = _seed_users_and_job(session_factory)
-    other_headers = _headers(data["other_id"], data["other_email"])
+    other_headers = _headers(session_factory, data["other_id"], data["other_email"])
     queue = _Queue(_RQJob({"user_id": data["owner_id"]}))
     monkeypatch.setattr(advanced_routes, "get_queue", lambda: queue)
 
     status = client.get("/api/api/status/twitch/rq-job", headers=other_headers)
-    cancelled = client.delete("/api/api/jobs/rq-job", headers=other_headers)
+    cancelled = client.delete(
+        "/api/api/jobs/rq-job", headers={**other_headers, "Origin": "http://localhost:5173"}
+    )
 
     assert status.status_code == 404
     assert cancelled.status_code == 404
@@ -322,7 +332,7 @@ def test_http_rq_missing_or_invalid_owner_metadata_returns_404(
 ):
     client, session_factory = http_client
     data = _seed_users_and_job(session_factory)
-    owner_headers = _headers(data["owner_id"], data["owner_email"])
+    owner_headers = _headers(session_factory, data["owner_id"], data["owner_email"])
     monkeypatch.setattr(advanced_routes, "get_queue", lambda: _Queue(job))
 
     response = client.get("/api/api/status/twitch/rq-job", headers=owner_headers)
@@ -334,12 +344,14 @@ def test_http_rq_missing_or_invalid_owner_metadata_returns_404(
 def test_http_rq_unavailable_returns_503_for_status_and_cancel(http_client, monkeypatch):
     client, session_factory = http_client
     data = _seed_users_and_job(session_factory)
-    owner_headers = _headers(data["owner_id"], data["owner_email"])
+    owner_headers = _headers(session_factory, data["owner_id"], data["owner_email"])
     queue = _Queue(error=QueueBackendUnavailableError("Redis unavailable"))
     monkeypatch.setattr(advanced_routes, "get_queue", lambda: queue)
 
     status = client.get("/api/api/status/twitch/rq-job", headers=owner_headers)
-    cancelled = client.delete("/api/api/jobs/rq-job", headers=owner_headers)
+    cancelled = client.delete(
+        "/api/api/jobs/rq-job", headers={**owner_headers, "Origin": "http://localhost:5173"}
+    )
 
     assert status.status_code == cancelled.status_code == 503
     assert status.json() == cancelled.json() == {

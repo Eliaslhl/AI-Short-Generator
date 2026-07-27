@@ -18,8 +18,8 @@ reads or writes the opaque session value, and it does not store JWTs in
   request. Registration requires confirmation and leaves the visitor signed out.
 
 Axios is configured with `withCredentials: true`; no global Bearer interceptor
-exists. Browser code sends no Bearer header. The backend continues to support
-JWT Bearer authentication for API clients during the transition period.
+exists. Browser code sends no Bearer header. The backend authenticates web
+requests exclusively through the opaque cookie session.
 
 ## State and failures
 
@@ -46,7 +46,5 @@ The backend requires an exact trusted `Origin` for every cookie-authenticated
 `POST`, `PUT`, `PATCH`, or `DELETE`; the browser supplies this header for
 cross-origin fetch/XHR requests. It rejects missing or duplicate Origin headers;
 hostname case and default ports are canonicalized consistently with CORS.
-Bearer-only API clients, including the temporary legacy `POST /auth/session`
-endpoint, remain Origin-exempt for backwards compatibility. See [CSRF protection](CSRF_PROTECTION.md)
-for the allowlist and deployment requirements. JWT rotation, advanced session
-revocation, and removal of transitional backend Bearer support remain deferred.
+See [CSRF protection](CSRF_PROTECTION.md) for the allowlist and deployment
+requirements. Advanced session revocation remains deferred.

@@ -57,7 +57,6 @@ allow_headers=["*"],      # ⚠️ All headers
 allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
 allow_headers=[
     "Content-Type",
-    "Authorization", 
     "Accept",
     "Origin",
     "X-Requested-With"
@@ -102,7 +101,10 @@ Two comprehensive guides created:
 - Rate limiting (60/min global, 5/min for auth)
 - Bcrypt password hashing
 - Email verification (new)
-- JWT token authentication
+- Opaque server-side authentication sessions via HttpOnly cookies
+- Database-backed session validation, expiration, and revocation
+- Exact Origin validation for cookie-authenticated mutations; user JWT/Bearer
+  authentication and `/auth/session` are not supported
 - Input validation (pydantic)
 - SQL injection prevention (ORM)
 - Error message sanitization

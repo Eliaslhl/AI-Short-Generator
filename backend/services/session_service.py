@@ -83,6 +83,11 @@ def _session_hash_key() -> bytes:
     return (configured or _LOCAL_SESSION_HASH_KEY).encode("utf-8")
 
 
+def validate_session_hash_key() -> None:
+    """Fail fast when the configured opaque-session digesting key is unsafe."""
+    _session_hash_key()
+
+
 def hash_session_token(raw_token: str) -> str:
     """Return a deterministic, keyed digest suitable for indexed lookup."""
     if not isinstance(raw_token, str):

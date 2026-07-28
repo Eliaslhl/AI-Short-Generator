@@ -11,6 +11,7 @@ Returns a list of segment dicts:
 """
 
 import logging
+from enum import Enum
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -27,6 +28,11 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────
 _model: WhisperModel | None = None
 _models: dict[str, WhisperModel] = {}
+
+
+class TranscriptionMode(str, Enum):
+    FAST = "fast"
+    QUALITY = "quality"
 
 
 def _attach_detected_language(segments: List[Dict[str, Any]], info: Any) -> None:
@@ -121,6 +127,7 @@ def transcribe_two_pass(
     from statistics import mean
     import tempfile
     import os
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     from backend.services.youtube_service import extract_audio
 
     path = Path(video_path)
@@ -233,13 +240,13 @@ def transcribe_two_pass(
     refined_segments = []
     refine_time = 0.0
     refine_cut = False
+    refine_start = time.perf_counter()
     if selected:
         refine_start = time.perf_counter()
         refine_model = _get_model_by_name(refine_model_name, compute_type="int8")
         # process windows in parallel but submit progressively so we can stop when
         # the dynamic cap is exceeded. This prevents unbounded work when many
         # windows are selected.
-        from concurrent.futures import ThreadPoolExecutor, as_completed
 
         def refine_window(args):
             s, e = args
@@ -430,23 +437,29 @@ def transcribe_fast_full(
 
 
 def transcribe_for_job(
-    video_path: str, transcription_mode: str | None = None, language: str | None = None
+    video_path: str,
+    transcription_mode: TranscriptionMode | None = None,
+    language: str | None = None,
 ) -> List[Dict[str, Any]]:
     """Job-level transcription entrypoint with simple FAST/QUALITY modes.
 
     Modes:
-      - None or "FAST": low-latency fast model (single-pass tiny/base depending on config)
-      - "QUALITY": run the two-pass refine workflow (may be slower but higher quality)
+      - None or ``TranscriptionMode.FAST``: low-latency single-pass model
+      - ``TranscriptionMode.QUALITY``: two-pass refine workflow
 
     This wrapper implements a minimal adaptive policy: FAST jobs avoid the
     expensive refine step entirely, while QUALITY jobs run the two-pass flow
     and honour the configured two_pass_max_refine_fraction. The job-level
     override is conservative and cannot increase the global refine fraction.
     """
-    mode = (transcription_mode or "FAST").upper()
-    logger.info(f"Transcription requested for {Path(video_path).name} with mode={mode}")
+    mode = TranscriptionMode.FAST if transcription_mode is None else transcription_mode
+    if not isinstance(mode, TranscriptionMode):
+        raise ValueError("Unsupported transcription mode")
+    logger.info(
+        f"Transcription requested for {Path(video_path).name} with mode={mode.value}"
+    )
 
-    if mode == "QUALITY":
+    if mode is TranscriptionMode.QUALITY:
         # Allow full two-pass behaviour as configured. We do not increase the
         # global fraction here; passing None keeps global behaviour.
         return transcribe_two_pass(video_path, language=language)

@@ -34,6 +34,7 @@ from backend.services.emoji_caption_service import build_captions
 from backend.services.title_service import generate_title, normalize_supported_language
 from backend.services.hashtag_service import generate_hashtags
 from backend.services.job_access_service import job_access_service
+from backend.services.transcription_service import TranscriptionMode
 from backend.video.video_editor import render_clip
 from backend.services.private_media_service import (
     InvalidRange,
@@ -147,7 +148,7 @@ class GenerateRequest(BaseModel):
     max_clips: int = 3  # FREE default; enforced server-side per plan
     language: str = ""  # "" = auto-detect; ISO-639-1 code for PRO (e.g. "fr")
     subtitle_style: str = "default"  # PRO: default | bold | outlined | neon | minimal
-    transcription_mode: str = ""  # optional: "FAST" (default) or "QUALITY" (Pro+ only)
+    transcription_mode: TranscriptionMode | None = None
     include_subtitles: StrictBool | None = None
 
 
@@ -205,7 +206,7 @@ async def run_pipeline(
     language: str = "",
     subtitle_style: str = "default",
     is_proplus: bool = False,
-    transcription_mode: str | None = None,
+    transcription_mode: TranscriptionMode | None = None,
     include_subtitles: bool | None = None,
 ):
     """Full async pipeline: download → transcribe → score → render."""
@@ -247,6 +248,16 @@ async def run_pipeline(
             logger.debug(f"Failed to persist job progress for {job_id}", exc_info=True)
 
     try:
+        mode = (
+            TranscriptionMode.FAST
+            if transcription_mode is None
+            else transcription_mode
+        )
+        if not isinstance(mode, TranscriptionMode):
+            raise ValueError("Unsupported transcription mode")
+        if mode is TranscriptionMode.QUALITY and not is_proplus:
+            raise ValueError("QUALITY transcription requires a Pro+ plan")
+
         jobs[job_id]["status"] = "processing"
 
         # Detect source (YouTube or Twitch)
@@ -267,18 +278,6 @@ async def run_pipeline(
         jobs[job_id]["video_title"] = video_title
 
         await update(20, "Transcribing audio with Faster-Whisper…")
-        # Determine transcription mode: default FAST. Only allow QUALITY for pro/proplus users.
-        mode = (transcription_mode or "").upper() if transcription_mode else ""
-        if mode == "QUALITY":
-            # only allow QUALITY for pro or proplus; is_proplus covers proplus, check DB for pro below
-            # We'll conservatively allow QUALITY only if is_proplus is True; otherwise fallback to FAST.
-            if not is_proplus:
-                logger.info(
-                    f"Job {job_id}: QUALITY mode requested but not allowed for this plan; falling back to FAST."
-                )
-                mode = "FAST"
-        if mode not in ("QUALITY", "FAST"):
-            mode = "FAST"
 
         from backend.services.transcription_service import transcribe_for_job
 
@@ -286,7 +285,10 @@ async def run_pipeline(
             language.strip() if language and language.strip().lower() != "auto" else None
         )
         segments = await asyncio.to_thread(
-            transcribe_for_job, str(video_path), mode, requested_language
+            transcribe_for_job,
+            str(video_path),
+            transcription_mode=mode,
+            language=requested_language,
         )
         title_language = (
             normalize_supported_language(requested_language)
@@ -475,6 +477,17 @@ async def generate(
     job_id = str(uuid.uuid4())[:8]
 
     platform = _detect_platform_from_url(request.youtube_url)
+    plan_obj = _get_platform_plan(user, platform)
+    plan = plan_obj.value if hasattr(plan_obj, "value") else str(plan_obj)
+    if (
+        request.transcription_mode is TranscriptionMode.QUALITY
+        and plan != "proplus"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="QUALITY transcription requires a Pro+ plan",
+        )
+
     await _reset_platform_counter_if_new_month(user, db, platform)
 
     usage = _get_platform_usage(user, platform)
@@ -500,8 +513,6 @@ async def generate(
         )
 
     # Enforce max_clips per plan server-side
-    plan_obj = _get_platform_plan(user, platform)
-    plan = plan_obj.value if hasattr(plan_obj, "value") else str(plan_obj)
     if plan == "proplus":
         allowed_clips = max(1, min(request.max_clips, 20))
     elif plan == "pro":
@@ -553,6 +564,7 @@ async def generate(
             language,
             subtitle_style,
             plan == "proplus",
+            transcription_mode=request.transcription_mode,
             include_subtitles=request.include_subtitles,
         )
     )

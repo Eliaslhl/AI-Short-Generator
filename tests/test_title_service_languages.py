@@ -158,7 +158,7 @@ async def _run_title_pipeline(monkeypatch, language, detected_language=None):
     transcribe_calls = []
     monkeypatch.setattr(
         "backend.services.transcription_service.transcribe_for_job",
-        lambda *_args: transcribe_calls.append(_args) or [segment],
+        lambda *_args, **_kwargs: transcribe_calls.append((_args, _kwargs)) or [segment],
     )
     monkeypatch.setattr(routes, "select_top_segments", lambda *_args: [dict(segment)])
     monkeypatch.setattr(routes, "generate_hook", lambda _text: "Hook")
@@ -218,4 +218,4 @@ def test_pipeline_propagates_resolved_title_language(
     )
 
     assert title_calls == [("A transcript excerpt.", expected_title_language)]
-    assert transcribe_calls[0][-1] == expected_transcription_language
+    assert transcribe_calls[0][1]["language"] == expected_transcription_language

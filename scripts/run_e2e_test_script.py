@@ -22,7 +22,7 @@ job_id = f"e2e_test_{uuid.uuid4().hex[:8]}"
 
 try:
     from backend.services.youtube_service import download_video
-    from backend.services.transcription_service import transcribe_for_job
+    from backend.services.transcription_service import TranscriptionMode, transcribe_for_job
 except Exception as e:
     logger.exception("Failed to import project modules: %s", e)
     raise
@@ -33,7 +33,7 @@ try:
     logger.info(f"Downloaded video: {video_path} (title: {title})")
 
     # Run a fast transcription to keep this test quick
-    segs = transcribe_for_job(str(video_path), transcription_mode="FAST")
+    segs = transcribe_for_job(str(video_path), transcription_mode=TranscriptionMode.FAST)
     logger.info(f"Transcription produced {len(segs)} segments. Showing up to 5:")
     for s in segs[:5]:
         print(f"[{s['start']:.1f}-{s['end']:.1f}] {s['text']}")

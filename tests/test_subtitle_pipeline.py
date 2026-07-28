@@ -203,7 +203,7 @@ def _install_pipeline_mocks(monkeypatch, job_id, segments, rendered_segments):
     monkeypatch.setattr(routes, "download_youtube", lambda *_args: (Path("source.mp4"), "Source"))
     monkeypatch.setattr(
         "backend.services.transcription_service.transcribe_for_job",
-        lambda *_args: segments,
+        lambda *_args, **_kwargs: segments,
     )
     monkeypatch.setattr(routes, "select_top_segments", lambda *_args: [dict(segment) for segment in segments])
     monkeypatch.setattr(routes, "generate_hook", lambda _text: "Hook")

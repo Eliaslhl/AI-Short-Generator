@@ -12,12 +12,15 @@ from typing import Dict, Any
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.auth.dependencies import get_current_user
-from backend.models.user import User
+from backend.database import get_db
+from backend.models.user import Job, User
 from backend.queue.redis_queue import get_queue
 from backend.queue.worker import process_twitch_video
 from backend.services.job_access_service import job_access_service
+from backend.services.private_media_service import public_clip_payloads
 
 logger = logging.getLogger(__name__)
 advanced_router = APIRouter()
@@ -52,6 +55,7 @@ class TwitchStatusResponse(BaseModel):
 async def generate_twitch_advanced(
     req: TwitchAdvancedRequest,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> Dict[str, Any]:
     """
     Start advanced Twitch video processing with chunking and highlighting.
@@ -78,7 +82,21 @@ async def generate_twitch_advanced(
     # Create job ID
     job_id = str(uuid.uuid4())
     
-    # Enqueue job
+    job = Job(
+        id=job_id,
+        user_id=current_user.id,
+        youtube_url=req.url,
+        status="pending",
+        progress=0,
+    )
+    db.add(job)
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        logger.error("Failed to persist Twitch job: job_id=%s", job_id)
+        raise HTTPException(status_code=500, detail="Failed to start processing")
+
     queue = get_queue()
     try:
         queue.enqueue(
@@ -102,6 +120,11 @@ async def generate_twitch_advanced(
         }
     
     except Exception as exc:
+        await db.delete(job)
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
         logger.error(
             "Failed to enqueue advanced Twitch job: exception_type=%s",
             type(exc).__name__,
@@ -141,7 +164,12 @@ async def get_twitch_status(
             "status": status.get("status", "unknown"),
             "progress": status.get("progress", 0),
             "step": status.get("step", "Processing..."),
-            "clips": status.get("result", {}).get("clips", []) if status.get("status") == "finished" else [],
+            "clips": public_clip_payloads(
+                job_id,
+                status.get("result", {}).get("clips", [])
+                if status.get("status") == "finished"
+                else [],
+            ),
             "error": status.get("error"),
         }
     

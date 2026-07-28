@@ -6,10 +6,9 @@ import { useSeoTags } from '../hooks/useSeoTags'
 import type { StatusResponse, Clip } from '../types'
 import { LANGUAGES, SUBTITLE_STYLES } from '../components/GeneratorForm'
 import { Download, Expand, X, Link2, SlidersHorizontal, Globe, Type, Sparkles } from 'lucide-react'
+import { getPrivateClipDownloadUrl, getPrivateClipMediaUrl } from '../utils/privateMedia'
 
 import { getPlanForPlatform } from '../utils/planUtils'
-
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 const STEPS = [
   { key: 'download',   label: 'Download',      pct: 20 },
@@ -30,14 +29,17 @@ interface ClipCardProps {
 
 function ClipCard({ clip, index, onExpand }: ClipCardProps) {
   const navigate = useNavigate()
+  const mediaUrl = getPrivateClipMediaUrl(clip)
   return (
     <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden hover:border-purple-500/50 transition group">
       <div className="relative" style={{ paddingBottom: '177.78%' }}>
-        <video
-          src={`${API_BASE}${clip.file}`}
-          className="absolute inset-0 w-full h-full object-cover"
-          preload="metadata"
-        />
+        {mediaUrl && (
+          <video
+            src={mediaUrl}
+            className="absolute inset-0 w-full h-full object-cover"
+            preload="metadata"
+          />
+        )}
         {/* Viral score badge */}
         <div className="absolute top-2 left-2 bg-black/70 text-xs text-purple-300 px-2 py-0.5 rounded-full">
           {clip.viral_score}
@@ -92,11 +94,8 @@ interface VideoModalProps {
 }
 
 function VideoModal({ clip, index, total, onClose, onPrev, onNext }: VideoModalProps) {
-  const downloadRef = useRef<HTMLAnchorElement>(null)
-
-  const handleDownload = () => {
-    downloadRef.current?.click()
-  }
+  const mediaUrl = getPrivateClipMediaUrl(clip)
+  const downloadUrl = getPrivateClipDownloadUrl(clip)
 
   return (
     <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4 backdrop-blur-sm" onClick={onClose}>
@@ -114,14 +113,20 @@ function VideoModal({ clip, index, total, onClose, onPrev, onNext }: VideoModalP
           </div>
 
           {/* Video */}
-          <video
-            src={`${API_BASE}${clip.file}`}
-            className="w-full bg-black"
-            controls
-            autoPlay
-            playsInline
-            style={{ aspectRatio: '9/16', objectFit: 'contain', maxHeight: '70vh' }}
-          />
+          {mediaUrl ? (
+            <video
+              src={mediaUrl}
+              className="w-full bg-black"
+              controls
+              autoPlay
+              playsInline
+              style={{ aspectRatio: '9/16', objectFit: 'contain', maxHeight: '70vh' }}
+            />
+          ) : (
+            <div className="w-full bg-black text-gray-400 p-8 text-center">
+              Clip unavailable
+            </div>
+          )}
 
           {/* Footer */}
           <div className="p-4 border-t border-white/10 space-y-3">
@@ -145,19 +150,23 @@ function VideoModal({ clip, index, total, onClose, onPrev, onNext }: VideoModalP
               >
                 ← Prev
               </button>
-              <button
-                onClick={handleDownload}
-                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-sm rounded-lg transition hover:shadow-lg flex items-center gap-2 flex-1 justify-center"
-              >
-                <Download size={16} />
-                Download
-              </button>
-              <a
-                ref={downloadRef}
-                href={`${API_BASE}${clip.file}`}
-                download={clip.title || `short-${index + 1}.mp4`}
-                style={{ display: 'none' }}
-              />
+              {downloadUrl ? (
+                <a
+                  href={downloadUrl}
+                  className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-sm rounded-lg transition hover:shadow-lg flex items-center gap-2 flex-1 justify-center"
+                >
+                  <Download size={16} />
+                  Download
+                </a>
+              ) : (
+                <button
+                  disabled
+                  className="px-4 py-2 bg-white/10 text-gray-500 text-sm rounded-lg flex items-center gap-2 flex-1 justify-center"
+                >
+                  <Download size={16} />
+                  Download unavailable
+                </button>
+              )}
               <button
                 onClick={onNext}
                 disabled={total <= 1}

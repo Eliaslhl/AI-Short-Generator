@@ -231,7 +231,6 @@ def test_http_foreign_and_missing_jobs_are_indistinguishable(http_client, monkey
     paths = (
         "/api/status/{job_id}",
         "/api/clips/{job_id}",
-        "/api/download-clip/{job_id}/clip.mp4",
     )
     for path_template in paths:
         foreign = client.get(
@@ -255,31 +254,15 @@ def test_http_anonymous_job_access_uses_project_auth_response(http_client):
     assert response.json() == {"detail": "Could not validate credentials"}
 
 
-def test_http_owner_can_download_and_foreign_user_never_reads_file(
-    http_client, monkeypatch, tmp_path
-):
+def test_http_legacy_download_route_is_not_available(http_client):
     client, session_factory = http_client
     data = _seed_users_and_job(session_factory)
     owner_headers = _headers(session_factory, data["owner_id"], data["owner_email"])
     other_headers = _headers(session_factory, data["other_id"], data["other_email"])
-    job_dir = tmp_path / data["job_id"]
-    job_dir.mkdir()
-    (job_dir / "clip.mp4").write_bytes(b"video")
-    monkeypatch.setattr(routes, "settings", SimpleNamespace(clips_dir=tmp_path))
 
-    owner = client.get(
-        f"/api/download-clip/{data['job_id']}/clip.mp4", headers=owner_headers
-    )
-    assert owner.status_code == 200
-    assert owner.content == b"video"
-    assert owner.headers["content-disposition"].startswith("attachment;")
-
-    monkeypatch.setattr(routes, "settings", SimpleNamespace(clips_dir=None))
-    foreign = client.get(
-        f"/api/download-clip/{data['job_id']}/clip.mp4", headers=other_headers
-    )
-    assert foreign.status_code == 404
-    assert foreign.json() == {"detail": "Job not found"}
+    for headers in (owner_headers, other_headers, {}):
+        response = client.get(f"/api/download-clip/{data['job_id']}/clip.mp4", headers=headers)
+        assert response.status_code == 404
 
 
 def test_http_rq_owner_can_read_and_cancel(http_client, monkeypatch):

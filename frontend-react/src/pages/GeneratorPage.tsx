@@ -8,8 +8,7 @@ import type { StatusResponse, Clip } from '../types'
 import { Link2, Sparkles, Download, Crown, CheckCircle, Clock, AlertCircle, SlidersHorizontal, Expand, X, Lightbulb, Globe, Type } from 'lucide-react'
 import { getPlanForPlatform, getGenerationLimit, getGenerationsLeft, getMaxClipsAllowed, getCurrentPlatform } from '../utils/planUtils'
 import { AnimatedProgressBar } from '../components/AnimatedProgressBar'
-
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+import { getPrivateClipDownloadUrl, getPrivateClipMediaUrl } from '../utils/privateMedia'
 
 // Example URL shown as a hint to new users
 const EXAMPLE_URL = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
@@ -54,14 +53,18 @@ interface ClipCardProps { clip: Clip; index: number; onExpand: (clip: Clip, inde
 
 function ClipCard({ clip, index, onExpand }: ClipCardProps) {
   const navigate = useNavigate()
+  const mediaUrl = getPrivateClipMediaUrl(clip)
+  const downloadUrl = getPrivateClipDownloadUrl(clip)
   return (
     <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden hover:border-purple-500/50 transition group">
       <div className="relative" style={{ paddingBottom: '177.78%' }}>
-        <video
-          src={`${API_BASE}${clip.file}`}
-          className="absolute inset-0 w-full h-full object-cover"
-          preload="metadata"
-        />
+        {mediaUrl && (
+          <video
+            src={mediaUrl}
+            className="absolute inset-0 w-full h-full object-cover"
+            preload="metadata"
+          />
+        )}
         {/* Viral score badge */}
         <div className="absolute top-2 left-2 bg-black/70 text-xs text-purple-300 px-2 py-0.5 rounded-full">
           {clip.viral_score}
@@ -101,13 +104,14 @@ function ClipCard({ clip, index, onExpand }: ClipCardProps) {
             ))}
           </div>
         )}
-        <a
-          href={`${API_BASE}${clip.file}`}
-          download={`short_${index + 1}.mp4`}
-          className="flex items-center justify-center gap-1.5 w-full py-1.5 bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 text-xs rounded-lg transition"
-        >
-          <Download className="w-3 h-3" /> Download
-        </a>
+        {downloadUrl && (
+          <a
+            href={downloadUrl}
+            className="flex items-center justify-center gap-1.5 w-full py-1.5 bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 text-xs rounded-lg transition"
+          >
+            <Download className="w-3 h-3" /> Download
+          </a>
+        )}
       </div>
     </div>
   )
@@ -125,6 +129,8 @@ interface VideoModalProps {
 function VideoModal({ clip, index, total, onClose, onPrev, onNext }: VideoModalProps) {
   // Close on Escape, navigate with arrow keys
   const navigate = useNavigate()
+  const mediaUrl = getPrivateClipMediaUrl(clip)
+  const downloadUrl = getPrivateClipDownloadUrl(clip)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -151,14 +157,15 @@ function VideoModal({ clip, index, total, onClose, onPrev, onNext }: VideoModalP
             Short <span className="text-white font-semibold">{index + 1}</span> / {total}
           </span>
           <div className="flex items-center gap-3">
-            <a
-              href={`${API_BASE}${clip.file}`}
-              download={`short_${index + 1}.mp4`}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 text-xs rounded-lg transition"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Download className="w-3.5 h-3.5" /> Download
-            </a>
+            {downloadUrl && (
+              <a
+                href={downloadUrl}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 text-xs rounded-lg transition"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Download className="w-3.5 h-3.5" /> Download
+              </a>
+            )}
             <button
               onClick={onClose}
               className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition"
@@ -171,23 +178,29 @@ function VideoModal({ clip, index, total, onClose, onPrev, onNext }: VideoModalP
 
         {/* Video — desktop-friendly frame with blurred fill + sharp portrait center */}
         <div className="relative w-[min(92vw,1100px)] aspect-video rounded-xl overflow-hidden bg-black">
-          <video
-            src={`${API_BASE}${clip.file}`}
-            className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-55"
-            aria-hidden="true"
-            muted
-            playsInline
-            preload="metadata"
-          />
+          {mediaUrl && (
+            <video
+              src={mediaUrl}
+              className="absolute inset-0 w-full h-full object-cover blur-2xl scale-110 opacity-55"
+              aria-hidden="true"
+              muted
+              playsInline
+              preload="metadata"
+            />
+          )}
           <div className="absolute inset-0 bg-black/35" />
-          <video
-            src={`${API_BASE}${clip.file}`}
-            className="relative z-10 h-full max-h-[80vh] mx-auto object-contain"
-            style={{ aspectRatio: '9/16' }}
-            controls
-            autoPlay
-            playsInline
-          />
+          {mediaUrl ? (
+            <video
+              src={mediaUrl}
+              className="relative z-10 h-full max-h-[80vh] mx-auto object-contain"
+              style={{ aspectRatio: '9/16' }}
+              controls
+              autoPlay
+              playsInline
+            />
+          ) : (
+            <div className="relative z-10 text-gray-400">Clip unavailable</div>
+          )}
         </div>
 
         {/* Title + Hook + Hashtags */}
@@ -666,35 +679,15 @@ export default function GeneratorPage() {
             </h2>
             <button
               onClick={async () => {
-                // Fetch each clip as a blob and trigger download via object URL.
-                // This avoids navigation when download attribute isn't honored (cross-origin or browser quirks).
-                for (let i = 0; i < status.clips.length; i++) {
-                  const c = status.clips[i]
-                  try {
-                    const res = await fetch(`${API_BASE}${c.file}`, { credentials: 'include' })
-                    if (!res.ok) throw new Error(`Fetch failed: ${res.status}`)
-                    const blob = await res.blob()
-                    const url = URL.createObjectURL(blob)
-                    const a = document.createElement('a')
-                    a.href = url
-                    a.setAttribute('download', `short_${i + 1}.mp4`)
-                    a.style.display = 'none'
-                    document.body.appendChild(a)
-                    a.click()
-                    document.body.removeChild(a)
-                    URL.revokeObjectURL(url)
-                  } catch (err) {
-                    // Fallback: try simple anchor navigation (may open in new tab)
-                    const a = document.createElement('a')
-                    a.href = `${API_BASE}${c.file}`
-                    a.setAttribute('download', `short_${i + 1}.mp4`)
-                    a.style.display = 'none'
-                    document.body.appendChild(a)
-                    a.click()
-                    document.body.removeChild(a)
-                  }
-                  // slight pause to avoid overwhelming browser/network
-                  await new Promise((r) => setTimeout(r, 300))
+                for (const clip of status.clips) {
+                  const downloadUrl = getPrivateClipDownloadUrl(clip)
+                  if (!downloadUrl) continue
+                  const link = document.createElement('a')
+                  link.href = downloadUrl
+                  document.body.appendChild(link)
+                  link.click()
+                  document.body.removeChild(link)
+                  await new Promise((resolve) => setTimeout(resolve, 300))
                 }
               }}
               className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-lg transition"

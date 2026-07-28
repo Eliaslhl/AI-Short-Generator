@@ -15,8 +15,8 @@ import logging
 from typing import Dict, Any
 import os
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Request
+from fastapi.responses import JSONResponse, StreamingResponse, Response
 from pydantic import BaseModel, StrictBool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -35,6 +35,17 @@ from backend.services.title_service import generate_title, normalize_supported_l
 from backend.services.hashtag_service import generate_hashtags
 from backend.services.job_access_service import job_access_service
 from backend.video.video_editor import render_clip
+from backend.services.private_media_service import (
+    InvalidRange,
+    MediaNotFound,
+    clip_at,
+    filename,
+    media_type,
+    parse_range,
+    public_clip_payloads,
+    resolve_clip,
+    stream,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -128,63 +139,6 @@ async def _reset_platform_counter_if_new_month(user: User, db: AsyncSession, pla
             user.plan_reset_date = now
         await db.commit()
         await db.refresh(user)
-
-
-def _normalize_clip_for_response(clip: dict, job_id: str) -> dict:
-    """Return a safe, frontend-friendly clip dict.
-
-    This function adds compatibility fields the frontend may expect:
-    - url: primary URL to access the clip (falls back to path)
-    - thumbnail: thumbnail path/url
-    - duration: duration in seconds
-    - title: human-friendly title
-
-    We do not remove original fields; we only ensure commonly expected
-    names are present so the UI can display clips without frontend changes.
-    """
-    out = dict(clip) if isinstance(clip, dict) else {"path": str(clip)}
-
-    # url: prefer existing 'url', then 'path'
-    if "url" not in out or not out.get("url"):
-        out["url"] = out.get("path") or out.get("file") or None
-
-    # thumbnail: prefer existing 'thumbnail' or 'thumb'
-    if "thumbnail" not in out or not out.get("thumbnail"):
-        thumb = out.get("thumbnail") or out.get("thumb")
-        if not thumb and out.get("url"):
-            # try to derive thumbnail filename by replacing extension
-            try:
-                from pathlib import Path
-
-                p = Path(out["url"])
-                derived = str(p.with_suffix(".jpg"))
-                out["thumbnail"] = derived
-            except Exception:
-                out["thumbnail"] = None
-        else:
-            out["thumbnail"] = thumb
-
-    # duration: normalize common keys
-    if "duration" not in out or not out.get("duration"):
-        out["duration"] = out.get("len") or out.get("length") or out.get("duration_seconds") or None
-
-    # title: fallback to file basename
-    if "title" not in out or not out.get("title"):
-        try:
-            from pathlib import Path
-
-            if out.get("url"):
-                out["title"] = Path(out["url"]).stem
-            elif out.get("path"):
-                out["title"] = Path(out["path"]).stem
-            else:
-                out["title"] = None
-        except Exception:
-            out["title"] = None
-
-    # include job_id for convenience
-    out.setdefault("job_id", job_id)
-    return out
 
 
 # ── Request / Response models ────────────────────────────────────────────────
@@ -704,9 +658,8 @@ async def get_status(
     # Fast path: job still in memory
     memory_job = job_access_service.get_owned_memory_job(job_record, jobs)
     if memory_job is not None:
-        # Normalize clips for frontend compatibility
         raw_clips = memory_job.get("clips", []) or []
-        normalized = [_normalize_clip_for_response(c, job_id) for c in raw_clips]
+        normalized = public_clip_payloads(job_id, raw_clips)
         return StatusResponse(
             job_id=job_id,
             status=memory_job["status"],
@@ -734,7 +687,7 @@ async def get_status(
         "clips": clips,
         "user_id": user.id,
     }
-    normalized = [_normalize_clip_for_response(c, job_id) for c in clips]
+    normalized = public_clip_payloads(job_id, clips)
     return StatusResponse(
         job_id=job_id,
         status=job_record.status,
@@ -757,7 +710,7 @@ async def get_clips(
     if memory_job is not None:
         return JSONResponse(
             {
-                "clips": memory_job.get("clips", []),
+                "clips": public_clip_payloads(job_id, memory_job.get("clips", [])),
                 "video_title": memory_job.get("video_title"),
                 "status": memory_job.get("status"),
             }
@@ -766,40 +719,38 @@ async def get_clips(
     clips = json.loads(job_record.clips_json) if job_record.clips_json else []
     return JSONResponse(
         {
-            "clips": clips,
+            "clips": public_clip_payloads(job_id, clips),
             "video_title": job_record.video_title,
             "status": job_record.status,
         }
     )
 
 
-@router.get("/download-clip/{job_id}/{clip_name}")
-async def download_clip(
-    job_id: str,
-    clip_name: str,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Download a clip file with proper Content-Disposition header."""
-    from pathlib import Path
-
-    job_record = await job_access_service.require_owned_job(db, job_id, user)
-
-    if not clip_name or Path(clip_name).name != clip_name:
-        raise HTTPException(status_code=404, detail="Clip not found")
-
-    job_dir = (Path(settings.clips_dir) / job_record.id).resolve()
-    clip_path = (job_dir / clip_name).resolve()
-    if not clip_path.is_relative_to(job_dir) or not clip_path.is_file():
-        raise HTTPException(status_code=404, detail="Clip not found")
-
-    # Return file with attachment disposition (forces download)
-    return FileResponse(
-        path=clip_path,
-        filename=clip_path.name,
-        media_type="video/mp4",
-        headers={"Content-Disposition": f"attachment; filename={clip_path.name}"},
-    )
+@router.get(
+    "/jobs/{job_id}/clips/{clip_index}/media",
+    operation_id="get_private_clip_media",
+)
+@router.head(
+    "/jobs/{job_id}/clips/{clip_index}/media",
+    operation_id="head_private_clip_media",
+)
+async def private_clip_media(job_id: str, clip_index: int, request: Request, download: bool = False, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    job = await job_access_service.require_owned_job(db, job_id, user)
+    try:
+        path = resolve_clip(settings.clips_dir, job.id, clip_at(job.clips_json, clip_index))
+    except MediaNotFound:
+        raise HTTPException(status_code=404, detail="Clip not found") from None
+    size = path.stat().st_size
+    try:
+        byte_range = parse_range(request.headers.get("range"), size)
+    except InvalidRange:
+        return Response(status_code=416, headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"})
+    start, end = byte_range if byte_range else (0, size - 1)
+    headers = {"Accept-Ranges":"bytes", "Cache-Control":"private, no-store", "X-Content-Type-Options":"nosniff", "Content-Length":str(end-start+1), "Content-Disposition":f'{"attachment" if download else "inline"}; filename="{filename(path)}"'}
+    status = 206 if byte_range else 200
+    if byte_range: headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+    if request.method == "HEAD": return Response(status_code=status, headers=headers, media_type=media_type(path))
+    return StreamingResponse(stream(path, start, end), status_code=status, headers=headers, media_type=media_type(path))
 
 
 @router.get("/history")
@@ -849,7 +800,7 @@ async def get_history(
                 "clips_count": clips_count,
                 "created_at": j.created_at.isoformat(),
                 "expires_at": expires_at,
-                "clips_url": f"/clips/{j.id}",
+                "clips_url": f"/api/status/{j.id}",
                 "hashtags": hashtags,
             }
         )
@@ -869,16 +820,21 @@ if settings.is_development:
         """Return owned job state for local troubleshooting only."""
         job_record = await job_access_service.require_owned_job(db, job_id, user)
         in_memory = job_access_service.get_owned_memory_job(job_record, jobs)
+        safe_memory = dict(in_memory) if in_memory is not None else None
+        if safe_memory is not None:
+            safe_memory["clips"] = public_clip_payloads(
+                job_id, safe_memory.get("clips", [])
+            )
         db_row = {
             "id": job_record.id,
             "status": job_record.status,
             "progress": job_record.progress,
             "video_title": job_record.video_title,
             "error": job_record.error,
-            "clips_json": job_record.clips_json,
+            "clips": public_clip_payloads(job_id, job_record.clips_json),
             "created_at": job_record.created_at.isoformat()
             if job_record.created_at
             else None,
         }
 
-        return JSONResponse({"in_memory": in_memory, "db": db_row})
+        return JSONResponse({"in_memory": safe_memory, "db": db_row})

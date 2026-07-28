@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { generatorApi } from '../api'
 import { useSeoTags } from '../hooks/useSeoTags'
 import type { Clip, JobStatus } from '../types'
-import apiClient from '../api/client'
+import { getPrivateClipDownloadUrl, getPrivateClipMediaUrl } from '../utils/privateMedia'
 
 export default function JobDetailPage() {
   const { jobId } = useParams()
@@ -66,28 +66,25 @@ export default function JobDetailPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {clips.map((c, idx) => {
-                // build absolute URL to the clip file using the API client's baseURL
-                const base = (apiClient.defaults && apiClient.defaults.baseURL) || ''
-                const fileUrl = c.file?.startsWith('http') ? c.file : `${base}${c.file}`
-                const posterUrl = c.poster ? (c.poster.startsWith('http') ? c.poster : `${base}${c.poster}`) : undefined
+                const mediaUrl = getPrivateClipMediaUrl(c)
+                const downloadUrl = getPrivateClipDownloadUrl(c)
                 return (
                   <div key={idx} className="bg-white/5 border border-white/10 rounded-lg p-4">
                     <p className="text-white font-medium">{c.title ?? `Clip ${idx + 1}`}</p>
                     <p className="text-gray-400 text-sm">{Math.round(c.viral_score)} score • {c.duration}s</p>
                     <p className="mt-2 text-gray-300 text-sm">{c.hook}</p>
                     <div className="mt-3">
-                      {c.file ? (
+                      {mediaUrl ? (
                         <>
                           <video
-                            src={fileUrl}
+                            src={mediaUrl}
                             controls
-                            poster={posterUrl}
                             className="w-full rounded bg-black"
                             style={{ aspectRatio: '9/16', maxHeight: 480 }}
                           />
                           <div className="mt-2 flex items-center gap-3">
-                            <a href={fileUrl} target="_blank" rel="noreferrer" className="text-sm text-purple-300">Open</a>
-                            <a href={fileUrl} download className="text-sm text-gray-400">Download</a>
+                            <a href={mediaUrl} target="_blank" rel="noreferrer" className="text-sm text-purple-300">Open</a>
+                            {downloadUrl && <a href={downloadUrl} className="text-sm text-gray-400">Download</a>}
                           </div>
                         </>
                       ) : (

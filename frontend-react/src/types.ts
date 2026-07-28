@@ -23,6 +23,8 @@ export interface User {
 
 export interface Clip {
   file: string
+  index?: number
+  download_url?: string
   poster?: string
   duration: number
   viral_score: number

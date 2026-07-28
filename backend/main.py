@@ -8,7 +8,6 @@ Run with:
 import logging
 import os
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from dotenv import load_dotenv, find_dotenv
 
@@ -24,7 +23,6 @@ if os.getenv("APP_ENVIRONMENT") in {"development", "test"}:
         load_dotenv()
 
 from fastapi import FastAPI  # noqa: E402
-from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastapi.responses import Response, JSONResponse  # noqa: E402
 from slowapi import Limiter, _rate_limit_exceeded_handler  # noqa: E402
 from slowapi.util import get_remote_address  # noqa: E402
@@ -197,14 +195,6 @@ app.add_middleware(
 
 # Add security headers middleware (AFTER CORS)
 app.add_middleware(SecurityHeadersMiddleware)
-
-# ──────────────────────────────────────────────
-#  Static files
-# ──────────────────────────────────────────────
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-
-# Serve generated clips directly from /clips/<filename>
-app.mount("/clips", StaticFiles(directory=str(DATA_DIR / "clips")), name="clips")
 
 # NOTE: frontend is now served by Vite dev server (port 5173) or its dist/ build
 

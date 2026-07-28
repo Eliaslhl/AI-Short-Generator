@@ -8,7 +8,10 @@ Handles:
 - Clip generation
 """
 
+import asyncio
+import json
 import logging
+from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 from backend.security_logging import configure_logging
@@ -26,6 +29,9 @@ from backend.services.twitch_client import (
     TwitchClient, VideoDownloadManager, create_twitch_client, create_download_manager
 )
 from backend.services.clip_generator import ClipGenerator, create_clip_generator
+from backend.config import settings
+from backend.database import AsyncSessionLocal
+from backend.models.user import Job
 
 
 class ProcessingContext:
@@ -105,10 +111,11 @@ def process_twitch_video(
         best_highlights = _filter_highlights(ctx.highlights, max_clips)
         
         ctx.update_progress(85, "Generating clips...")
-        clips = _generate_clips(best_highlights, video_path, max_clips)
+        clips = _generate_clips(best_highlights, video_path, job_id, max_clips)
         ctx.clips = clips
-        
+
         ctx.update_progress(95, "Finalizing...")
+        asyncio.run(_persist_twitch_job_result(job_id, clips, "done", 100))
         
         return {
             "success": True,
@@ -126,6 +133,9 @@ def process_twitch_video(
             type(exc).__name__,
         )
         ctx.add_error("Processing failed")
+        asyncio.run(
+            _persist_twitch_job_result(job_id, [], "error", ctx.progress, "Processing failed")
+        )
         return {
             "success": False,
             "job_id": job_id,
@@ -316,6 +326,7 @@ def _filter_highlights(
 def _generate_clips(
     highlights: List[HighlightSegment],
     video_path: str,
+    job_id: str,
     max_clips: int = 5,
 ) -> List[Dict[str, Any]]:
     """
@@ -332,7 +343,8 @@ def _generate_clips(
     clips = []
     
     try:
-        generator = create_clip_generator(output_dir="/tmp/clips")
+        output_dir = Path(settings.clips_dir) / job_id
+        generator = create_clip_generator(output_dir=str(output_dir))
         
         # Generate clips from highlights
         for idx, highlight in enumerate(highlights[:max_clips]):
@@ -361,11 +373,7 @@ def _generate_clips(
                         "end_time": highlight.end_time,
                         "duration": highlight.end_time - highlight.start_time,
                         "score": highlight.score,
-                        "formats": {
-                            "mp4": clip_paths.get("mp4"),
-                            "webm": clip_paths.get("webm"),
-                        },
-                        "file": clip_paths.get("mp4"),  # Primary format
+                        "file": Path(clip_paths["mp4"]).name,
                     }
                     clips.append(clip_info)
                     logger.info(f"✅ Clip {idx + 1} generated successfully")
@@ -382,6 +390,29 @@ def _generate_clips(
     except Exception as e:
         logger.error(f"❌ Error in clip generation: {e}")
         return []
+
+
+async def _persist_twitch_job_result(
+    job_id: str,
+    clips: List[Dict[str, Any]],
+    status: str,
+    progress: int,
+    error: str | None = None,
+) -> None:
+    """Persist RQ output so the normal ownership and media route can serve it."""
+    try:
+        async with AsyncSessionLocal() as session:
+            job = await session.get(Job, job_id)
+            if job is None:
+                logger.warning("Twitch job was not persisted: job_id=%s", job_id)
+                return
+            job.clips_json = json.dumps(clips)
+            job.status = status
+            job.progress = progress
+            job.error = error
+            await session.commit()
+    except Exception:
+        logger.exception("Failed to persist Twitch job result: job_id=%s", job_id)
 
 
 # Register with queue system

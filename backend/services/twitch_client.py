@@ -288,12 +288,12 @@ class VideoDownloadManager:
                     actual_path = final_path
                 
                 file_size_mb = os.path.getsize(actual_path) / (1024 * 1024)
-                logger.info(f"✅ Downloaded VOD: {actual_path} ({file_size_mb:.1f} MB)")
+                logger.info("Downloaded VOD: vod_id=%s size_mb=%.1f", vod_id, file_size_mb)
                 
                 return actual_path
         
-        except Exception as e:
-            logger.error(f"❌ Failed to download VOD: {e}")
+        except Exception as exc:
+            logger.error("Twitch VOD download failed: exception_type=%s", type(exc).__name__)
             return None
     
     def get_video_duration(self, video_path: str) -> Optional[float]:

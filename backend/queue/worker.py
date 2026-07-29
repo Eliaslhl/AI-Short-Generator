@@ -12,6 +12,10 @@ import asyncio
 import json
 import logging
 import math
+import os
+import stat
+import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
@@ -36,6 +40,14 @@ from backend.config import settings
 from backend.database import AsyncSessionLocal
 from backend.models.user import Job, User
 from backend.api.routes import _decrement_platform_usage
+
+
+@dataclass(frozen=True)
+class TwitchDownloadedSource:
+    """A worker-owned source path and the workspace that owns it."""
+
+    path: str
+    workspace: Path
 
 
 class ProcessingContext:
@@ -86,6 +98,7 @@ def process_twitch_video(
         Processing result
     """
     ctx = ProcessingContext(job_id, user_id)
+    downloaded_source: Optional[TwitchDownloadedSource] = None
     
     try:
         if not asyncio.run(_begin_twitch_job(job_id, user_id)):
@@ -95,12 +108,20 @@ def process_twitch_video(
                 "error": "Job is not available for processing",
             }
         ctx.update_progress(10, "Downloading video from Twitch...")
-        video_path = _download_twitch_video(video_url, job_id)
-        if not video_path:
+        downloaded = _download_twitch_video(video_url, job_id)
+        if not downloaded:
             raise Exception("Failed to download video from Twitch")
-        video_path = str(_validate_downloaded_video(video_path))
+        if isinstance(downloaded, TwitchDownloadedSource):
+            if not _is_twitch_downloaded_source(downloaded.path, downloaded.workspace):
+                raise ValueError("Downloaded Twitch source is outside its workspace")
+            downloaded_source = downloaded
+            video_path = str(_validate_downloaded_video(downloaded_source.path))
+        else:
+            # Preserve compatibility with test doubles and legacy private callers.
+            # A bare path has no provable workspace ownership and is never deleted.
+            video_path = str(_validate_downloaded_video(downloaded))
         
-        logger.info(f"✅ Video downloaded: {video_path}")
+        logger.info("Twitch source downloaded: job_id=%s", job_id)
         ctx.update_progress(20, "Segmenting video into chunks...")
         chunks = _segment_video(video_path, chunk_duration)
         if not chunks:
@@ -160,6 +181,9 @@ def process_twitch_video(
         # RQ must see a failed execution. Returning an error dictionary marks the
         # RQ job as finished and makes polling contradict the persisted Job state.
         raise RuntimeError("Twitch processing failed") from exc
+    finally:
+        if downloaded_source is not None:
+            _cleanup_twitch_download_workspace(downloaded_source.workspace, job_id)
 
 
 def _segment_video(
@@ -216,7 +240,7 @@ def _segment_video(
 def _download_twitch_video(
     video_url: str,
     job_id: str,
-) -> Optional[str]:
+) -> Optional[TwitchDownloadedSource]:
     """
     Download a Twitch video by URL or parse and download by VOD ID.
     
@@ -227,6 +251,7 @@ def _download_twitch_video(
     Returns:
         Path to downloaded video or None
     """
+    workspace: Optional[Path] = None
     try:
         twitch = create_twitch_client()
         download_manager = create_download_manager()
@@ -235,7 +260,7 @@ def _download_twitch_video(
         parsed = twitch.parse_twitch_url(video_url)
         
         if not parsed:
-            logger.error(f"❌ Could not parse Twitch URL: {video_url}")
+            logger.error("Could not parse Twitch URL: job_id=%s", job_id)
             return None
         
         if parsed["type"] == "vod":
@@ -247,22 +272,120 @@ def _download_twitch_video(
             logger.error(f"❌ URL is not a VOD: {parsed['type']}")
             return None
         
-        # Keep downloads in a job-scoped, controlled workspace. Final clips are
-        # written separately below ``clips_dir/<job_id>``.
-        output_dir = Path(settings.clips_dir).parent / "twitch-downloads" / job_id
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / "source.mp4"
+        # Each attempt gets a dedicated workspace under the configured temporary
+        # root. Final clips are written separately below ``clips_dir/<job_id>``.
+        workspace = _create_twitch_download_workspace()
+        output_path = workspace / "source.mp4"
         video_path = download_manager.download_twitch_vod(
             video_url=video_url,
             vod_id=parsed.get("id", job_id),
             output_path=str(output_path),
         )
         
-        return video_path
+        if not video_path or not _is_twitch_downloaded_source(video_path, workspace):
+            _cleanup_twitch_download_workspace(workspace, job_id)
+            return None
+
+        return TwitchDownloadedSource(path=video_path, workspace=workspace)
         
-    except Exception as e:
-        logger.error(f"❌ Error downloading Twitch video: {e}")
+    except Exception as exc:
+        if workspace is not None:
+            _cleanup_twitch_download_workspace(workspace, job_id)
+        logger.error(
+            "Twitch source download failed: job_id=%s exception_type=%s",
+            job_id,
+            type(exc).__name__,
+        )
         return None
+
+
+def _twitch_download_temp_root() -> Path:
+    """Return the controlled root reserved for worker-owned Twitch sources."""
+    return Path(settings.video_temp_dir) / "twitch-downloads"
+
+
+def _create_twitch_download_workspace() -> Path:
+    """Create one collision-free workspace for a single worker download attempt."""
+    root = _twitch_download_temp_root()
+    root.mkdir(parents=True, exist_ok=True)
+    workspace = root / uuid.uuid4().hex
+    workspace.mkdir()
+    return workspace
+
+
+def _is_twitch_download_workspace(workspace: Path) -> bool:
+    """Accept only a real, direct child of the controlled Twitch temp root."""
+    try:
+        root = _twitch_download_temp_root().resolve(strict=False)
+        parent = workspace.parent.resolve(strict=False)
+        workspace_stat = workspace.lstat()
+    except (OSError, ValueError):
+        return False
+    return parent == root and stat.S_ISDIR(workspace_stat.st_mode) and not workspace.is_symlink()
+
+
+def _is_twitch_downloaded_source(source_path: str | Path, workspace: Path) -> bool:
+    """Return whether a source is a direct, non-symlink file in this workspace."""
+    candidate = Path(source_path)
+    try:
+        source_stat = candidate.lstat()
+    except OSError:
+        return False
+    return (
+        candidate.parent == workspace
+        and _is_twitch_download_workspace(workspace)
+        and stat.S_ISREG(source_stat.st_mode)
+        and not candidate.is_symlink()
+    )
+
+
+def _cleanup_twitch_download_workspace(workspace: Path, job_id: str) -> None:
+    """Best-effort cleanup of a verified worker-created download workspace."""
+    if not _is_twitch_download_workspace(workspace):
+        return
+    root_fd: Optional[int] = None
+    workspace_fd: Optional[int] = None
+    try:
+        root = _twitch_download_temp_root().resolve(strict=False)
+        open_flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0)
+        root_fd = os.open(root, open_flags)
+        workspace_fd = os.open(workspace.name, open_flags, dir_fd=root_fd)
+        workspace_stat = os.fstat(workspace_fd)
+        if not stat.S_ISDIR(workspace_stat.st_mode):
+            return
+        for entry_name in os.listdir(workspace_fd):
+            entry_stat = os.lstat(entry_name, dir_fd=workspace_fd)
+            if stat.S_ISREG(entry_stat.st_mode) or stat.S_ISLNK(entry_stat.st_mode):
+                os.unlink(entry_name, dir_fd=workspace_fd)
+        current_stat = os.stat(workspace.name, dir_fd=root_fd, follow_symlinks=False)
+        if (current_stat.st_dev, current_stat.st_ino) != (
+            workspace_stat.st_dev,
+            workspace_stat.st_ino,
+        ):
+            return
+        os.rmdir(workspace.name, dir_fd=root_fd)
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        logger.warning(
+            "Twitch temporary source cleanup failed: job_id=%s exception_type=%s",
+            job_id,
+            type(exc).__name__,
+        )
+    finally:
+        for file_descriptor in (workspace_fd, root_fd):
+            if file_descriptor is None:
+                continue
+            try:
+                os.close(file_descriptor)
+            except OSError as exc:
+                logger.warning(
+                    "Twitch temporary source cleanup failed: job_id=%s exception_type=%s",
+                    job_id,
+                    type(exc).__name__,
+                )
+
+
 
 
 def _validate_downloaded_video(video_path: str) -> Path:

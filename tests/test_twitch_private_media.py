@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import logging
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -153,7 +155,9 @@ def test_advanced_route_enqueues_and_executes_the_real_worker_with_local_video(
     client, session_factory = http_client
     data = _seed_users_and_job(session_factory)
     queue = _RecordingQueue()
-    source = tmp_path / "downloaded.mp4"
+    monkeypatch.setattr(settings, "video_temp_dir", str(tmp_path / "worker-tmp"))
+    workspace = worker._create_twitch_download_workspace()
+    source = workspace / "source.mp4"
     source.write_bytes(b"synthetic-video")
     clips_root = tmp_path / "clips"
     seen_segment_paths: list[str] = []
@@ -161,7 +165,11 @@ def test_advanced_route_enqueues_and_executes_the_real_worker_with_local_video(
     monkeypatch.setattr(settings, "clips_dir", str(clips_root))
     monkeypatch.setattr(advanced_routes, "get_queue", lambda: queue)
     monkeypatch.setattr(worker, "AsyncSessionLocal", session_factory)
-    monkeypatch.setattr(worker, "_download_twitch_video", lambda *_args: str(source))
+    monkeypatch.setattr(
+        worker, "_download_twitch_video", lambda *_args: worker.TwitchDownloadedSource(
+            path=str(source), workspace=workspace
+        )
+    )
 
     def segment(local_path, _chunk_duration):
         seen_segment_paths.append(local_path)
@@ -202,6 +210,7 @@ def test_advanced_route_enqueues_and_executes_the_real_worker_with_local_video(
     result = queue.invoke_like_rq()
     assert result["success"] is True
     assert seen_segment_paths == [str(source)]
+    assert not workspace.exists()
 
     async def read_result():
         async with session_factory() as session:
@@ -436,3 +445,361 @@ def test_generated_clip_validation_rejects_missing_empty_and_unsafe_references(
     )
 
     assert clips == [{"file": "valid.mp4"}]
+
+
+def _owned_twitch_source(tmp_path, monkeypatch, content=b"synthetic-video"):
+    monkeypatch.setattr(settings, "video_temp_dir", str(tmp_path / "worker-tmp"))
+    workspace = worker._create_twitch_download_workspace()
+    source = workspace / "source.mp4"
+    source.write_bytes(content)
+    return workspace, source
+
+
+def _owned_twitch_download(workspace, source):
+    return worker.TwitchDownloadedSource(path=str(source), workspace=workspace)
+
+
+def _make_twitch_job_pending(session_factory, job_id):
+    async def update_job():
+        async with session_factory() as session:
+            job = await session.get(Job, job_id)
+            job.status = "pending"
+            job.progress = 0
+            job.error = None
+            job.clips_json = json.dumps([])
+            await session.commit()
+
+    asyncio.run(update_job())
+
+
+def test_twitch_worker_cleans_owned_source_after_success_and_keeps_final_clips(
+    http_client, tmp_path, monkeypatch
+):
+    _, session_factory = http_client
+    data = _seed_users_and_job(session_factory)
+    _make_twitch_job_pending(session_factory, data["job_id"])
+    clips_root = tmp_path / "clips"
+    workspace, source = _owned_twitch_source(tmp_path, monkeypatch)
+    monkeypatch.setattr(settings, "clips_dir", str(clips_root))
+    monkeypatch.setattr(worker, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(
+        worker, "_download_twitch_video", lambda *_args: _owned_twitch_download(workspace, source)
+    )
+    monkeypatch.setattr(
+        worker,
+        "_segment_video",
+        lambda path, _duration: [{"chunk_id": "000", "path": path, "duration": 1.0}],
+    )
+    monkeypatch.setattr(
+        worker,
+        "_process_chunk",
+        lambda *_args: [SimpleNamespace(start_time=0.0, end_time=1.0, score=1.0)],
+    )
+
+    def generate(_highlights, _source, job_id, _max_clips):
+        clip = clips_root / job_id / "clip_000.mp4"
+        clip.parent.mkdir(parents=True, exist_ok=True)
+        clip.write_bytes(b"final-clip")
+        return [{"clip_id": "clip_000", "file": "clip_000.mp4"}]
+
+    monkeypatch.setattr(worker, "_generate_clips", generate)
+
+    result = worker.process_twitch_video(
+        data["job_id"], data["owner_id"], "https://www.twitch.tv/videos/123"
+    )
+
+    assert result["success"] is True
+    assert not workspace.exists()
+    assert (clips_root / data["job_id"] / "clip_000.mp4").read_bytes() == b"final-clip"
+
+
+@pytest.mark.parametrize("segment", [lambda *_args: [], lambda *_args: (_ for _ in ()).throw(OSError("boom"))])
+def test_twitch_worker_cleans_owned_source_after_segmentation_failure(
+    http_client, tmp_path, monkeypatch, segment
+):
+    _, session_factory = http_client
+    data = _seed_users_and_job(session_factory)
+    _make_twitch_job_pending(session_factory, data["job_id"])
+    workspace, source = _owned_twitch_source(tmp_path, monkeypatch)
+    monkeypatch.setattr(worker, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(
+        worker, "_download_twitch_video", lambda *_args: _owned_twitch_download(workspace, source)
+    )
+    monkeypatch.setattr(worker, "_segment_video", segment)
+
+    with pytest.raises(RuntimeError, match="Twitch processing failed"):
+        worker.process_twitch_video(
+            data["job_id"], data["owner_id"], "https://www.twitch.tv/videos/123"
+        )
+
+    assert not workspace.exists()
+
+
+def test_twitch_worker_cleans_empty_owned_source_after_validation_failure(
+    http_client, tmp_path, monkeypatch
+):
+    _, session_factory = http_client
+    data = _seed_users_and_job(session_factory)
+    _make_twitch_job_pending(session_factory, data["job_id"])
+    workspace, source = _owned_twitch_source(tmp_path, monkeypatch, content=b"")
+    monkeypatch.setattr(worker, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(
+        worker, "_download_twitch_video", lambda *_args: _owned_twitch_download(workspace, source)
+    )
+
+    with pytest.raises(RuntimeError, match="Twitch processing failed"):
+        worker.process_twitch_video(
+            data["job_id"], data["owner_id"], "https://www.twitch.tv/videos/123"
+        )
+
+    assert not workspace.exists()
+
+
+def test_twitch_worker_cleans_owned_source_when_no_clips_are_generated(
+    http_client, tmp_path, monkeypatch
+):
+    _, session_factory = http_client
+    data = _seed_users_and_job(session_factory)
+    _make_twitch_job_pending(session_factory, data["job_id"])
+    workspace, source = _owned_twitch_source(tmp_path, monkeypatch)
+    monkeypatch.setattr(worker, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(
+        worker, "_download_twitch_video", lambda *_args: _owned_twitch_download(workspace, source)
+    )
+    monkeypatch.setattr(
+        worker,
+        "_segment_video",
+        lambda path, _duration: [{"chunk_id": "000", "path": path, "duration": 1.0}],
+    )
+    monkeypatch.setattr(worker, "_process_chunk", lambda *_args: [])
+    monkeypatch.setattr(worker, "_generate_clips", lambda *_args: [])
+
+    with pytest.raises(RuntimeError, match="Twitch processing failed"):
+        worker.process_twitch_video(
+            data["job_id"], data["owner_id"], "https://www.twitch.tv/videos/123"
+        )
+
+    assert not workspace.exists()
+
+
+def test_twitch_download_cleanup_removes_partial_files_after_downloader_failure(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "video_temp_dir", str(tmp_path / "worker-tmp"))
+    monkeypatch.setattr(
+        worker,
+        "create_twitch_client",
+        lambda: SimpleNamespace(parse_twitch_url=lambda _url: {"type": "vod", "id": "123"}),
+    )
+
+    class PartialDownloader:
+        def download_twitch_vod(self, **kwargs):
+            output = Path(kwargs["output_path"])
+            output.with_suffix(".part").write_bytes(b"partial")
+            raise OSError("network failure")
+
+    monkeypatch.setattr(worker, "create_download_manager", lambda: PartialDownloader())
+
+    assert worker._download_twitch_video("https://www.twitch.tv/videos/123", "job") is None
+    assert not any(worker._twitch_download_temp_root().iterdir())
+
+
+def test_twitch_downloader_cannot_return_a_source_from_another_workspace(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings, "video_temp_dir", str(tmp_path / "worker-tmp"))
+    other_workspace = worker._create_twitch_download_workspace()
+    other_source = other_workspace / "source.mp4"
+    other_source.write_bytes(b"other-job-source")
+    monkeypatch.setattr(
+        worker,
+        "create_twitch_client",
+        lambda: SimpleNamespace(parse_twitch_url=lambda _url: {"type": "vod", "id": "123"}),
+    )
+    monkeypatch.setattr(
+        worker,
+        "create_download_manager",
+        lambda: SimpleNamespace(download_twitch_vod=lambda **_kwargs: str(other_source)),
+    )
+
+    assert worker._download_twitch_video("https://www.twitch.tv/videos/123", "job") is None
+    assert other_source.read_bytes() == b"other-job-source"
+    worker._cleanup_twitch_download_workspace(other_workspace, "other-job")
+
+
+def test_twitch_cleanup_refuses_external_paths_and_only_unlinks_symlinks(tmp_path, monkeypatch):
+    workspace, source = _owned_twitch_source(tmp_path, monkeypatch)
+    external = tmp_path / "outside.mp4"
+    external.write_bytes(b"outside")
+    source.unlink()
+    source.symlink_to(external)
+
+    worker._cleanup_twitch_download_workspace(workspace, "job")
+
+    assert external.read_bytes() == b"outside"
+    assert not source.exists()
+    assert not workspace.exists()
+
+    worker._cleanup_twitch_download_workspace(tmp_path, "job")
+    assert external.read_bytes() == b"outside"
+    worker._cleanup_twitch_download_workspace(tmp_path / "missing", "job")
+
+
+def test_twitch_cleanup_refuses_directories_and_logs_without_local_path(
+    tmp_path, monkeypatch, caplog
+):
+    workspace, source = _owned_twitch_source(tmp_path, monkeypatch)
+    nested = workspace / "unexpected-directory"
+    nested.mkdir()
+
+    with caplog.at_level(logging.WARNING):
+        worker._cleanup_twitch_download_workspace(workspace, "job-123")
+
+    assert not source.exists()
+    assert nested.is_dir()
+    assert workspace.is_dir()
+    assert str(workspace) not in caplog.text
+    assert "exception_type=OSError" in caplog.text
+
+
+def test_twitch_cleanup_does_not_follow_a_workspace_replaced_by_a_symlink(
+    tmp_path, monkeypatch
+):
+    workspace, source = _owned_twitch_source(tmp_path, monkeypatch)
+    external_directory = tmp_path / "external"
+    external_directory.mkdir()
+    external_file = external_directory / "keep.mp4"
+    external_file.write_bytes(b"external")
+    moved_workspace = workspace.with_name(f"{workspace.name}-moved")
+    original_listdir = os.listdir
+    swapped = False
+
+    def swap_workspace_after_open(file_descriptor):
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            workspace.rename(moved_workspace)
+            workspace.symlink_to(external_directory, target_is_directory=True)
+        return original_listdir(file_descriptor)
+
+    monkeypatch.setattr(worker.os, "listdir", swap_workspace_after_open)
+
+    worker._cleanup_twitch_download_workspace(workspace, "job")
+
+    assert external_file.read_bytes() == b"external"
+    assert not (moved_workspace / source.name).exists()
+    assert workspace.is_symlink()
+
+
+def test_twitch_worker_cleans_source_when_success_persistence_fails(
+    http_client, tmp_path, monkeypatch
+):
+    _, session_factory = http_client
+    data = _seed_users_and_job(session_factory)
+    _make_twitch_job_pending(session_factory, data["job_id"])
+    workspace, source = _owned_twitch_source(tmp_path, monkeypatch)
+    clips_root = tmp_path / "clips"
+    clip = clips_root / data["job_id"] / "clip_000.mp4"
+    clip.parent.mkdir(parents=True)
+    clip.write_bytes(b"final-clip")
+    monkeypatch.setattr(settings, "clips_dir", str(clips_root))
+    monkeypatch.setattr(worker, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(
+        worker, "_download_twitch_video", lambda *_args: _owned_twitch_download(workspace, source)
+    )
+    monkeypatch.setattr(
+        worker,
+        "_segment_video",
+        lambda path, _duration: [{"chunk_id": "000", "path": path, "duration": 1.0}],
+    )
+    monkeypatch.setattr(
+        worker,
+        "_process_chunk",
+        lambda *_args: [SimpleNamespace(start_time=0.0, end_time=1.0, score=1.0)],
+    )
+    monkeypatch.setattr(worker, "_generate_clips", lambda *_args: [{"file": "clip_000.mp4"}])
+
+    async def persist(_job_id, _clips, status, *_args, **_kwargs):
+        if status == "done":
+            raise OSError("database unavailable")
+
+    monkeypatch.setattr(worker, "_persist_twitch_job_result", persist)
+
+    with pytest.raises(RuntimeError, match="Twitch processing failed"):
+        worker.process_twitch_video(
+            data["job_id"], data["owner_id"], "https://www.twitch.tv/videos/123"
+        )
+
+    assert not workspace.exists()
+
+
+def test_twitch_worker_cleanup_does_not_mask_refund_persistence_failure(
+    http_client, tmp_path, monkeypatch
+):
+    _, session_factory = http_client
+    data = _seed_users_and_job(session_factory)
+    _make_twitch_job_pending(session_factory, data["job_id"])
+    workspace, source = _owned_twitch_source(tmp_path, monkeypatch)
+    monkeypatch.setattr(worker, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(
+        worker, "_download_twitch_video", lambda *_args: _owned_twitch_download(workspace, source)
+    )
+    monkeypatch.setattr(worker, "_segment_video", lambda *_args: [])
+
+    async def persist(*_args, **_kwargs):
+        raise OSError("database unavailable")
+
+    monkeypatch.setattr(worker, "_persist_twitch_job_result", persist)
+
+    with pytest.raises(RuntimeError, match="Twitch processing failed"):
+        worker.process_twitch_video(
+            data["job_id"], data["owner_id"], "https://www.twitch.tv/videos/123"
+        )
+
+    assert not workspace.exists()
+
+
+def test_twitch_worker_cleanup_failure_is_best_effort_and_does_not_mask_error(
+    http_client, tmp_path, monkeypatch, caplog
+):
+    _, session_factory = http_client
+    data = _seed_users_and_job(session_factory)
+    _make_twitch_job_pending(session_factory, data["job_id"])
+    workspace, source = _owned_twitch_source(tmp_path, monkeypatch)
+    monkeypatch.setattr(worker, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(
+        worker, "_download_twitch_video", lambda *_args: _owned_twitch_download(workspace, source)
+    )
+    monkeypatch.setattr(worker, "_segment_video", lambda *_args: [])
+    original_unlink = os.unlink
+
+    def fail_source_unlink(path, *args, **kwargs):
+        if path == source.name:
+            raise PermissionError("denied")
+        return original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(worker.os, "unlink", fail_source_unlink)
+
+    with caplog.at_level(logging.WARNING), pytest.raises(
+        RuntimeError, match="Twitch processing failed"
+    ):
+        worker.process_twitch_video(
+            data["job_id"], data["owner_id"], "https://www.twitch.tv/videos/123"
+        )
+
+    assert source.is_file()
+    assert "temporary source cleanup failed" in caplog.text
+    assert str(source) not in caplog.text
+    assert str(workspace) not in caplog.text
+
+
+def test_twitch_download_workspaces_are_unique_per_attempt(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "video_temp_dir", str(tmp_path / "worker-tmp"))
+    first = worker._create_twitch_download_workspace()
+    second = worker._create_twitch_download_workspace()
+
+    assert first != second
+    worker._cleanup_twitch_download_workspace(first, "job")
+    worker._cleanup_twitch_download_workspace(second, "job")
+    assert not first.exists()
+    assert not second.exists()

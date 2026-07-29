@@ -11,8 +11,11 @@ Handles:
 import asyncio
 import json
 import logging
+import math
 from pathlib import Path
 from typing import Dict, Any, Optional, List
+
+from sqlalchemy import select
 
 from backend.security_logging import configure_logging
 
@@ -31,7 +34,8 @@ from backend.services.twitch_client import (
 from backend.services.clip_generator import ClipGenerator, create_clip_generator
 from backend.config import settings
 from backend.database import AsyncSessionLocal
-from backend.models.user import Job
+from backend.models.user import Job, User
+from backend.api.routes import _decrement_platform_usage
 
 
 class ProcessingContext:
@@ -84,14 +88,23 @@ def process_twitch_video(
     ctx = ProcessingContext(job_id, user_id)
     
     try:
+        if not asyncio.run(_begin_twitch_job(job_id, user_id)):
+            return {
+                "success": False,
+                "job_id": job_id,
+                "error": "Job is not available for processing",
+            }
         ctx.update_progress(10, "Downloading video from Twitch...")
         video_path = _download_twitch_video(video_url, job_id)
         if not video_path:
             raise Exception("Failed to download video from Twitch")
+        video_path = str(_validate_downloaded_video(video_path))
         
         logger.info(f"✅ Video downloaded: {video_path}")
         ctx.update_progress(20, "Segmenting video into chunks...")
-        chunks = _segment_video(video_url, chunk_duration)
+        chunks = _segment_video(video_path, chunk_duration)
+        if not chunks:
+            raise RuntimeError("Unable to segment downloaded video")
         ctx.chunks = chunks
         logger.info(f"✅ Segmented into {len(chunks)} chunks")
         
@@ -112,6 +125,9 @@ def process_twitch_video(
         
         ctx.update_progress(85, "Generating clips...")
         clips = _generate_clips(best_highlights, video_path, job_id, max_clips)
+        clips = _validate_generated_clips(clips, job_id)
+        if not clips:
+            raise RuntimeError("No clips were generated")
         ctx.clips = clips
 
         ctx.update_progress(95, "Finalizing...")
@@ -133,17 +149,17 @@ def process_twitch_video(
             type(exc).__name__,
         )
         ctx.add_error("Processing failed")
-        asyncio.run(
-            _persist_twitch_job_result(job_id, [], "error", ctx.progress, "Processing failed")
-        )
-        return {
-            "success": False,
-            "job_id": job_id,
-            "progress": ctx.progress,
-            "step": ctx.step,
-            "error": "Processing failed",
-            "errors": ctx.errors,
-        }
+        try:
+            asyncio.run(
+                _persist_twitch_job_result(
+                    job_id, [], "error", ctx.progress, "Processing failed", refund_quota=True
+                )
+            )
+        except Exception:
+            logger.exception("Failed to persist Twitch job failure: job_id=%s", job_id)
+        # RQ must see a failed execution. Returning an error dictionary marks the
+        # RQ job as finished and makes polling contradict the persisted Job state.
+        raise RuntimeError("Twitch processing failed") from exc
 
 
 def _segment_video(
@@ -165,12 +181,12 @@ def _segment_video(
         download_manager = create_download_manager()
         duration = download_manager.get_video_duration(video_path)
         
-        if not duration:
+        if not duration or duration <= 0:
             logger.error(f"❌ Could not determine video duration")
             return []
         
         # Calculate number of chunks
-        num_chunks = max(1, int(duration / chunk_duration))
+        num_chunks = max(1, math.ceil(duration / chunk_duration))
         chunks = []
         
         for i in range(num_chunks):
@@ -179,13 +195,13 @@ def _segment_video(
             chunk_dur = min(chunk_duration, duration - start_time)
             
             chunk_id = f"{i:03d}"
-            chunk_path = f"/tmp/chunk_{chunk_id}.mp4"
-            
             chunks.append({
                 "chunk_id": chunk_id,
                 "start_time": start_time,
                 "duration": chunk_dur,
-                "path": chunk_path,
+                # Processors receive the downloaded local video, never the Twitch URL.
+                # Chunk timing remains metadata for the highlight detector and renderer.
+                "path": video_path,
                 "original_video": video_path,
             })
         
@@ -231,12 +247,15 @@ def _download_twitch_video(
             logger.error(f"❌ URL is not a VOD: {parsed['type']}")
             return None
         
-        # Download video
-        output_path = f"/tmp/{job_id}_vod.mp4"
+        # Keep downloads in a job-scoped, controlled workspace. Final clips are
+        # written separately below ``clips_dir/<job_id>``.
+        output_dir = Path(settings.clips_dir).parent / "twitch-downloads" / job_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / "source.mp4"
         video_path = download_manager.download_twitch_vod(
             video_url=video_url,
             vod_id=parsed.get("id", job_id),
-            output_path=output_path,
+            output_path=str(output_path),
         )
         
         return video_path
@@ -244,6 +263,19 @@ def _download_twitch_video(
     except Exception as e:
         logger.error(f"❌ Error downloading Twitch video: {e}")
         return None
+
+
+def _validate_downloaded_video(video_path: str) -> Path:
+    """Reject failed or non-video downloads before any local video processing."""
+    path = Path(video_path)
+    if (
+        not path.is_file()
+        or path.is_symlink()
+        or path.stat().st_size <= 0
+        or path.suffix.lower() not in {".mp4", ".mov", ".mkv", ".webm"}
+    ):
+        raise ValueError("Downloaded Twitch video is invalid")
+    return path
 
 
 def _process_chunk(
@@ -344,6 +376,12 @@ def _generate_clips(
     
     try:
         output_dir = Path(settings.clips_dir) / job_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+        # RQ may retry a job. Remove deterministic prior outputs so persisted
+        # metadata can never mix clips from two attempts.
+        for prior_clip in output_dir.glob("clip_*"):
+            if prior_clip.is_file() or prior_clip.is_symlink():
+                prior_clip.unlink()
         generator = create_clip_generator(output_dir=str(output_dir))
         
         # Generate clips from highlights
@@ -392,27 +430,68 @@ def _generate_clips(
         return []
 
 
+def _validate_generated_clips(clips: List[Dict[str, Any]], job_id: str) -> List[Dict[str, Any]]:
+    """Keep only non-empty, job-local clip files safe to persist in ``clips_json``."""
+    job_root = (Path(settings.clips_dir) / job_id).resolve()
+    validated: List[Dict[str, Any]] = []
+    for clip in clips:
+        reference = clip.get("file") if isinstance(clip, dict) else None
+        if (
+            not isinstance(reference, str)
+            or Path(reference).name != reference
+            or reference.startswith(".")
+            or any(character in reference for character in ("\\", ":", "\r", "\n", "\x00"))
+        ):
+            continue
+        candidate = (job_root / reference).resolve()
+        try:
+            candidate.relative_to(job_root)
+        except ValueError:
+            continue
+        if candidate.is_file() and not candidate.is_symlink() and candidate.stat().st_size > 0:
+            validated.append(clip)
+    return validated
+
+
+async def _begin_twitch_job(job_id: str, user_id: str) -> bool:
+    """Atomically reserve a pending job for one worker invocation."""
+    async with AsyncSessionLocal() as session:
+        job = await session.scalar(
+            select(Job).where(Job.id == job_id).with_for_update()
+        )
+        if job is None or job.user_id != user_id or job.status != "pending":
+            return False
+        job.status = "processing"
+        job.progress = 0
+        job.error = None
+        job.clips_json = json.dumps([])
+        await session.commit()
+        return True
+
+
 async def _persist_twitch_job_result(
     job_id: str,
     clips: List[Dict[str, Any]],
     status: str,
     progress: int,
     error: str | None = None,
+    refund_quota: bool = False,
 ) -> None:
     """Persist RQ output so the normal ownership and media route can serve it."""
-    try:
-        async with AsyncSessionLocal() as session:
-            job = await session.get(Job, job_id)
-            if job is None:
-                logger.warning("Twitch job was not persisted: job_id=%s", job_id)
-                return
-            job.clips_json = json.dumps(clips)
-            job.status = status
-            job.progress = progress
-            job.error = error
-            await session.commit()
-    except Exception:
-        logger.exception("Failed to persist Twitch job result: job_id=%s", job_id)
+    async with AsyncSessionLocal() as session:
+        job = await session.get(Job, job_id)
+        if job is None:
+            logger.warning("Twitch job was not persisted: job_id=%s", job_id)
+            return
+        if refund_quota and job.status == "processing":
+            user = await session.get(User, job.user_id)
+            if user is not None:
+                _decrement_platform_usage(user, "twitch")
+        job.clips_json = json.dumps(clips)
+        job.status = status
+        job.progress = progress
+        job.error = error
+        await session.commit()
 
 
 # Register with queue system

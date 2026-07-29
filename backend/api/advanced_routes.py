@@ -9,9 +9,11 @@ GET  /api/status/twitch/{job_id} – Get detailed job status
 import logging
 import uuid
 from typing import Dict, Any
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.auth.dependencies import get_current_user
@@ -21,15 +23,47 @@ from backend.queue.redis_queue import get_queue
 from backend.queue.worker import process_twitch_video
 from backend.services.job_access_service import job_access_service
 from backend.services.private_media_service import public_clip_payloads
+from backend.api.routes import (
+    _decrement_platform_usage,
+    _get_platform_limit,
+    _get_platform_plan,
+    _get_platform_usage,
+    _increment_platform_usage,
+    _reset_platform_counter_if_new_month,
+)
 
 logger = logging.getLogger(__name__)
 advanced_router = APIRouter()
 
 
+def _is_twitch_vod_url(value: str) -> bool:
+    """Accept only canonical Twitch VOD URLs supported by the worker."""
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        return False
+    hostname = (parsed.hostname or "").lower().rstrip(".")
+    parts = parsed.path.rstrip("/").split("/")
+    return (
+        parsed.scheme in {"http", "https"}
+        and hostname in {"twitch.tv", "www.twitch.tv"}
+        and parsed.username is None
+        and parsed.password is None
+        and port in {None, 80 if parsed.scheme == "http" else 443}
+        and not parsed.query
+        and not parsed.fragment
+        and len(parts) == 3
+        and parts[0] == ""
+        and parts[1] == "videos"
+        and parts[2].isdigit()
+    )
+
+
 class TwitchAdvancedRequest(BaseModel):
     """Request for advanced Twitch video processing."""
     url: str
-    max_clips: int = 5
+    max_clips: int = Field(default=5, ge=1, le=20)
     language: str = "en"
 
 
@@ -51,7 +85,7 @@ class TwitchStatusResponse(BaseModel):
     error: str | None = None
 
 
-@advanced_router.post("/api/generate/twitch/advanced", response_model=TwitchAdvancedResponse)
+@advanced_router.post("/generate/twitch/advanced", response_model=TwitchAdvancedResponse)
 async def generate_twitch_advanced(
     req: TwitchAdvancedRequest,
     current_user: User = Depends(get_current_user),
@@ -73,11 +107,42 @@ async def generate_twitch_advanced(
     Returns:
         Job info with ID for status polling
     """
-    logger.info(f"🚀 Starting advanced Twitch processing for user {current_user.id}")
+    logger.info("Starting advanced Twitch processing for user %s", current_user.id)
     
     # Validate URL
-    if not req.url or "twitch.tv" not in req.url:
+    if not _is_twitch_vod_url(req.url):
         raise HTTPException(status_code=400, detail="Invalid Twitch URL")
+
+    platform = "twitch"
+    await _reset_platform_counter_if_new_month(current_user, db, platform)
+    # Serialize quota decisions for this user on PostgreSQL. The counter reset
+    # commits independently, so acquire the row lock only for the final check,
+    # consumption, and Job creation transaction below.
+    locked_user = await db.scalar(
+        select(User).where(User.id == current_user.id).with_for_update()
+    )
+    if locked_user is None:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+    current_user = locked_user
+    usage = _get_platform_usage(current_user, platform)
+    limit = _get_platform_limit(current_user, platform)
+    if usage >= limit:
+        plan_obj = _get_platform_plan(current_user, platform)
+        plan_name = plan_obj.value if hasattr(plan_obj, "value") else str(plan_obj)
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "error": "quota_exceeded",
+                "message": (
+                    f"You've used all {limit} of your {plan_name} plan generations "
+                    "this month for Twitch."
+                ),
+                "platform": platform,
+                "limit": limit,
+                "used": usage,
+                "upgrade_url": "/pricing",
+            },
+        )
     
     # Create job ID
     job_id = str(uuid.uuid4())
@@ -90,6 +155,7 @@ async def generate_twitch_advanced(
         progress=0,
     )
     db.add(job)
+    _increment_platform_usage(current_user, platform)
     try:
         await db.commit()
     except Exception:
@@ -101,16 +167,16 @@ async def generate_twitch_advanced(
     try:
         queue.enqueue(
             process_twitch_video,
+            job_id,
+            str(current_user.id),
+            req.url,
             job_id=job_id,
             meta={"user_id": current_user.id},
-            args=(job_id, str(current_user.id), req.url),
-            kwargs={
-                "max_clips": req.max_clips,
-                "language": req.language,
-            },
+            max_clips=req.max_clips,
+            language=req.language,
         )
         
-        logger.info(f"📨 Enqueued job {job_id}")
+        logger.info("Enqueued advanced Twitch job %s", job_id)
         
         return {
             "job_id": job_id,
@@ -121,6 +187,7 @@ async def generate_twitch_advanced(
     
     except Exception as exc:
         await db.delete(job)
+        _decrement_platform_usage(current_user, platform)
         try:
             await db.commit()
         except Exception:
@@ -132,7 +199,7 @@ async def generate_twitch_advanced(
         raise HTTPException(status_code=500, detail="Failed to start processing")
 
 
-@advanced_router.get("/api/status/twitch/{job_id}", response_model=TwitchStatusResponse)
+@advanced_router.get("/status/twitch/{job_id}", response_model=TwitchStatusResponse)
 async def get_twitch_status(
     job_id: str,
     current_user: User = Depends(get_current_user),
@@ -183,7 +250,7 @@ async def get_twitch_status(
         raise HTTPException(status_code=500, detail="Failed to get job status")
 
 
-@advanced_router.delete("/api/jobs/{job_id}")
+@advanced_router.delete("/jobs/{job_id}")
 async def cancel_job(
     job_id: str,
     current_user: User = Depends(get_current_user),

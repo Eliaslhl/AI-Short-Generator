@@ -272,9 +272,9 @@ def test_http_rq_owner_can_read_and_cancel(http_client, monkeypatch):
     queue = _Queue(_RQJob({"user_id": data["owner_id"]}))
     monkeypatch.setattr(advanced_routes, "get_queue", lambda: queue)
 
-    status = client.get("/api/api/status/twitch/rq-job", headers=owner_headers)
+    status = client.get("/api/status/twitch/rq-job", headers=owner_headers)
     cancelled = client.delete(
-        "/api/api/jobs/rq-job", headers={**owner_headers, "Origin": "http://localhost:5173"}
+        "/api/jobs/rq-job", headers={**owner_headers, "Origin": "http://localhost:5173"}
     )
 
     assert status.status_code == 200
@@ -291,9 +291,9 @@ def test_http_rq_foreign_user_cannot_read_or_cancel(http_client, monkeypatch):
     queue = _Queue(_RQJob({"user_id": data["owner_id"]}))
     monkeypatch.setattr(advanced_routes, "get_queue", lambda: queue)
 
-    status = client.get("/api/api/status/twitch/rq-job", headers=other_headers)
+    status = client.get("/api/status/twitch/rq-job", headers=other_headers)
     cancelled = client.delete(
-        "/api/api/jobs/rq-job", headers={**other_headers, "Origin": "http://localhost:5173"}
+        "/api/jobs/rq-job", headers={**other_headers, "Origin": "http://localhost:5173"}
     )
 
     assert status.status_code == 404
@@ -318,7 +318,7 @@ def test_http_rq_missing_or_invalid_owner_metadata_returns_404(
     owner_headers = _headers(session_factory, data["owner_id"], data["owner_email"])
     monkeypatch.setattr(advanced_routes, "get_queue", lambda: _Queue(job))
 
-    response = client.get("/api/api/status/twitch/rq-job", headers=owner_headers)
+    response = client.get("/api/status/twitch/rq-job", headers=owner_headers)
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Job not found"}
@@ -331,9 +331,9 @@ def test_http_rq_unavailable_returns_503_for_status_and_cancel(http_client, monk
     queue = _Queue(error=QueueBackendUnavailableError("Redis unavailable"))
     monkeypatch.setattr(advanced_routes, "get_queue", lambda: queue)
 
-    status = client.get("/api/api/status/twitch/rq-job", headers=owner_headers)
+    status = client.get("/api/status/twitch/rq-job", headers=owner_headers)
     cancelled = client.delete(
-        "/api/api/jobs/rq-job", headers={**owner_headers, "Origin": "http://localhost:5173"}
+        "/api/jobs/rq-job", headers={**owner_headers, "Origin": "http://localhost:5173"}
     )
 
     assert status.status_code == cancelled.status_code == 503

@@ -114,7 +114,7 @@ def test_twitch_status_uses_private_clip_payloads(http_client, monkeypatch):
     )
 
     response = client.get(
-        "/api/api/status/twitch/rq-job",
+        "/api/status/twitch/rq-job",
         headers=_headers(session_factory, data["owner_id"], data["owner_email"]),
     )
 

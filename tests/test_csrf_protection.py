@@ -240,7 +240,7 @@ def test_cookie_job_deletion_is_rejected_before_queue_access(csrf_client, monkey
 
     monkeypatch.setattr("backend.api.advanced_routes.get_queue", queue_must_not_be_used)
 
-    response = client.delete("/api/api/jobs/foreign-job")
+    response = client.delete("/api/jobs/foreign-job")
 
     assert response.status_code == 403
     assert response.json() == {"detail": "Untrusted request origin"}
@@ -257,7 +257,7 @@ def test_cookie_advanced_generation_is_rejected_before_rq_enqueue(csrf_client, m
     monkeypatch.setattr("backend.api.advanced_routes.get_queue", queue_must_not_be_used)
 
     response = client.post(
-        "/api/api/generate/twitch/advanced", json={"url": "https://twitch.tv/channel"}
+        "/api/generate/twitch/advanced", json={"url": "https://twitch.tv/channel"}
     )
 
     assert response.status_code == 403

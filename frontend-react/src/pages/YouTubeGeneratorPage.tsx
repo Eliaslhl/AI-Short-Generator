@@ -194,7 +194,7 @@ export default function YouTubeGeneratorPage() {
   const [maxClips, setMaxClips] = useState(3)
   const [language, setLanguage] = useState('')
   const [subtitleStyle, setSubtitleStyle] = useState('default')
-  const [includeSubtitles, setIncludeSubtitles] = useState(true)
+  const includeSubtitles = true
 
   useSeoTags({
     title: 'YouTube to Shorts Converter - AI-Powered Video Clipping',

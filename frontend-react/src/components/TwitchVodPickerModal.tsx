@@ -25,7 +25,6 @@ export default function TwitchVodPickerModal({ isOpen, onClose, onSelect, isLoad
   const [vods, setVods] = useState<TwitchVod[]>([])
   const [isFetching, setIsFetching] = useState(false)
   const [error, setError] = useState('')
-  const [selectedVod, setSelectedVod] = useState<TwitchVod | null>(null)
 
   const handleSearch = async () => {
     if (!channelInput.trim()) {
@@ -36,7 +35,6 @@ export default function TwitchVodPickerModal({ isOpen, onClose, onSelect, isLoad
     setError('')
     setIsFetching(true)
     setVods([])
-    setSelectedVod(null)
 
     try {
       const res = await generatorApi.twitchVods(channelInput.trim(), 20)
@@ -57,7 +55,6 @@ export default function TwitchVodPickerModal({ isOpen, onClose, onSelect, isLoad
       onSelect(vod.url, vod.title || 'Twitch VOD')
       setChannelInput('')
       setVods([])
-      setSelectedVod(null)
       onClose()
     }
   }

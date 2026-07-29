@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { PlayCircle, TrendingUp, ArrowRight } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { useSeoTags } from '../hooks/useSeoTags'
 
 export default function SourceSelectorPage() {

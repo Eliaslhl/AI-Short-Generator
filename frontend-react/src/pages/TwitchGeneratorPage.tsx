@@ -206,7 +206,7 @@ export default function TwitchGeneratorPage() {
   const [maxClips, setMaxClips] = useState(3)
   const [language, setLanguage] = useState('')
   const [subtitleStyle, setSubtitleStyle] = useState('default')
-  const [includeSubtitles, setIncludeSubtitles] = useState(true)
+  const includeSubtitles = true
 
   useSeoTags({
     title: 'Twitch VOD to Clips - AI Video Generator',
@@ -640,7 +640,7 @@ export default function TwitchGeneratorPage() {
         <TwitchVodPickerModal
           isOpen={isVodPickerOpen}
           onClose={() => setIsVodPickerOpen(false)}
-          onSelect={(vodUrl, vodTitle) => {
+          onSelect={(vodUrl) => {
             setUrl(vodUrl)
             setStatus(null)
             setError('')

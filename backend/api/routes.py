@@ -40,16 +40,31 @@ from backend.services.private_media_service import (
     InvalidRange,
     MediaNotFound,
     clip_at,
+    close_clip,
     filename,
     media_type,
+    open_clip,
     parse_range,
     public_clip_payloads,
-    resolve_clip,
     stream,
 )
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+class _PrivateMediaStreamingResponse(StreamingResponse):
+    """Close the owned descriptor even when ASGI aborts a stream early."""
+
+    def __init__(self, opened_clip, start: int, end: int, **kwargs):
+        self._opened_clip = opened_clip
+        super().__init__(stream(opened_clip, start, end), **kwargs)
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            close_clip(self._opened_clip)
 
 # ── In-memory job store (progress tracking) ─────────────────────────────────
 jobs: Dict[str, Dict[str, Any]] = {}
@@ -749,20 +764,23 @@ async def get_clips(
 async def private_clip_media(job_id: str, clip_index: int, request: Request, download: bool = False, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     job = await job_access_service.require_owned_job(db, job_id, user)
     try:
-        path = resolve_clip(settings.clips_dir, job.id, clip_at(job.clips_json, clip_index))
+        opened_clip = open_clip(settings.clips_dir, job.id, clip_at(job.clips_json, clip_index))
     except MediaNotFound:
         raise HTTPException(status_code=404, detail="Clip not found") from None
-    size = path.stat().st_size
+    size = opened_clip.size
     try:
         byte_range = parse_range(request.headers.get("range"), size)
     except InvalidRange:
+        close_clip(opened_clip)
         return Response(status_code=416, headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"})
     start, end = byte_range if byte_range else (0, size - 1)
-    headers = {"Accept-Ranges":"bytes", "Cache-Control":"private, no-store", "X-Content-Type-Options":"nosniff", "Content-Length":str(end-start+1), "Content-Disposition":f'{"attachment" if download else "inline"}; filename="{filename(path)}"'}
+    headers = {"Accept-Ranges":"bytes", "Cache-Control":"private, no-store", "X-Content-Type-Options":"nosniff", "Content-Length":str(end-start+1), "Content-Disposition":f'{"attachment" if download else "inline"}; filename="{filename(opened_clip.name)}"'}
     status = 206 if byte_range else 200
     if byte_range: headers["Content-Range"] = f"bytes {start}-{end}/{size}"
-    if request.method == "HEAD": return Response(status_code=status, headers=headers, media_type=media_type(path))
-    return StreamingResponse(stream(path, start, end), status_code=status, headers=headers, media_type=media_type(path))
+    if request.method == "HEAD":
+        close_clip(opened_clip)
+        return Response(status_code=status, headers=headers, media_type=media_type(opened_clip.name))
+    return _PrivateMediaStreamingResponse(opened_clip, start, end, status_code=status, headers=headers, media_type=media_type(opened_clip.name))
 
 
 @router.get("/history")

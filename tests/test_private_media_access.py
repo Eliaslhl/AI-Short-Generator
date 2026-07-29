@@ -1,16 +1,21 @@
 import asyncio
 import json
+import os
 
 import pytest
 from sqlalchemy import select
 
+import backend.api.routes as routes
+import backend.services.private_media_service as private_media_service
 from backend.config import settings
 from backend.models.user import Job
 from backend.services.private_media_service import (
     InvalidRange,
     MediaNotFound,
     clip_at,
+    open_clip,
     parse_range,
+    stream,
     validated_clip_filename,
 )
 from test_job_authorization import _headers, _seed_users_and_job, http_client
@@ -45,6 +50,178 @@ def test_historical_reference_validation_requires_an_exact_safe_format():
     ):
         with pytest.raises(MediaNotFound):
             validated_clip_filename(value, "job-a")
+
+
+def test_open_clip_refuses_platforms_without_atomic_nofollow_support(tmp_path, monkeypatch):
+    job_dir = tmp_path / "job-a"
+    job_dir.mkdir()
+    (job_dir / "clip.mp4").write_bytes(b"safe")
+    monkeypatch.setattr(private_media_service.os, "O_NOFOLLOW", 0)
+
+    with pytest.raises(MediaNotFound):
+        open_clip(str(tmp_path), "job-a", {"file": "clip.mp4"})
+
+
+def test_open_clip_rejects_symlink_swapped_immediately_before_opening(tmp_path, monkeypatch):
+    job_dir = tmp_path / "job-a"
+    job_dir.mkdir()
+    media = job_dir / "clip.mp4"
+    media.write_bytes(b"safe")
+    secret = tmp_path / "secret.mp4"
+    secret.write_bytes(b"secret")
+    real_open = private_media_service.os.open
+
+    def replace_with_symlink(path, flags, *args, **kwargs):
+        if path == "clip.mp4" and kwargs.get("dir_fd") is not None:
+            media.unlink()
+            media.symlink_to(secret)
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(private_media_service.os, "open", replace_with_symlink)
+
+    with pytest.raises(MediaNotFound):
+        open_clip(str(tmp_path), "job-a", {"file": "clip.mp4"})
+
+
+def test_open_clip_streams_original_inode_after_name_replacement(tmp_path):
+    job_dir = tmp_path / "job-a"
+    job_dir.mkdir()
+    media = job_dir / "clip.mp4"
+    media.write_bytes(b"original")
+    opened = open_clip(str(tmp_path), "job-a", {"file": "clip.mp4"})
+    replacement = job_dir / "replacement.mp4"
+    replacement.write_bytes(b"replacement")
+    os.replace(replacement, media)
+
+    fd = opened.fd
+    assert b"".join(stream(opened, 0, opened.size - 1)) == b"original"
+    assert media.read_bytes() == b"replacement"
+    with pytest.raises(OSError):
+        os.fstat(fd)
+
+
+def test_open_clip_streams_unlinked_inode_and_rejects_non_regular_files(tmp_path):
+    job_dir = tmp_path / "job-a"
+    job_dir.mkdir()
+    media = job_dir / "clip.mp4"
+    media.write_bytes(b"original")
+    opened = open_clip(str(tmp_path), "job-a", {"file": "clip.mp4"})
+    media.unlink()
+
+    fd = opened.fd
+    assert b"".join(stream(opened, 0, opened.size - 1)) == b"original"
+    with pytest.raises(OSError):
+        os.fstat(fd)
+    (job_dir / "directory.mp4").mkdir()
+    with pytest.raises(MediaNotFound):
+        open_clip(str(tmp_path), "job-a", {"file": "directory.mp4"})
+
+
+def test_open_clip_rejects_unsafe_job_ids_and_fifos(tmp_path):
+    job_dir = tmp_path / "job-a"
+    job_dir.mkdir()
+    (job_dir / "clip.mp4").write_bytes(b"safe")
+    for job_id in ("", ".", "..", "../job-a", "job-a/child", "job-a\\child"):
+        with pytest.raises(MediaNotFound):
+            open_clip(str(tmp_path), job_id, {"file": "clip.mp4"})
+    fifo = job_dir / "fifo.mp4"
+    os.mkfifo(fifo)
+    with pytest.raises(MediaNotFound):
+        open_clip(str(tmp_path), "job-a", {"file": "fifo.mp4"})
+
+
+def test_open_clip_rejects_same_directory_symlinks_and_hard_links(tmp_path):
+    job_dir = tmp_path / "job-a"
+    job_dir.mkdir()
+    target = job_dir / "target.mp4"
+    target.write_bytes(b"private")
+    symlink = job_dir / "linked.mp4"
+    try:
+        symlink.symlink_to(target)
+    except OSError as exc:
+        pytest.skip(f"symlinks unavailable: {exc}")
+
+    with pytest.raises(MediaNotFound):
+        open_clip(str(tmp_path), "job-a", {"file": "linked.mp4"})
+    os.link(target, job_dir / "hard-linked.mp4")
+    with pytest.raises(MediaNotFound):
+        open_clip(str(tmp_path), "job-a", {"file": "hard-linked.mp4"})
+
+
+def test_open_clip_rejects_symlinked_job_directory(tmp_path):
+    real_job_dir = tmp_path / "real-job"
+    real_job_dir.mkdir()
+    (real_job_dir / "clip.mp4").write_bytes(b"private")
+    try:
+        (tmp_path / "job-a").symlink_to(real_job_dir, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"symlinks unavailable: {exc}")
+
+    with pytest.raises(MediaNotFound):
+        open_clip(str(tmp_path), "job-a", {"file": "clip.mp4"})
+
+
+def test_private_media_responses_close_opened_descriptors(http_client, tmp_path, monkeypatch):
+    client, session_factory = http_client
+    data = _seed_users_and_job(session_factory)
+    media = tmp_path / data["job_id"] / "clip.mp4"
+    media.parent.mkdir()
+    media.write_bytes(b"0123456789")
+    monkeypatch.setattr(settings, "clips_dir", str(tmp_path))
+    actual_open_clip = private_media_service.open_clip
+    opened = []
+
+    def record_open(*args, **kwargs):
+        result = actual_open_clip(*args, **kwargs)
+        opened.append((result, result.fd))
+        return result
+
+    monkeypatch.setattr(routes, "open_clip", record_open)
+    headers = _headers(session_factory, data["owner_id"], data["owner_email"])
+    path = f"/api/jobs/{data['job_id']}/clips/0/media"
+
+    assert client.get(path, headers=headers).content == b"0123456789"
+    assert client.get(path, headers={**headers, "Range": "bytes=0-0"}).content == b"0"
+    assert client.head(path, headers=headers).status_code == 200
+    assert client.get(path, headers={**headers, "Range": "bytes=10-"}).status_code == 416
+    assert len(opened) == 4
+    for opened_clip, fd in opened:
+        assert opened_clip.fd is None
+        with pytest.raises(OSError):
+            os.fstat(fd)
+
+
+def test_private_media_response_closes_descriptor_when_asgi_streaming_fails(
+    tmp_path, monkeypatch
+):
+    job_dir = tmp_path / "job-a"
+    job_dir.mkdir()
+    (job_dir / "clip.mp4").write_bytes(b"0123456789")
+    opened = open_clip(str(tmp_path), "job-a", {"file": "clip.mp4"})
+    fd = opened.fd
+    response = routes._PrivateMediaStreamingResponse(
+        opened,
+        0,
+        opened.size - 1,
+        media_type="video/mp4",
+    )
+
+    async def fail_streaming(*_args, **_kwargs):
+        raise OSError("simulated client disconnect")
+
+    monkeypatch.setattr(routes.StreamingResponse, "__call__", fail_streaming)
+
+    with pytest.raises(OSError, match="simulated client disconnect"):
+        asyncio.run(
+            response(
+                {"type": "http", "asgi": {"spec_version": "2.4"}},
+                None,
+                None,
+            )
+        )
+    assert opened.fd is None
+    with pytest.raises(OSError):
+        os.fstat(fd)
 
 
 def test_owner_can_read_private_clip(http_client, tmp_path, monkeypatch):

@@ -235,6 +235,18 @@ YouTube URL
 | `POST` | `/auth/reset-password` | Set new password |
 | `GET` | `/docs` | Swagger UI |
 
+### Sessions et médias privés
+
+Le frontend s’authentifie avec une session opaque dans un cookie `HttpOnly`, pas
+avec un JWT ou un Bearer token dans le navigateur. Les appels frontend utilisent
+`credentials: "include"`; les requêtes mutatives authentifiées doivent venir de
+l’origine configurée dans `FRONTEND_URL`.
+
+Les clips ne sont pas publics. Le polling d’un job renvoie des URL privées telles
+que `/api/jobs/{job_id}/clips/{clip_index}/media`. `GET` et `HEAD` exigent le
+cookie de session et vérifient le propriétaire (`404` pour un autre utilisateur,
+`401` sans session). La route prend en charge `Range` et `?download=true`.
+
 ---
 
 ## 🧪 Useful Scripts
@@ -438,8 +450,8 @@ The `broll_service.py` will automatically match keywords from transcript segment
 |---|---|---|
 | `POST` | `/api/generate` | Start a generation job |
 | `GET` | `/api/status/{job_id}` | Poll job progress |
-| `GET` | `/api/clips/{job_id}` | List finished clips |
-| `GET` | `/clips/{job_id}/{file}` | Download a clip file |
+| `GET` | `/api/clips/{job_id}` | List private clip metadata for an owned job |
+| `GET` / `HEAD` | `/api/jobs/{job_id}/clips/{clip_index}/media` | Read a private clip (`?download=true` to download) |
 | `GET` | `/docs` | Interactive Swagger UI |
 
 ### POST /api/generate

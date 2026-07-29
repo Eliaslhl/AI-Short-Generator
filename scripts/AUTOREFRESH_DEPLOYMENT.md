@@ -178,8 +178,9 @@ Example simple :
 
 ```bash
 # Terminal 1 : start service
+PROJECT_ROOT="$(pwd)"
 export YOUTUBE_ENABLE_AUTO_REFRESH=true
-export YOUTUBE_BROWSER_PROFILE_DIR=/Users/elias/youtube_profile
+export YOUTUBE_BROWSER_PROFILE_DIR="$PROJECT_ROOT/data/youtube_profile"
 export YOUTUBE_AUTO_REFRESH_HEADLESS=true
 python3 -m backend.main  # ou votre commande de démarrage du service
 

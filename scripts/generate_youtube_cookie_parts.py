@@ -3,9 +3,9 @@
 
 Usage:
   python3 scripts/generate_youtube_cookie_parts.py \
-    --input /Users/elias/Downloads/www.youtube.com_cookies.txt \
+    --input path/to/cookies.txt \
     --parts 8 \
-    --out /tmp/railway_youtube_cookie_parts.env
+    --out path/to/youtube_cookie_parts.env
 """
 
 from __future__ import annotations
@@ -26,12 +26,14 @@ def main() -> int:
     src = Path(args.input)
     out = Path(args.out)
 
-    if not src.exists():
+    if not src.is_file():
         raise SystemExit(f"Input not found: {src}")
     if args.parts < 1:
         raise SystemExit("--parts must be >= 1")
 
     raw = src.read_bytes()
+    if not raw:
+        raise SystemExit("Input cookies file is empty")
     b64 = base64.b64encode(raw).decode("ascii")
     sha_raw = hashlib.sha256(raw).hexdigest()
 
@@ -46,7 +48,7 @@ def main() -> int:
         raise SystemExit("Integrity check failed while rebuilding base64 parts")
 
     lines: list[str] = []
-    lines.append(f"# SOURCE_FILE={src}")
+    lines.append(f"# SOURCE_FILE={src.name}")
     lines.append(f"# TOTAL_B64_LEN={len(b64)}")
     lines.append(f"# PARTS={len(parts)}")
     lines.append(f"# PART_SIZE={part_size}")

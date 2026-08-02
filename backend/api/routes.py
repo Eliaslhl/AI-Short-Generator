@@ -699,21 +699,31 @@ async def get_status(
     import json
 
     clips = json.loads(job_record.clips_json) if job_record.clips_json else []
-    step = (
-        "done"
-        if job_record.status == "done"
-        else ("Processing failed" if job_record.status == "error" else job_record.status)
-    )
-    progress = 100 if job_record.status == "done" else 0
+    if job_record.status == "done":
+        step = "done"
+    elif job_record.status == "error":
+        step = job_record.message or "Processing failed"
+    else:
+        # job_record.message carries the real, persisted pipeline step (e.g.
+        # RQ workers write it incrementally) once available; otherwise fall
+        # back to the raw status ("pending"/"processing").
+        step = job_record.message or job_record.status
+    progress = 100 if job_record.status == "done" else job_record.progress
 
-    # Restore into memory so subsequent polls are fast
-    jobs[job_id] = {
-        "status": job_record.status,
-        "progress": progress,
-        "step": step,
-        "clips": clips,
-        "user_id": user.id,
-    }
+    # Only cache a *terminal* result: a job still processing keeps changing
+    # in the DB (RQ workers persist progress there — they never touch this
+    # in-memory dict directly, being a separate OS process), and this fast
+    # path never re-checks the DB once populated. Caching an in-progress
+    # snapshot would freeze every later poll at that snapshot for the rest
+    # of the job's run.
+    if job_record.status in ("done", "error"):
+        jobs[job_id] = {
+            "status": job_record.status,
+            "progress": progress,
+            "step": step,
+            "clips": clips,
+            "user_id": user.id,
+        }
     normalized = public_clip_payloads(job_id, clips)
     return StatusResponse(
         job_id=job_id,

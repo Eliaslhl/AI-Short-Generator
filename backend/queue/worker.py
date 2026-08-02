@@ -13,6 +13,7 @@ import json
 import logging
 import math
 import os
+import shutil
 import stat
 import uuid
 from dataclasses import dataclass, replace
@@ -585,6 +586,12 @@ def _generate_clips(
         for prior_clip in output_dir.glob("clip_*"):
             if prior_clip.is_file() or prior_clip.is_symlink():
                 prior_clip.unlink()
+        # A hard kill mid-generation (OOM, deploy) can strand a generator
+        # scratch directory before its own `finally` cleanup runs. Sweep
+        # leftovers from a prior attempt before starting a new one.
+        for stale_scratch in output_dir.glob(".clipgen-scratch-*"):
+            if stale_scratch.is_dir() and not stale_scratch.is_symlink():
+                shutil.rmtree(stale_scratch, ignore_errors=True)
         generator = create_clip_generator(output_dir=str(output_dir))
         
         # Generate clips from highlights
@@ -598,18 +605,22 @@ def _generate_clips(
                     "end_time": highlight.end_time,
                     "score": highlight.score,
                 }
-                
-                # Generate with effects and multiple formats
+                clip_id = f"clip_{idx:03d}"
+
+                # Generate with effects. Only "mp4" is ever consumed downstream;
+                # requesting other formats here would produce and immediately
+                # discard files nobody reads.
                 clip_paths = generator.generate_from_highlight(
                     video_path=video_path,
                     highlight=highlight_dict,
                     apply_effects=True,
-                    output_formats=["mp4", "webm"]
+                    output_formats=["mp4"],
+                    clip_id=clip_id,
                 )
-                
+
                 if clip_paths.get("mp4"):
                     clip_info = {
-                        "clip_id": f"clip_{idx:03d}",
+                        "clip_id": clip_id,
                         "start_time": highlight.start_time,
                         "end_time": highlight.end_time,
                         "duration": highlight.end_time - highlight.start_time,

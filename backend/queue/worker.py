@@ -67,10 +67,13 @@ class ProcessingContext:
         self.errors: List[str] = []
     
     def update_progress(self, progress: int, step: str):
-        """Update job progress."""
+        """Update in-memory progress and persist it so a poller sees real-time
+        status instead of a flat 0% for the whole run (the RQ worker is a
+        separate process from the web server: nothing but the DB is shared)."""
         self.progress = min(progress, 100)
         self.step = step
         logger.info(f"📊 [{self.job_id}] {progress}% - {step}")
+        asyncio.run(_persist_job_progress(self.job_id, self.progress, step))
     
     def add_error(self, error: str):
         """Add an error."""
@@ -665,6 +668,33 @@ def _validate_generated_clips(clips: List[Dict[str, Any]], job_id: str) -> List[
         if candidate.is_file() and not candidate.is_symlink() and candidate.stat().st_size > 0:
             validated.append(clip)
     return validated
+
+
+async def _persist_job_progress(job_id: str, progress: int, message: str) -> None:
+    """Best-effort, monotonic progress persistence for a poller to read.
+
+    Never raises: a persistence hiccup must not fail the actual processing
+    job. Skips the write if the job already left "processing" (a stray/late
+    update must never overwrite a terminal done/error result) or if the new
+    value would regress a user-visible progress bar.
+    """
+    bounded = max(0, min(100, progress))
+    try:
+        async with AsyncSessionLocal() as session:
+            job = await session.scalar(
+                select(Job).where(Job.id == job_id).with_for_update()
+            )
+            if job is None or job.status != "processing":
+                return
+            if bounded < job.progress:
+                return
+            job.progress = bounded
+            job.message = message
+            await session.commit()
+    except Exception:
+        logger.debug(
+            "Failed to persist Twitch job progress: job_id=%s", job_id, exc_info=True
+        )
 
 
 async def _begin_twitch_job(job_id: str, user_id: str) -> bool:

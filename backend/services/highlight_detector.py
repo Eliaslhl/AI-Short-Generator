@@ -220,6 +220,7 @@ class HighlightDetector:
         segment_duration: float = 60.0,
         window_size: float = 15.0,  # seconds, typical short clip
         overlap: float = 0.5,  # 50% overlap for sliding window
+        motion_fps: float = 30.0,
     ) -> List[HighlightSegment]:
         """
         Detect highlights in a segment.
@@ -231,6 +232,7 @@ class HighlightDetector:
             segment_duration: total duration of segment in seconds
             window_size: duration of each analysis window in seconds
             overlap: overlap ratio for sliding window (0.5 = 50%)
+            motion_fps: sampling rate of ``frame_diffs`` within this segment
         
         Returns:
             List of highlight segments sorted by score
@@ -268,7 +270,7 @@ class HighlightDetector:
             
             motion_score = 0.0
             if frame_diffs:
-                frame_idx = int(window_start * 30)  # assuming 30 fps
+                frame_idx = int(window_start * motion_fps)
                 motion_score = self.motion_analyzer.compute_motion_score(
                     frame_diffs,
                     frame_idx,

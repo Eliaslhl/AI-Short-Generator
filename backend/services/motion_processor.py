@@ -9,6 +9,7 @@ Features:
 """
 
 import logging
+import math
 import numpy as np
 from typing import Tuple, List, Optional
 import cv2
@@ -27,6 +28,8 @@ class MotionProcessor:
         file_path: str,
         max_frames: Optional[int] = None,
         skip_frames: int = 1,
+        start_time: float = 0.0,
+        duration: Optional[float] = None,
     ) -> Tuple[List[np.ndarray], int, Tuple[int, int]]:
         """
         Load video frames from file.
@@ -35,24 +38,41 @@ class MotionProcessor:
             file_path: path to video file
             max_frames: maximum frames to load (None = all)
             skip_frames: skip every N frames (for performance)
+            start_time: start of the analysis window in seconds
+            duration: optional analysis-window duration in seconds
         
         Returns:
             (frames, fps, (height, width))
         """
         try:
-            logger.info(f"🎬 Loading video from: {file_path}")
+            logger.info("Loading video frames for motion analysis")
             
+            if not math.isfinite(start_time) or start_time < 0:
+                raise ValueError("Motion start_time must be a finite non-negative number")
+            if duration is not None and (
+                not math.isfinite(duration) or duration <= 0
+            ):
+                raise ValueError("Motion duration must be a finite positive number")
+            if skip_frames <= 0:
+                raise ValueError("skip_frames must be positive")
+
             cap = cv2.VideoCapture(file_path)
             
             if not cap.isOpened():
                 raise ValueError("Cannot open video file")
             
             fps = int(cap.get(cv2.CAP_PROP_FPS))
+            if fps <= 0:
+                raise ValueError("Video FPS must be positive")
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             
             logger.info(f"📹 Video: {width}x{height} @ {fps} fps, {total_frames} frames")
+
+            if start_time:
+                cap.set(cv2.CAP_PROP_POS_MSEC, start_time * 1000)
+            end_time = start_time + duration if duration is not None else None
             
             frames = []
             frame_count = 0
@@ -61,6 +81,18 @@ class MotionProcessor:
                 ret, frame = cap.read()
                 if not ret:
                     break
+
+                # OpenCV reports the timestamp of the frame just read. Keep
+                # frames from the next logical chunk out of this analysis.
+                if end_time is not None:
+                    frame_time = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+                    if frame_time >= end_time:
+                        break
+                    # Seeking can land on a preceding keyframe. Such frames
+                    # belong to the prior chunk and must not influence the
+                    # local scores of this one.
+                    if frame_time < start_time:
+                        continue
                 
                 # Skip frames for performance
                 if frame_count % skip_frames == 0:
@@ -79,7 +111,7 @@ class MotionProcessor:
             return frames, fps, (height, width)
         
         except Exception as e:
-            logger.error(f"❌ Failed to load video: {e}")
+            logger.error("Video frame loading failed: exception_type=%s", type(e).__name__)
             raise
     
     def compute_frame_differences(
@@ -248,6 +280,8 @@ def process_video_for_motion_detection(
     file_path: str,
     fps: int = 30,
     max_frames: Optional[int] = None,
+    start_time: float = 0.0,
+    duration: Optional[float] = None,
 ) -> dict:
     """
     Complete video processing pipeline for motion detection.
@@ -256,6 +290,8 @@ def process_video_for_motion_detection(
         file_path: path to video file
         fps: frames per second
         max_frames: maximum frames to process
+        start_time: start of the analysis window in the source, in seconds
+        duration: optional analysis-window duration in seconds
     
     Returns:
         dict with all motion features
@@ -267,7 +303,9 @@ def process_video_for_motion_detection(
         frames, actual_fps, (height, width) = processor.load_video_frames(
             file_path,
             max_frames=max_frames,
-            skip_frames=2  # Skip every 2nd frame for speed
+            skip_frames=2,
+            start_time=start_time,
+            duration=duration,
         )
         
         # Compute frame differences
@@ -284,6 +322,7 @@ def process_video_for_motion_detection(
         return {
             "frames": frames,
             "fps": actual_fps,
+            "analysis_fps": actual_fps / 2,
             "dimensions": (height, width),
             "frame_differences": frame_diffs,
             "scene_changes": scene_changes,
@@ -291,5 +330,5 @@ def process_video_for_motion_detection(
         }
     
     except Exception as e:
-        logger.error(f"❌ Video processing failed: {e}")
+        logger.error("Video motion processing failed: exception_type=%s", type(e).__name__)
         raise

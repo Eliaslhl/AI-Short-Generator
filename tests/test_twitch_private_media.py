@@ -3,18 +3,24 @@
 import asyncio
 import json
 import logging
+import math
 import os
 from pathlib import Path
+import subprocess
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 from sqlalchemy import func, select
 
 import backend.api.advanced_routes as advanced_routes
 import backend.queue.worker as worker
+import backend.services.audio_processor as audio_processor
+import backend.services.motion_processor as motion_processor
 from backend.config import settings
 from backend.main import app
 from backend.models.user import Job, User
+from backend.services.highlight_detector import HighlightDetector, HighlightSegment
 from test_job_authorization import _Queue, _RQJob, _headers, _seed_users_and_job, http_client
 
 
@@ -459,6 +465,403 @@ def _owned_twitch_download(workspace, source):
     return worker.TwitchDownloadedSource(path=str(source), workspace=workspace)
 
 
+def _create_two_event_video(path: Path) -> None:
+    """Create two deterministic visual events without retaining test fixtures."""
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:s=64x64:r=8:d=10",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=blue:s=64x64:r=8:d=10",
+            "-filter_complex",
+            "[0:v][1:v]concat=n=2:v=1:a=0",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+
+def test_process_chunk_uses_module_processors_with_a_bounded_window_and_offset(
+    tmp_path, monkeypatch
+):
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"synthetic-video")
+    calls = []
+    local_highlight = HighlightSegment(1.0, 4.0, 90.0, 80.0, 70.0, 0.0, "event")
+
+    def audio_processor(path, **kwargs):
+        calls.append(("audio", path, kwargs))
+        return {"audio": np.array([0.1, 0.2])}
+
+    def motion_processor(path, **kwargs):
+        calls.append(("motion", path, kwargs))
+        return {"frame_differences": np.array([0.0, 1.0]), "analysis_fps": 15.0}
+
+    class Detector:
+        def __init__(self, **_kwargs):
+            pass
+
+        def detect_highlights(self, **kwargs):
+            assert kwargs["audio_data"].tolist() == [0.1, 0.2]
+            assert kwargs["frame_diffs"] == [0.0, 1.0]
+            assert kwargs["segment_duration"] == 10.0
+            assert kwargs["motion_fps"] == 15.0
+            return [local_highlight]
+
+    monkeypatch.setattr(worker, "process_audio_for_highlight_detection", audio_processor)
+    monkeypatch.setattr(worker, "process_video_for_motion_detection", motion_processor)
+    monkeypatch.setattr(worker, "HighlightDetector", Detector)
+
+    highlights = worker._process_chunk(
+        {
+            "chunk_id": "001",
+            "path": str(source),
+            "start_time": 10.0,
+            "duration": 10.0,
+            "source_duration": 20.0,
+        },
+        "en",
+    )
+
+    assert calls == [
+        ("audio", str(source), {"sample_rate": 22050, "start_time": 10.0, "duration": 10.0}),
+        ("motion", str(source), {"fps": 30, "start_time": 10.0, "duration": 10.0}),
+    ]
+    assert [(item.start_time, item.end_time) for item in highlights] == [(11.0, 14.0)]
+    assert (local_highlight.start_time, local_highlight.end_time) == (1.0, 4.0)
+
+
+@pytest.mark.parametrize(
+    "chunk",
+    [
+        {"start_time": float("nan"), "duration": 10.0},
+        {"start_time": 0.0, "duration": float("inf")},
+        {"start_time": 0.0, "duration": 0.0},
+        {"start_time": 15.0, "duration": 10.0, "source_duration": 20.0},
+    ],
+)
+def test_process_chunk_rejects_invalid_timing_before_running_processors(
+    tmp_path, monkeypatch, chunk
+):
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"synthetic-video")
+    chunk.update({"chunk_id": "invalid", "path": str(source)})
+    monkeypatch.setattr(
+        worker,
+        "process_audio_for_highlight_detection",
+        lambda *_args, **_kwargs: pytest.fail("audio processor must not run"),
+    )
+
+    with pytest.raises(ValueError):
+        worker._process_chunk(chunk, "en")
+
+
+def test_process_chunk_surfaces_processor_failures(tmp_path, monkeypatch, caplog):
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"synthetic-video")
+    monkeypatch.setattr(
+        worker,
+        "process_audio_for_highlight_detection",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("decoder failed")),
+    )
+
+    with caplog.at_level(logging.ERROR), pytest.raises(
+        RuntimeError, match="Twitch chunk analysis failed"
+    ):
+        worker._process_chunk(
+            {"chunk_id": "001", "path": str(source), "start_time": 0.0, "duration": 10.0},
+            "en",
+        )
+
+    assert str(source) not in caplog.text
+    assert "exception_type=OSError" in caplog.text
+
+
+def test_process_chunk_rejects_a_missing_source_before_running_processors(monkeypatch):
+    monkeypatch.setattr(
+        worker,
+        "process_audio_for_highlight_detection",
+        lambda *_args, **_kwargs: pytest.fail("audio processor must not run"),
+    )
+
+    with pytest.raises(ValueError, match="source is unavailable"):
+        worker._process_chunk(
+            {"chunk_id": "missing", "path": "missing.mp4", "start_time": 0.0, "duration": 10.0},
+            "en",
+        )
+
+
+def test_offset_highlight_rejects_invalid_local_timestamps_without_mutating_input():
+    highlight = HighlightSegment(float("nan"), 4.0, 90.0, 80.0, 70.0, 0.0, "event")
+
+    with pytest.raises(ValueError, match="must be finite"):
+        worker._offset_highlight(highlight, 10.0, 10.0, 20.0)
+
+    assert math.isnan(highlight.start_time)
+
+
+def test_process_chunk_allows_motion_only_analysis_when_source_has_no_audio(
+    tmp_path, monkeypatch
+):
+    source = tmp_path / "silent.mp4"
+    source.write_bytes(b"synthetic-video")
+    monkeypatch.setattr(
+        worker,
+        "process_audio_for_highlight_detection",
+        lambda *_args, **_kwargs: {"audio": np.array([])},
+    )
+    monkeypatch.setattr(
+        worker,
+        "process_video_for_motion_detection",
+        lambda *_args, **_kwargs: {"frame_differences": np.array([0.0, 1.0])},
+    )
+
+    class Detector:
+        def __init__(self, **_kwargs):
+            pass
+
+        def detect_highlights(self, **kwargs):
+            assert kwargs["audio_data"].size == 0
+            assert kwargs["frame_diffs"] == [0.0, 1.0]
+            return []
+
+    monkeypatch.setattr(worker, "HighlightDetector", Detector)
+
+    assert worker._process_chunk(
+        {"chunk_id": "000", "path": str(source), "start_time": 0.0, "duration": 10.0},
+        "en",
+    ) == []
+
+
+def test_audio_processor_loads_only_the_requested_window(monkeypatch):
+    calls = []
+
+    class Librosa:
+        def load(self, *args, **kwargs):
+            calls.append((args, kwargs))
+            return np.array([0.1]), 22050
+
+    monkeypatch.setattr(audio_processor, "_get_librosa", lambda: Librosa())
+
+    audio_processor.RealAudioProcessor().load_audio_from_file(
+        "source.mp4", start_time=10.0, duration=5.0
+    )
+
+    assert calls == [
+        (("source.mp4",), {"sr": 22050, "mono": True, "offset": 10.0, "duration": 5.0})
+    ]
+
+
+def test_audio_processor_treats_a_confirmed_missing_audio_stream_as_motion_only(
+    tmp_path,
+):
+    source = tmp_path / "silent.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:s=16x16:r=4:d=1",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            str(source),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+    result = audio_processor.process_audio_for_highlight_detection(
+        str(source), start_time=0.0, duration=1.0
+    )
+
+    assert result["audio"].size == 0
+    assert result["rms_energy"].size == 0
+
+
+def test_audio_processor_does_not_mask_a_decoder_failure_as_missing_audio(monkeypatch):
+    class NoBackendError(Exception):
+        pass
+
+    class Librosa:
+        def load(self, *_args, **_kwargs):
+            raise NoBackendError("decoder failed")
+
+    monkeypatch.setattr(audio_processor, "_get_librosa", lambda: Librosa())
+    monkeypatch.setattr(audio_processor, "_source_has_audio_stream", lambda _path: True)
+
+    with pytest.raises(NoBackendError):
+        audio_processor.RealAudioProcessor().load_audio_from_file("source.mp4")
+
+
+def test_motion_processor_forwards_the_requested_window(monkeypatch):
+    calls = []
+
+    class Processor:
+        def __init__(self, fps):
+            assert fps == 30
+
+        def load_video_frames(self, path, **kwargs):
+            calls.append((path, kwargs))
+            return [np.zeros((2, 2), dtype=np.uint8)], 30, (2, 2)
+
+        def compute_frame_differences(self, _frames):
+            return np.array([0.0])
+
+        def detect_scene_changes(self, _frames):
+            return np.array([0.0])
+
+    monkeypatch.setattr(motion_processor, "MotionProcessor", Processor)
+
+    motion_processor.process_video_for_motion_detection(
+        "source.mp4", start_time=10.0, duration=5.0
+    )
+
+    assert calls == [
+        (
+            "source.mp4",
+            {"max_frames": None, "skip_frames": 2, "start_time": 10.0, "duration": 5.0},
+        )
+    ]
+
+
+def test_motion_processor_discards_frames_before_seek_and_at_chunk_end(monkeypatch):
+    frames = [
+        (9.5, np.zeros((2, 2, 3), dtype=np.uint8)),
+        (10.0, np.ones((2, 2, 3), dtype=np.uint8)),
+        (19.5, np.full((2, 2, 3), 2, dtype=np.uint8)),
+        (20.0, np.full((2, 2, 3), 3, dtype=np.uint8)),
+    ]
+
+    class Capture:
+        def __init__(self):
+            self.position = 0.0
+            self.set_calls = []
+
+        def isOpened(self):
+            return True
+
+        def get(self, property_id):
+            if property_id == motion_processor.cv2.CAP_PROP_FPS:
+                return 10
+            if property_id == motion_processor.cv2.CAP_PROP_FRAME_COUNT:
+                return 1000
+            if property_id == motion_processor.cv2.CAP_PROP_FRAME_HEIGHT:
+                return 2
+            if property_id == motion_processor.cv2.CAP_PROP_FRAME_WIDTH:
+                return 2
+            if property_id == motion_processor.cv2.CAP_PROP_POS_MSEC:
+                return self.position * 1000
+            raise AssertionError(property_id)
+
+        def set(self, property_id, value):
+            self.set_calls.append((property_id, value))
+
+        def read(self):
+            if not frames:
+                return False, None
+            self.position, frame = frames.pop(0)
+            return True, frame
+
+        def release(self):
+            pass
+
+    capture = Capture()
+    monkeypatch.setattr(motion_processor.cv2, "VideoCapture", lambda _path: capture)
+
+    loaded, fps, _dimensions = motion_processor.MotionProcessor().load_video_frames(
+        "source.mp4", start_time=10.0, duration=10.0
+    )
+
+    assert capture.set_calls == [(motion_processor.cv2.CAP_PROP_POS_MSEC, 10000.0)]
+    assert fps == 10
+    assert len(loaded) == 2
+
+
+def test_highlight_detector_uses_the_motion_sampling_rate_for_window_positions(monkeypatch):
+    detector = HighlightDetector()
+    indices = []
+
+    def score(_frame_diffs, window_idx, **_kwargs):
+        indices.append(window_idx)
+        return 0.0
+
+    monkeypatch.setattr(detector.motion_analyzer, "compute_motion_score", score)
+
+    detector.detect_highlights(
+        frame_diffs=[0.0] * 500,
+        segment_duration=30.0,
+        window_size=15.0,
+        overlap=0.5,
+        motion_fps=15.0,
+    )
+
+    assert indices == [0, 112, 225]
+
+
+def test_twitch_chunk_pipeline_offsets_two_chunks_before_generating_distinct_clips(
+    tmp_path, monkeypatch
+):
+    source = tmp_path / "source.mp4"
+    _create_two_event_video(source)
+    clips_root = tmp_path / "clips"
+    monkeypatch.setattr(settings, "clips_dir", str(clips_root))
+    monkeypatch.setattr(
+        worker,
+        "create_download_manager",
+        lambda: SimpleNamespace(get_video_duration=lambda _path: 20.0),
+    )
+    monkeypatch.setattr(
+        worker,
+        "process_audio_for_highlight_detection",
+        lambda *_args, **_kwargs: {"audio": np.array([0.5, 0.5])},
+    )
+    monkeypatch.setattr(
+        worker,
+        "process_video_for_motion_detection",
+        lambda *_args, **_kwargs: {"frame_differences": np.array([0.0, 1.0])},
+    )
+
+    class Detector:
+        def __init__(self, **_kwargs):
+            pass
+
+        def detect_highlights(self, **_kwargs):
+            return [HighlightSegment(1.0, 4.0, 90.0, 80.0, 70.0, 0.0, "event")]
+
+    monkeypatch.setattr(worker, "HighlightDetector", Detector)
+
+    chunks = worker._segment_video(str(source), chunk_duration=10)
+    highlights = [highlight for chunk in chunks for highlight in worker._process_chunk(chunk, "en")]
+    clips = worker._generate_clips(highlights, str(source), "job-123", max_clips=2)
+
+    assert [(item.start_time, item.end_time) for item in highlights] == [(1.0, 4.0), (11.0, 14.0)]
+    assert len(clips) == 2
+    assert [item["duration"] for item in clips] == [3.0, 3.0]
+    clip_paths = [clips_root / "job-123" / item["file"] for item in clips]
+    assert all(path.is_file() and path.suffix == ".mp4" for path in clip_paths)
+    assert clip_paths[0].read_bytes() != clip_paths[1].read_bytes()
+    assert not list(tmp_path.glob("chunk*.mp4"))
+
+
 def _make_twitch_job_pending(session_factory, job_id):
     async def update_job():
         async with session_factory() as session:
@@ -730,6 +1133,59 @@ def test_twitch_worker_cleans_source_when_success_persistence_fails(
             data["job_id"], data["owner_id"], "https://www.twitch.tv/videos/123"
         )
 
+    assert not workspace.exists()
+
+
+@pytest.mark.parametrize("failed_processor", ["audio", "motion"])
+def test_twitch_worker_refunds_and_cleans_up_after_processor_failure(
+    http_client, tmp_path, monkeypatch, failed_processor
+):
+    _, session_factory = http_client
+    data = _seed_users_and_job(session_factory)
+    _make_twitch_job_pending(session_factory, data["job_id"])
+    workspace, source = _owned_twitch_source(tmp_path, monkeypatch)
+    monkeypatch.setattr(worker, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(
+        worker, "_download_twitch_video", lambda *_args: _owned_twitch_download(workspace, source)
+    )
+    monkeypatch.setattr(
+        worker,
+        "_segment_video",
+        lambda path, _duration: [{"chunk_id": "000", "path": path, "start_time": 0.0, "duration": 1.0}],
+    )
+
+    def fail(*_args, **_kwargs):
+        raise OSError("processor unavailable")
+
+    if failed_processor == "audio":
+        monkeypatch.setattr(worker, "process_audio_for_highlight_detection", fail)
+    else:
+        monkeypatch.setattr(
+            worker,
+            "process_audio_for_highlight_detection",
+            lambda *_args, **_kwargs: {"audio": np.array([])},
+        )
+        monkeypatch.setattr(worker, "process_video_for_motion_detection", fail)
+
+    async def charge_quota():
+        async with session_factory() as session:
+            owner = await session.get(User, data["owner_id"])
+            owner.twitch_generations_month = 1
+            await session.commit()
+
+    asyncio.run(charge_quota())
+    with pytest.raises(RuntimeError, match="Twitch processing failed"):
+        worker.process_twitch_video(
+            data["job_id"], data["owner_id"], "https://www.twitch.tv/videos/123"
+        )
+
+    async def failure_state():
+        async with session_factory() as session:
+            job = await session.get(Job, data["job_id"])
+            owner = await session.get(User, data["owner_id"])
+            return job.status, job.error, json.loads(job.clips_json), owner.twitch_generations_month
+
+    assert asyncio.run(failure_state()) == ("error", "Processing failed", [], 0)
     assert not workspace.exists()
 
 

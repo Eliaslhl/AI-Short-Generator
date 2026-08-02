@@ -9,6 +9,8 @@ Features:
 """
 
 import logging
+import math
+import subprocess
 import numpy as np
 from typing import Tuple, Optional
 
@@ -17,6 +19,33 @@ logger = logging.getLogger(__name__)
 # Lazy import: librosa is only loaded when actually needed
 # This avoids startup failures if librosa is not installed
 _librosa = None
+
+
+def _source_has_audio_stream(file_path: str) -> Optional[bool]:
+    """Return whether ffprobe can confirm an audio stream without decoding it."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "a:0",
+                "-show_entries",
+                "stream=index",
+                "-of",
+                "csv=p=0",
+                file_path,
+            ],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return bool(result.stdout.strip())
 
 def _get_librosa():
     """Lazy-load librosa on first use."""
@@ -43,7 +72,12 @@ class RealAudioProcessor:
     def __init__(self, sample_rate: int = 22050):
         self.sample_rate = sample_rate
     
-    def load_audio_from_file(self, file_path: str) -> Tuple[np.ndarray, int]:
+    def load_audio_from_file(
+        self,
+        file_path: str,
+        start_time: float = 0.0,
+        duration: Optional[float] = None,
+    ) -> Tuple[np.ndarray, int]:
         """
         Load audio from a video or audio file.
         
@@ -54,16 +88,40 @@ class RealAudioProcessor:
             (audio_data, sample_rate)
         """
         try:
-            logger.info(f"🎵 Loading audio from: {file_path}")
+            logger.info("Loading audio for highlight analysis")
             
-            # librosa can load audio from video files too
-            audio, sr = _get_librosa().load(file_path, sr=self.sample_rate, mono=True)
+            if not math.isfinite(start_time) or start_time < 0:
+                raise ValueError("Audio start_time must be a finite non-negative number")
+            if duration is not None and (
+                not math.isfinite(duration) or duration <= 0
+            ):
+                raise ValueError("Audio duration must be a finite positive number")
+
+            # librosa can load audio from video files too. ``offset`` and
+            # ``duration`` keep Twitch analysis inside its logical chunk without
+            # materializing an intermediate video file.
+            audio, sr = _get_librosa().load(
+                file_path,
+                sr=self.sample_rate,
+                mono=True,
+                offset=start_time,
+                duration=duration,
+            )
             
             logger.info(f"✅ Loaded {len(audio)} samples at {sr} Hz")
             return audio, sr
         
         except Exception as e:
-            logger.error(f"❌ Failed to load audio: {e}")
+            # librosa/audioread reports a missing stream as NoBackendError. Do
+            # not silently downgrade decoder failures: ffprobe must positively
+            # confirm that this source has no audio stream.
+            if (
+                type(e).__name__ == "NoBackendError"
+                and _source_has_audio_stream(file_path) is False
+            ):
+                logger.info("Source has no audio stream; continuing with motion analysis")
+                return np.array([], dtype=np.float32), self.sample_rate
+            logger.error("Audio loading failed: exception_type=%s", type(e).__name__)
             raise
     
     def compute_rms_energy(
@@ -215,6 +273,8 @@ class RealAudioProcessor:
 def process_audio_for_highlight_detection(
     file_path: str,
     sample_rate: int = 22050,
+    start_time: float = 0.0,
+    duration: Optional[float] = None,
 ) -> dict:
     """
     Complete audio processing pipeline for highlight detection.
@@ -222,6 +282,8 @@ def process_audio_for_highlight_detection(
     Args:
         file_path: path to audio/video file
         sample_rate: target sample rate
+        start_time: start of the analysis window in the source, in seconds
+        duration: optional analysis-window duration in seconds
     
     Returns:
         dict with all audio features
@@ -230,7 +292,23 @@ def process_audio_for_highlight_detection(
     
     try:
         # Load audio
-        audio, sr = processor.load_audio_from_file(file_path)
+        audio, sr = processor.load_audio_from_file(
+            file_path,
+            start_time=start_time,
+            duration=duration,
+        )
+
+        # A video without an audio stream is valid for motion-only detection.
+        if audio.size == 0:
+            return {
+                "audio": audio,
+                "sample_rate": sr,
+                "rms_energy": np.array([]),
+                "times": np.array([]),
+                "spikes": np.array([]),
+                "mfcc": np.array([]),
+                "spectral": {},
+            }
         
         # Compute RMS energy
         rms_energy, times = processor.compute_rms_energy(audio)
@@ -257,5 +335,5 @@ def process_audio_for_highlight_detection(
         }
     
     except Exception as e:
-        logger.error(f"❌ Audio processing failed: {e}")
+        logger.error("Audio processing failed: exception_type=%s", type(e).__name__)
         raise

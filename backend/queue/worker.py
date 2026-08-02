@@ -15,7 +15,7 @@ import math
 import os
 import stat
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
@@ -27,11 +27,13 @@ configure_logging()
 
 logger = logging.getLogger(__name__)
 
+_TIMESTAMP_TOLERANCE_SECONDS = 0.001
+
 # Import queue and services
 from backend.queue.redis_queue import get_queue
 from backend.services.highlight_detector import HighlightDetector, HighlightSegment
-from backend.services.audio_processor import RealAudioProcessor
-from backend.services.motion_processor import MotionProcessor
+from backend.services.audio_processor import process_audio_for_highlight_detection
+from backend.services.motion_processor import process_video_for_motion_detection
 from backend.services.twitch_client import (
     TwitchClient, VideoDownloadManager, create_twitch_client, create_download_manager
 )
@@ -223,6 +225,7 @@ def _segment_video(
                 "chunk_id": chunk_id,
                 "start_time": start_time,
                 "duration": chunk_dur,
+                "source_duration": duration,
                 # Processors receive the downloaded local video, never the Twitch URL.
                 # Chunk timing remains metadata for the highlight detector and renderer.
                 "path": video_path,
@@ -415,43 +418,120 @@ def _process_chunk(
     Returns:
         List of highlights in chunk
     """
-    detector = HighlightDetector(language=language)
-    video_path = chunk["path"]
-    
+    chunk_id = chunk.get("chunk_id", "unknown")
+    video_path = chunk.get("path")
+    chunk_start = _finite_number(chunk.get("start_time", 0.0), "chunk start_time")
+    chunk_duration = _finite_number(chunk.get("duration"), "chunk duration")
+    if chunk_start < 0 or chunk_duration <= 0:
+        raise ValueError("Twitch chunk has invalid timing")
+    if not isinstance(video_path, str) or not Path(video_path).is_file():
+        raise ValueError("Twitch chunk source is unavailable")
+
+    source_duration = chunk.get("source_duration")
+    if source_duration is not None:
+        source_duration = _finite_number(source_duration, "source duration")
+        if source_duration <= 0 or (
+            chunk_start + chunk_duration
+            > source_duration + _TIMESTAMP_TOLERANCE_SECONDS
+        ):
+            raise ValueError("Twitch chunk exceeds its source duration")
+
     try:
-        # Extract real audio features
-        audio_processor = RealAudioProcessor()
-        audio_features = audio_processor.process_audio_for_highlight_detection(
-            video_path=video_path,
-            sr=22050,
-            chunk_duration=chunk["duration"]
+        # The module functions intentionally provide high-level processing.
+        # Both receive the same source window and return chunk-local data.
+        audio_features = process_audio_for_highlight_detection(
+            video_path,
+            sample_rate=22050,
+            start_time=chunk_start,
+            duration=chunk_duration,
         )
-        logger.info(f"✅ Extracted audio features: {len(audio_features.get('energy_scores', []))} frames")
-        
-        # Extract real motion features  
-        motion_processor = MotionProcessor()
-        motion_features = motion_processor.process_video_for_motion_detection(
-            video_path=video_path,
-            skip_frames=2,
-            resize_frames=True
+        motion_features = process_video_for_motion_detection(
+            video_path,
+            fps=30,
+            start_time=chunk_start,
+            duration=chunk_duration,
         )
-        logger.info(f"✅ Extracted motion features: {len(motion_features.get('frame_diffs', []))} frames")
-        
-        # Use real data from processors
+        audio_data = audio_features.get("audio")
+        frame_diffs = motion_features.get("frame_differences", [])
+        if hasattr(frame_diffs, "tolist"):
+            frame_diffs = frame_diffs.tolist()
+        else:
+            frame_diffs = list(frame_diffs)
+        motion_fps = _finite_number(
+            motion_features.get("analysis_fps", 30.0), "motion analysis fps"
+        )
+        if motion_fps <= 0:
+            raise ValueError("Twitch motion analysis has invalid FPS")
+        logger.info(
+            "Twitch chunk analysis completed: chunk_id=%s audio_samples=%s motion_frames=%s",
+            chunk_id,
+            len(audio_data) if audio_data is not None else 0,
+            len(frame_diffs),
+        )
+
+        detector = HighlightDetector(language=language)
         highlights = detector.detect_highlights(
-            audio_data=audio_features.get("energy_scores", []),
-            frame_diffs=motion_features.get("frame_diffs", []),
+            audio_data=audio_data,
+            frame_diffs=frame_diffs,
             transcription="",  # TODO: Add speech-to-text
-            segment_duration=chunk["duration"],
+            segment_duration=chunk_duration,
+            motion_fps=motion_fps,
         )
-        
-        logger.info(f"🎯 Detected {len(highlights)} highlights in chunk")
-        return highlights
-        
-    except Exception as e:
-        logger.error(f"❌ Error processing chunk {chunk.get('chunk_id')}: {e}")
-        # Return empty list instead of crashing
-        return []
+        global_highlights = [
+            _offset_highlight(highlight, chunk_start, chunk_duration, source_duration)
+            for highlight in highlights
+        ]
+        logger.info(
+            "Twitch chunk highlights detected: chunk_id=%s count=%s",
+            chunk_id,
+            len(global_highlights),
+        )
+        return global_highlights
+    except Exception as exc:
+        logger.error(
+            "Twitch chunk analysis failed: chunk_id=%s exception_type=%s",
+            chunk_id,
+            type(exc).__name__,
+        )
+        raise RuntimeError("Twitch chunk analysis failed") from exc
+
+
+def _finite_number(value: Any, field_name: str) -> float:
+    """Return a finite timestamp-like value or reject malformed worker input."""
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be numeric")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be numeric") from exc
+    if not math.isfinite(number):
+        raise ValueError(f"{field_name} must be finite")
+    return number
+
+
+def _offset_highlight(
+    highlight: HighlightSegment,
+    chunk_start: float,
+    chunk_duration: float,
+    source_duration: Optional[float] = None,
+) -> HighlightSegment:
+    """Copy one chunk-local highlight into the source's global timeline."""
+    local_start = _finite_number(highlight.start_time, "highlight start_time")
+    local_end = _finite_number(highlight.end_time, "highlight end_time")
+    if local_start < 0 or local_end <= local_start:
+        raise ValueError("Twitch highlight has invalid timing")
+    if local_end > chunk_duration + _TIMESTAMP_TOLERANCE_SECONDS:
+        raise ValueError("Twitch highlight exceeds its chunk duration")
+
+    global_start = chunk_start + local_start
+    global_end = chunk_start + local_end
+    if source_duration is not None:
+        if global_end > source_duration + _TIMESTAMP_TOLERANCE_SECONDS:
+            raise ValueError("Twitch highlight exceeds its source duration")
+        global_end = min(global_end, source_duration)
+    if global_end <= global_start:
+        raise ValueError("Twitch highlight has invalid global timing")
+    return replace(highlight, start_time=global_start, end_time=global_end)
 
 
 def _filter_highlights(

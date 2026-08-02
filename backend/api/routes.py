@@ -465,7 +465,16 @@ async def run_pipeline(
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(Job).where(Job.id == job_id))
             job_record = result.scalar_one_or_none()
-            if job_record:
+            if job_record and job_record.status == "error":
+                # The per-clip render failure handler above already set the
+                # error state, refunded the credit, and committed before
+                # re-raising to unwind out of this function. Refunding again
+                # here would grant the user a free credit per failed job.
+                logger.debug(
+                    "Skipping duplicate error handling for job %s (already marked error)",
+                    job_id,
+                )
+            elif job_record:
                 job_record.status = "error"
                 job_record.error = "Processing failed"
                 # ── Refund the generation credit on failure ──────────────────

@@ -1,3 +1,9 @@
+# ── Claude Code (local/vendored, regenerable) ──────────────
+.claude/settings.local.json
+.claude/logs/
+.claude/skills/
+graphify-out/
+
 # ── Python ──────────────────────────────────────────────
 __pycache__/
 *.py[cod]

@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 
 from backend.auth import router as auth_router
@@ -188,9 +188,18 @@ def test_login_error_does_not_return_connection_string_or_secret():
                 f"{SENSITIVE_DATABASE_URL} {SENSITIVE_TOKEN} super-secret-test-value"
             )
 
+    # login() is decorated with @limiter.limit(...), which needs a real
+    # Request to compute the rate-limit key — this test calls the route
+    # function directly (bypassing TestClient) to reach the exception path.
+    fake_request = Request({
+        "type": "http", "method": "POST", "path": "/auth/login",
+        "headers": [], "query_string": b"", "client": ("127.0.0.1", 12345),
+    })
+
     with pytest.raises(HTTPException) as error:
         asyncio.run(
             auth_router.login(
+                fake_request,
                 auth_router.LoginRequest(email="user@example.com", password="password123"),
                 BrokenSession(),
             )

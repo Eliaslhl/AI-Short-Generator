@@ -45,6 +45,7 @@ from backend.services.oauth_transaction_service import (
     consume_oauth_transaction,
     create_oauth_transaction,
 )
+from backend.rate_limiter import limiter
 
 if os.getenv("APP_ENVIRONMENT") in {"development", "test"}:
     load_dotenv()
@@ -156,7 +157,9 @@ async def send_confirmation_email_safe(email: str, token: str) -> None:
 
 # ── Register ─────────────────────────────────────────────────────────────────
 @router.post("/register", response_model=dict)
+@limiter.limit("5/minute")
 async def register(
+    request: Request,
     body: RegisterRequest,
     db: AsyncSession = Depends(get_db),
 ):
@@ -202,7 +205,9 @@ async def register(
 
 # ── Login ─────────────────────────────────────────────────────────────────────
 @router.post("/login", response_model=dict)
+@limiter.limit("5/minute")
 async def login(
+    request: Request,
     body: LoginRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
@@ -679,7 +684,9 @@ class ResendConfirmationRequest(BaseModel):
 
 
 @router.post("/resend-confirmation-email")
+@limiter.limit("5/minute")
 async def resend_confirmation_email(
+    request: Request,
     body: ResendConfirmationRequest,
     db: AsyncSession = Depends(get_db),
     background_tasks: BackgroundTasks = BackgroundTasks()
@@ -749,8 +756,9 @@ class ForgotPasswordRequest(BaseModel):
 
 
 @router.post("/forgot-password")
+@limiter.limit("5/minute")
 async def forgot_password(
-    body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)
+    request: Request, body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)
 ):
     """
     Always returns 200 — never reveal whether an email exists (security best practice).

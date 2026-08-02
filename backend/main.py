@@ -24,13 +24,14 @@ if os.getenv("APP_ENVIRONMENT") in {"development", "test"}:
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.responses import Response, JSONResponse  # noqa: E402
-from slowapi import Limiter, _rate_limit_exceeded_handler  # noqa: E402
-from slowapi.util import get_remote_address  # noqa: E402
+from slowapi import _rate_limit_exceeded_handler  # noqa: E402
 from slowapi.errors import RateLimitExceeded  # noqa: E402
+from slowapi.middleware import SlowAPIMiddleware  # noqa: E402
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 from starlette.requests import Request  # noqa: E402
 
 from backend.security_logging import configure_logging  # noqa: E402
+from backend.rate_limiter import limiter  # noqa: E402
 
 configure_logging()
 
@@ -46,14 +47,6 @@ from backend.database import create_tables  # noqa: E402
 #  Logging
 # ──────────────────────────────────────────────
 logger = logging.getLogger(__name__)
-
-# ──────────────────────────────────────────────
-#  Rate limiter  (slowapi — wraps limits-library)
-#  Default: 60 requests / minute per IP
-#  Sensitive routes (login, register) use stricter limits defined inline.
-# ──────────────────────────────────────────────
-limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
-
 
 # ──────────────────────────────────────────────
 #  Security Headers Middleware
@@ -195,6 +188,11 @@ app.add_middleware(
 
 # Add security headers middleware (AFTER CORS)
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Without this middleware, Limiter.default_limits is inert — it only takes
+# effect through this middleware or an explicit @limiter.limit(...) on a
+# route. Sensitive auth routes also carry their own, stricter decorator.
+app.add_middleware(SlowAPIMiddleware)
 
 # NOTE: frontend is now served by Vite dev server (port 5173) or its dist/ build
 

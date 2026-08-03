@@ -248,6 +248,13 @@ class Settings(BaseSettings):
     # or anything predating that fix, once clearly stale.
     orphaned_download_max_age_hours: int = 24
 
+    # ---------- Stuck job recovery (backend/scripts/recover_stuck_jobs.py) ----------
+    # A job's updated_at auto-refreshes on every progress update during
+    # healthy processing. Set comfortably above any realistic legitimate
+    # run (max_source_video_duration_seconds is 4h) so this never
+    # false-positives on a merely slow job.
+    stuck_job_max_processing_hours: int = 6
+
     class Config:
         env_file = _local_env_file
         env_file_encoding = "utf-8"

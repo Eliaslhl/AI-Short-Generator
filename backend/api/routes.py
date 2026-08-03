@@ -513,6 +513,18 @@ async def generate(
         )
 
     await _reset_platform_counter_if_new_month(user, db, platform)
+    # Serialize quota decisions for this user (same pattern as the Twitch
+    # advanced route): without this lock, two concurrent /generate requests
+    # both read the same pre-increment usage, both pass the check below, and
+    # both increment — exceeding the plan's monthly limit. The counter reset
+    # above commits independently; only the final check/consume/Job-create
+    # transaction needs the row lock.
+    locked_user = await db.scalar(
+        select(User).where(User.id == user.id).with_for_update()
+    )
+    if locked_user is None:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+    user = locked_user
 
     usage = _get_platform_usage(user, platform)
     limit = _get_platform_limit(user, platform)

@@ -74,6 +74,47 @@ def _detect_platform_from_url(url: str) -> str:
     return "twitch" if "twitch.tv" in (url or "").lower() else "youtube"
 
 
+def _cleanup_download_dir(download_dir, job_id: str) -> None:
+    """Best-effort removal of a job's downloaded source video directory.
+
+    job_id is server-generated (uuid4), never taken from user input, so the
+    target path is not attacker-controlled — but this still refuses to
+    delete anything outside the two known download roots, and refuses
+    unless the leaf directory name is exactly this job's id, as defence in
+    depth against a future logic bug pointing it somewhere unexpected.
+    """
+    import shutil
+    from pathlib import Path
+
+    allowed_roots = []
+    for configured in (settings.video_dir, settings.video_temp_dir):
+        try:
+            allowed_roots.append(Path(configured).resolve(strict=False))
+        except OSError:
+            continue
+
+    try:
+        resolved = download_dir.resolve(strict=False)
+    except OSError:
+        return
+    if resolved.name != job_id:
+        logger.warning("Refusing to clean up a download dir not named for its job: job_id=%s", job_id)
+        return
+    if not any(resolved == root or root in resolved.parents for root in allowed_roots):
+        logger.warning("Refusing to clean up a download dir outside known roots: job_id=%s", job_id)
+        return
+    if not resolved.is_dir() or resolved.is_symlink():
+        return
+    try:
+        shutil.rmtree(resolved)
+    except OSError as exc:
+        logger.warning(
+            "Failed to clean up downloaded source: job_id=%s exception_type=%s",
+            job_id,
+            type(exc).__name__,
+        )
+
+
 def _probe_source_duration_seconds(url: str) -> float | None:
     """Best-effort, metadata-only duration probe (no download).
 
@@ -255,7 +296,15 @@ async def run_pipeline(
     include_subtitles: bool | None = None,
 ):
     """Full async pipeline: download → transcribe → score → render."""
+    from pathlib import Path
+
     platform = _detect_platform_from_url(youtube_url)
+    # Known up front (job_id is server-generated, not from the URL), so
+    # cleanup can run in `finally` below even if the download itself fails
+    # partway through and leaves a partial file behind.
+    download_dir = (
+        Path(settings.video_temp_dir) if platform == "twitch" else Path(settings.video_dir)
+    ) / job_id
     subtitles_enabled = (
         settings.include_subtitles_by_default
         if include_subtitles is None
@@ -517,6 +566,14 @@ async def run_pipeline(
                             f"Refunded {platform} generation credit for user {user_id} (job {job_id} failed)"
                         )
                 await db.commit()
+
+    finally:
+        # The downloaded source video is a full-length copy of potentially
+        # copyrighted content; unlike the Twitch advanced/RQ pipeline, this
+        # path never cleaned it up on either success or failure, so every
+        # generation accumulated disk usage forever. Best-effort: a cleanup
+        # failure must never mask the job's real outcome.
+        await asyncio.to_thread(_cleanup_download_dir, download_dir, job_id)
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────

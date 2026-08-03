@@ -32,6 +32,7 @@ from starlette.requests import Request  # noqa: E402
 
 from backend.security_logging import configure_logging  # noqa: E402
 from backend.rate_limiter import limiter  # noqa: E402
+from backend.config import settings  # noqa: E402
 
 configure_logging()
 
@@ -153,11 +154,17 @@ async def lifespan(app: FastAPI):
 # ──────────────────────────────────────────────
 #  FastAPI app
 # ──────────────────────────────────────────────
+# /docs, /redoc, and /openapi.json expose the full API surface (routes,
+# schemas, auth requirements) to anyone — restrict them to local development,
+# same gate already used for the /debug/job/{job_id} route.
 app = FastAPI(
     title="AI Shorts Generator",
     description="Transform long YouTube videos into viral shorts – 100 % local AI.",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url="/docs" if settings.is_development else None,
+    redoc_url="/redoc" if settings.is_development else None,
+    openapi_url="/openapi.json" if settings.is_development else None,
 )
 
 # Attach rate limiter

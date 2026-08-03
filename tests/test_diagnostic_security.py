@@ -68,6 +68,9 @@ def test_production_routes_exclude_sensitive_diagnostics():
     assert "/api/debug/youtube-cookies" not in routes
     assert "/api/debug/job/{job_id}" not in routes
     assert "/health" in routes
+    assert "/docs" not in routes
+    assert "/redoc" not in routes
+    assert "/openapi.json" not in routes
 
 
 def test_development_only_registers_owned_job_diagnostic():
@@ -77,6 +80,19 @@ def test_development_only_registers_owned_job_diagnostic():
     assert "/_debug/db" not in routes
     assert "/api/debug/refresh-cookies" not in routes
     assert "/api/debug/youtube-cookies" not in routes
+    assert "/docs" in routes
+    assert "/redoc" in routes
+    assert "/openapi.json" in routes
+
+
+def test_test_environment_also_excludes_public_api_docs():
+    # "test" is not "development": docs must stay off in every environment
+    # that isn't explicitly local development.
+    routes = _routes_for("test")
+
+    assert "/docs" not in routes
+    assert "/redoc" not in routes
+    assert "/openapi.json" not in routes
 
 
 def test_invalid_environment_is_rejected_before_routes_are_registered():

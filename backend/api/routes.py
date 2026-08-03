@@ -74,6 +74,36 @@ def _detect_platform_from_url(url: str) -> str:
     return "twitch" if "twitch.tv" in (url or "").lower() else "youtube"
 
 
+def _probe_source_duration_seconds(url: str) -> float | None:
+    """Best-effort, metadata-only duration probe (no download).
+
+    Returns None on any failure (invalid URL, network hiccup, timeout, missing
+    yt-dlp) — the caller must not block generation on this: the real
+    download/transcription step is the authoritative validator of whether a
+    URL is actually reachable and processable. This only bounds worst-case
+    cost for a URL that *is* valid.
+    """
+    import sys
+    from pathlib import Path
+    import subprocess
+    import json as _json
+
+    venv_bin = Path(sys.executable).parent
+    ytdlp = venv_bin / "yt-dlp"
+    if not ytdlp.exists():
+        return None
+    try:
+        proc = subprocess.run(
+            [str(ytdlp), "-j", "--no-warnings", "--skip-download", url],
+            capture_output=True, text=True, check=True, timeout=60,
+        )
+        info = _json.loads(proc.stdout)
+        duration = info.get("duration")
+        return float(duration) if duration else None
+    except Exception:
+        return None
+
+
 def _detected_transcript_language(segments: list[dict[str, Any]]) -> str | None:
     """Read optional language metadata without attempting text-based detection."""
     for segment in segments:
@@ -510,6 +540,26 @@ async def generate(
         raise HTTPException(
             status_code=403,
             detail="QUALITY transcription requires a Pro+ plan",
+        )
+
+    # Reject an oversized source before spending quota or a worker slot on
+    # it. Best-effort: a probe failure (bad URL, network hiccup) never blocks
+    # the request here — the download step is the real, authoritative
+    # validator and will surface its own clear error for that.
+    source_duration = await asyncio.to_thread(
+        _probe_source_duration_seconds, request.youtube_url
+    )
+    if (
+        source_duration is not None
+        and source_duration > settings.max_source_video_duration_seconds
+    ):
+        max_hours = settings.max_source_video_duration_seconds / 3600
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"This video is too long to process ({source_duration / 3600:.1f}h). "
+                f"The maximum supported source length is {max_hours:.0f}h."
+            ),
         )
 
     await _reset_platform_counter_if_new_month(user, db, platform)

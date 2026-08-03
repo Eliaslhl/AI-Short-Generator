@@ -179,6 +179,12 @@ class Settings(BaseSettings):
     min_clip_duration: int = 20  # seconds — min to have enough content
     max_clip_duration: int = 60  # seconds — 1 min max for shorts
 
+    # ---------- Source video limits ----------
+    # Bounds worst-case download + transcription cost per job. Generous
+    # enough for a full-length stream VOD; rejects e.g. a 10h+ submission
+    # that would otherwise tie up a worker for hours with no cost control.
+    max_source_video_duration_seconds: int = 14400  # 4 hours
+
     # ---------- Video output ----------
     output_width: int = 1080
     output_height: int = 1920  # 9:16 portrait

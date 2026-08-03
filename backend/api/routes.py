@@ -74,6 +74,44 @@ def _detect_platform_from_url(url: str) -> str:
     return "twitch" if "twitch.tv" in (url or "").lower() else "youtube"
 
 
+def _classify_pipeline_error(exc: Exception) -> str:
+    """Map a small set of well-known, safe failure signatures to a clear,
+    user-facing message.
+
+    Deliberately narrow: raw exception text can contain yt-dlp's raw stderr,
+    operator-facing setup instructions (e.g. the bot-check cookie-refresh
+    help text), or other detail never meant for an end user — this never
+    echoes exc's text verbatim. Anything that doesn't match a known-safe
+    pattern below falls back to the original generic message, unchanged
+    from before this function existed.
+    """
+    lowered = str(exc).lower()
+
+    if lowered.startswith("video not available") or "not available in your country" in lowered:
+        return "This video is not available (it may be private, removed, or region-restricted)."
+    if lowered.startswith("access denied"):
+        return "This video requires the uploader's permission and cannot be accessed."
+    if (
+        lowered.startswith("video not found")
+        or "video unavailable" in lowered
+        or "no longer available" in lowered
+        or "has been removed" in lowered
+    ):
+        return "This video is unavailable or has been removed."
+    if "sign in to confirm your age" in lowered or "age-restricted" in lowered:
+        return "This video is age-restricted and cannot be processed."
+    if (
+        "confirm you're not a bot" in lowered
+        or "confirm you are not a bot" in lowered
+        or "bot-check" in lowered
+    ):
+        return "The video platform temporarily blocked this download as suspicious traffic. Please try again later."
+    if lowered.startswith("download timeout"):
+        return "The download took too long and timed out. Please try again."
+
+    return "Processing failed"
+
+
 def _cleanup_download_dir(download_dir, job_id: str) -> None:
     """Best-effort removal of a job's downloaded source video directory.
 
@@ -484,6 +522,7 @@ async def run_pipeline(
                     if job_record:
                         job_record.status = "error"
                         job_record.error = "A clip could not be rendered"
+                        job_record.message = "A clip could not be rendered"
                         # refund credit
                         user_result = await db.execute(select(User).where(User.id == user_id))
                         user_record = user_result.scalar_one_or_none()
@@ -536,8 +575,9 @@ async def run_pipeline(
 
     except Exception as exc:
         logger.error("Pipeline error for job %s: exception_type=%s", job_id, type(exc).__name__)
+        user_facing_error = _classify_pipeline_error(exc)
         jobs[job_id]["status"] = "error"
-        jobs[job_id]["step"] = "Processing failed"
+        jobs[job_id]["step"] = user_facing_error
 
         from backend.database import AsyncSessionLocal
 
@@ -555,7 +595,8 @@ async def run_pipeline(
                 )
             elif job_record:
                 job_record.status = "error"
-                job_record.error = "Processing failed"
+                job_record.error = user_facing_error
+                job_record.message = user_facing_error
                 # ── Refund the generation credit on failure ──────────────────
                 user_result = await db.execute(select(User).where(User.id == user_id))
                 user_record = user_result.scalar_one_or_none()

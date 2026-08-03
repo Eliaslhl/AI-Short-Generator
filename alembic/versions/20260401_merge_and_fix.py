@@ -60,5 +60,35 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Downgrade schema."""
-    pass
+    """Downgrade schema.
+
+    Partial by design, not a silent no-op: this migration merges two
+    branches whose own upgrade() steps are themselves conditional ("IF NOT
+    EXISTS") — from here alone there is no way to tell whether THIS
+    migration is what created `plan`/the `plan` enum type versus an earlier
+    one in whichever branch a given database went through. Reversing that
+    unconditionally would risk either destroying a column an earlier
+    migration owns, or dropping a type still in use.
+
+    Does NOT drop the `plan` column or the `plan` enum type:
+    `plan_youtube`/`plan_twitch` (backend/models/user.py) already depend on
+    the same Postgres enum type, and dropping `plan` would destroy every
+    user's plan assignment — a rollback must never delete user data as a
+    side effect. Only reverses the one change that is unambiguously this
+    migration's alone and safe to undo without any data loss: the
+    `is_active` column default. Rolling back past the plan/enum changes
+    themselves requires restoring from a backup taken before this migration
+    was applied.
+    """
+    op.execute("""
+    DO $$
+    BEGIN
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'users' AND column_name = 'is_active'
+        ) THEN
+            ALTER TABLE users ALTER COLUMN is_active DROP DEFAULT;
+        END IF;
+    END
+    $$;
+    """)

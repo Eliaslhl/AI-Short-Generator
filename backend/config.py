@@ -237,6 +237,17 @@ class Settings(BaseSettings):
     # Temporary working directory for downloads / processing (can be overridden via VIDEO_TEMP_DIR)
     video_temp_dir: str = str(DATA_DIR / "tmp")
 
+    # ---------- Storage retention (backend/scripts/cleanup_old_media.py) ----------
+    # How long a "done"/"error" job's generated clips stay downloadable before
+    # the periodic cleanup script may remove them. Generous by default —
+    # tune to your actual product policy.
+    clips_retention_days: int = 90
+    # Safety-net sweep only: source downloads should already be removed
+    # immediately after each job (backend/api/routes.py, backend/queue/
+    # worker.py). This just catches leftovers from a hard crash (kill -9)
+    # or anything predating that fix, once clearly stale.
+    orphaned_download_max_age_hours: int = 24
+
     class Config:
         env_file = _local_env_file
         env_file_encoding = "utf-8"
